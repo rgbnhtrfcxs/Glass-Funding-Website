@@ -20,29 +20,37 @@ function Section({ title, content, index }: { title: string; content: string; in
 export default function About() {
   const sections = [
     {
-      title: "Our Mission",
-      content: "At Glass, we're dedicated to revolutionizing scientific funding by creating transparent, efficient pathways between researchers and resources. Our platform aims to accelerate breakthrough discoveries by removing traditional barriers to research funding."
+      title: "What is Glass?",
+      content: "Glass is the next-generation platform revolutionizing scientific funding and collaboration. We bridge the gap between researchers, private labs, universities, and investors, ensuring groundbreaking ideas receive the resources they need to become reality. Traditional funding models are slow, bureaucratic, and inefficient—Glass changes that."
     },
     {
-      title: "Our Vision",
-      content: "We envision a future where groundbreaking research is limited only by imagination, not funding. Glass strives to be the catalyst that transforms how scientific research is funded, fostering a more collaborative and innovative research ecosystem."
+      title: "Why Glass?",
+      content: "In today’s world, brilliant research often goes unfunded, and cutting-edge labs lack the partnerships needed to accelerate discoveries. Glass provides a transparent, efficient, and impact-driven ecosystem that connects researchers with funding, infrastructure, and industry partnerships."
     },
     {
-      title: "Our Values",
-      content: "Transparency, innovation, and collaboration form the cornerstone of our platform. We believe in creating an inclusive environment where researchers from all backgrounds can access the resources they need to drive scientific progress."
+      title: "What We Aim to Do",
+      content: (
+        <ul>
+          <li><strong>Investors:</strong> We create a new asset class—allowing angel investors, VCs, and private funds to directly invest in high-impact research, with clear pathways to commercialization.</li>
+          <li><strong>Universities & Labs:</strong> We provide a streamlined platform to secure private funding and industry partnerships, ensuring research moves beyond the academic world into real-world applications.</li>
+          <li><strong>For the Future:</strong> By democratizing access to research funding, we empower scientists to innovate faster, reduce dependence on slow-moving grants, and create a sustainable, high-impact funding model.</li>
+        </ul>
+      )
     },
     {
-      title: "Our Impact",
-      content: "Through our platform, we've helped researchers secure funding for critical projects across various scientific disciplines. Our impact extends beyond individual projects to advancing the broader scientific community."
+      title: "Why You Should Join Us",
+      content: (
+        <ul>
+          <li><strong>Investors:</strong> Be part of the next wave of deep-tech, biotech, and cutting-edge science investments with real ROI potential.</li>
+          <li><strong>Universities & Labs:</strong> Gain access to private capital and strategic partnerships that accelerate research without bureaucratic hurdles.</li>
+          <li><strong>Visionaries & Innovators:</strong> Join a movement that transforms the way research is funded, developed, and commercialized.</li>
+        </ul>
+      )
     },
     {
-      title: "Our Team",
-      content: "Glass brings together experts from science, technology, and finance, creating a dynamic team dedicated to transforming research funding. Our diverse backgrounds unite under a common goal: accelerating scientific discovery."
+      title: "Let’s Build the Future of Science Together.",
+      content: "Glass is more than a platform—it’s a movement. Whether you’re an investor seeking high-growth opportunities, or a research institution looking to accelerate discovery, Glass is your gateway to the future of scientific innovation."
     },
-    {
-      title: "Join Our Journey",
-      content: "Be part of the revolution in scientific funding. Whether you're a researcher seeking funding or an organization looking to support groundbreaking research, Glass provides the platform to make it happen."
-    }
   ];
 
   return (

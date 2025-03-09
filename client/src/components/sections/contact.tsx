@@ -66,16 +66,16 @@ export function Contact() {
             <div className="space-y-6">
               <div className="flex items-center gap-4">
                 <Mail className="h-5 w-5 text-primary" />
-                <span>contact@glassplatform.com</span>
+                <span>contact@glass-funding.com</span>
               </div>
-              <div className="flex items-center gap-4">
+              {/* <div className="flex items-center gap-4">
                 <Phone className="h-5 w-5 text-primary" />
                 <span>+1 (555) 123-4567</span>
               </div>
               <div className="flex items-center gap-4">
                 <MapPin className="h-5 w-5 text-primary" />
                 <span>123 Innovation Street, Science City, SC 12345</span>
-              </div>
+              </div> */} {/* add adresse and number when accepted by the incubator */}
             </div>
           </motion.div>
 

@@ -13,7 +13,7 @@ export function Navbar() {
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center"> {/* Added div for styling */}
             <Link href="/">
-              <img src="/GlassLogo3.png" alt="Glass" className="h-8 w-auto" />
+              <img src="/GlassLogo5.png" alt="Glass" className="h-12 w-auto" />
             </Link>
             {/* fallback text */}
           </div>

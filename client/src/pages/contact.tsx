@@ -20,8 +20,8 @@ export default function Contact() {
 
           <div className="flex items-center justify-center gap-4 mb-8">
             <Mail className="h-6 w-6 text-primary" />
-            <a href="mailto:contact@glassplatform.com" className="text-lg hover:text-primary transition-colors">
-              contact@glassplatform.com
+            <a href="mailto:contact@glass-funding.com" className="text-lg hover:text-primary transition-colors">
+              contact@glass-funding.com
             </a>
           </div>
 
@@ -29,13 +29,13 @@ export default function Contact() {
             <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
               <Facebook className="h-8 w-8" />
             </a>
-            <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+            <a href="https://x.com/GlassFunding" className="text-muted-foreground hover:text-primary transition-colors">
               <Twitter className="h-8 w-8" />
             </a>
-            <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+            <a href="https://www.linkedin.com/in/funding-glass-803485355/" className="text-muted-foreground hover:text-primary transition-colors">
               <Linkedin className="h-8 w-8" />
             </a>
-            <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+            <a href="https://www.instagram.com/glass_funding/" className="text-muted-foreground hover:text-primary transition-colors">
               <Instagram className="h-8 w-8" />
             </a>
           </div>

@@ -21,10 +21,10 @@ export function Hero() {
           transition={{ duration: 0.8 }}
           className="max-w-3xl mx-auto text-center"
         >
-          <h1 className="text-4xl md:text-6xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-pink-600">
-            Empowering Scientific Innovation Through Funding and Collaboration
+          <h1 className="text-4xl md:text-6xl font-bold mb-8 bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-pink-600">
+            The Future of Scientific Investment Starts Here.
           </h1>
-          <p className="text-lg md:text-xl text-muted-foreground mb-8">
+          <p className="text-lg md:text-xl text-muted-foreground mb-12">
             Connecting researchers with the resources they need to drive progress
           </p>
           <Button size="lg" className="text-lg px-8" onClick={scrollToAbout}>

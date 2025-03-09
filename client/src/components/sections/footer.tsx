@@ -41,7 +41,7 @@ export function Footer() {
             </ul>
           </div>
 
-          <div>
+          {/*<div>
             <h4 className="font-semibold mb-4">Legal</h4>
             <ul className="space-y-2">
               <li>
@@ -55,7 +55,7 @@ export function Footer() {
                 </Link>
               </li>
             </ul>
-          </div>
+          </div> */} {/* add when it is done */}
 
           <div>
             <h4 className="font-semibold mb-4">Follow Us</h4>
@@ -63,13 +63,13 @@ export function Footer() {
               <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
                 <Facebook className="h-5 w-5" />
               </a>
-              <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+              <a href="https://x.com/GlassFunding" className="text-muted-foreground hover:text-primary transition-colors">
                 <Twitter className="h-5 w-5" />
               </a>
-              <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+              <a href="https://www.linkedin.com/in/funding-glass-803485355/" className="text-muted-foreground hover:text-primary transition-colors">
                 <Linkedin className="h-5 w-5" />
               </a>
-              <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+              <a href="https://www.instagram.com/glass_funding/" className="text-muted-foreground hover:text-primary transition-colors">
                 <Instagram className="h-5 w-5" />
               </a>
             </div>
