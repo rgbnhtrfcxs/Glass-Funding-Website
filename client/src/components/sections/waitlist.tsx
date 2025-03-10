@@ -24,8 +24,33 @@ export function Waitlist() {
 
   const mutation = useMutation({
     mutationFn: async (data: InsertWaitlist) => {
-      const res = await apiRequest("POST", "/api/waitlist", data);
-      return res.json();
+      try {
+        const res = await fetch("https://api.brevo.com/v3/contacts", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "api-key": import.meta.env.VITE_BREVO_API_KEY,  // Use environment variable for API key
+          },
+          body: JSON.stringify({
+            email: data.email,
+            attributes: {
+              FIRSTNAME: data.name,  // Standard field for name in Brevo
+            },
+            listIds: [import.meta.env.VITE_LIST_ID],  // Replace with actual List ID from Brevo
+            updateEnabled: true,  // Update if subscriber already exists
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error("Failed to add to Brevo waitlist");
+        }
+
+        const result = await res.json();
+        return result;
+      } catch (error) {
+        console.error("Error:", error);
+        throw error;
+      }
     },
     onSuccess: () => {
       setSubmitted(true);
@@ -40,7 +65,7 @@ export function Waitlist() {
         title: "Error",
         description: "Something went wrong. Please try again.",
       });
-    }
+    },
   });
 
   const onSubmit = (data: InsertWaitlist) => {
@@ -96,8 +121,8 @@ export function Waitlist() {
                     </FormItem>
                   )}
                 />
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="w-full"
                   disabled={mutation.isPending}
                 >
