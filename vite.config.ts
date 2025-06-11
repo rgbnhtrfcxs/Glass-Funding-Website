@@ -10,10 +10,9 @@ const __dirname = dirname(__filename);
 export default defineConfig({
   plugins: [
     react(),
-    themePlugin(),
-    // Removed Replit-only plugins (cartographer, runtimeErrorOverlay)
+    themePlugin(), // ✅ Safe plugin
   ],
-  base: './',
+  base: './', // ✅ Required for Netlify to load assets correctly
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "client", "src"),
