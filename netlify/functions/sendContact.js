@@ -25,7 +25,7 @@ exports.handler = async (event) => {
   }
 
   try {
-    await axios.post(
+    const brevoRes = await axios.post(
       "https://api.brevo.com/v3/smtp/email",
       {
         sender: {
@@ -34,7 +34,7 @@ exports.handler = async (event) => {
         },
         to: [
           {
-            email: "contact@glass-funding.com", // ✅ Your receiving inbox
+            email: "contact@glass-funding.com", // ✅ Receiving inbox
             name: "Glass Team",
           },
         ],
@@ -54,9 +54,21 @@ exports.handler = async (event) => {
       }
     );
 
+    // ✅ Validate response from Brevo
+    if (!brevoRes.data.messageId) {
+      console.error("Unexpected Brevo response:", brevoRes.data);
+      return {
+        statusCode: 502,
+        body: JSON.stringify({
+          error: "Email not accepted by Brevo",
+          details: brevoRes.data,
+        }),
+      };
+    }
+
     return {
       statusCode: 200,
-      body: JSON.stringify({ message: "Email sent!" }),
+      body: JSON.stringify({ message: "Email sent successfully!" }),
     };
   } catch (error) {
     console.error("Brevo SMTP error:", error.response?.data || error.message);
