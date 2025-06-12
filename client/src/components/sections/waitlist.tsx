@@ -15,7 +15,7 @@ export function Waitlist() {
   const [submitted, setSubmitted] = useState(false);
 
   const form = useForm<InsertWaitlist>({
-    resolver: zodResolver(insertWaitlistSchema),
+    // resolver: zodResolver(insertWaitlistSchema),
     defaultValues: {
       name: "",
       email: ""
@@ -25,26 +25,21 @@ export function Waitlist() {
   const mutation = useMutation({
     mutationFn: async (data: InsertWaitlist) => {
       try {
-        const res = await fetch("https://api.brevo.com/v3/contacts", {
+        console.log("Submitting email:", data.email);
+        const res = await fetch("/.netlify/functions/subscribe", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "api-key": import.meta.env.VITE_BREVO_API_KEY,  // Use environment variable for API key
           },
           body: JSON.stringify({
             email: data.email,
-            attributes: {
-              FIRSTNAME: data.name,  // Standard field for name in Brevo
-            },
-            listIds: [import.meta.env.VITE_LIST_ID],  // Replace with actual List ID from Brevo
-            updateEnabled: true,  // Update if subscriber already exists
           }),
         });
-
+    
         if (!res.ok) {
-          throw new Error("Failed to add to Brevo waitlist");
+          throw new Error("Failed to add to waitlist");
         }
-
+    
         const result = await res.json();
         return result;
       } catch (error) {
@@ -52,6 +47,7 @@ export function Waitlist() {
         throw error;
       }
     },
+    
     onSuccess: () => {
       setSubmitted(true);
       toast({

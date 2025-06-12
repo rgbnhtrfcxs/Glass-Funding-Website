@@ -1,6 +1,22 @@
 const axios = require("axios");
 
 exports.handler = async (event) => {
+  // Prevent non-POST requests from crashing
+  if (event.httpMethod !== "POST") {
+    return {
+      statusCode: 405,
+      body: JSON.stringify({ error: "Method Not Allowed" }),
+    };
+  }
+
+  // Prevent empty body from being parsed
+  if (!event.body) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: "Missing request body" }),
+    };
+  }
+
   const { email } = JSON.parse(event.body);
 
   if (!email) {
@@ -20,7 +36,7 @@ exports.handler = async (event) => {
       },
       {
         headers: {
-          "api-key": process.env.BREVO_API_KEY, // ✅ pulled from Netlify env
+          "api-key": process.env.BREVO_API_KEY,
           "Content-Type": "application/json",
         },
       }
@@ -31,9 +47,12 @@ exports.handler = async (event) => {
       body: JSON.stringify({ message: "Subscribed!" }),
     };
   } catch (error) {
+    console.error("Brevo API error:", error.response?.data || error.message);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: error.response?.data || "Unknown error" }),
+      body: JSON.stringify({
+        error: error.response?.data || "Unknown error",
+      }),
     };
   }
 };
