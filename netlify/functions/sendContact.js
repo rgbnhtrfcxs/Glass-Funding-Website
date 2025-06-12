@@ -30,11 +30,11 @@ exports.handler = async (event) => {
       {
         sender: {
           name: "Glass Contact Form",
-          email: "no-reply@glass-funding.com", // ✅ Verified sender
+          email: "no-reply@glass-funding.com", // ✅ must be verified in Brevo
         },
         to: [
           {
-            email: "contact@glass-funding.com", // ✅ Receiving inbox
+            email: "contact@glass-funding.com", // ✅ your real inbox
             name: "Glass Team",
           },
         ],
@@ -49,12 +49,11 @@ exports.handler = async (event) => {
       {
         headers: {
           "Content-Type": "application/json",
-          "api-key": process.env.BREVO_SMTP_KEY,
+          "api-key": process.env.BREVO_SMTP_KEY, // 🔒 Hardcoded for testing only
         },
       }
     );
 
-    // ✅ Validate response from Brevo
     if (!brevoRes.data.messageId) {
       console.error("Unexpected Brevo response:", brevoRes.data);
       return {
