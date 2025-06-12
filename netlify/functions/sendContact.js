@@ -20,7 +20,7 @@ exports.handler = async (event) => {
   if (!name || !email || !message) {
     return {
       statusCode: 400,
-      body: JSON.stringify({ error: "All fields are required" }),
+      body: JSON.stringify({ error: "Name, email, and message are required" }),
     };
   }
 
@@ -28,33 +28,44 @@ exports.handler = async (event) => {
     await axios.post(
       "https://api.brevo.com/v3/smtp/email",
       {
-        sender: { name: "Glass Contact Form", email: "contact@glass-funding.com" },
-        to: [{ email: "your-real-email@example.com", name: "You" }], // ✅ Replace with your actual email
-        subject: "New Contact Form Submission",
+        sender: {
+          name: "Glass Contact Form",
+          email: "no-reply@glass-funding.com", // ✅ Verified sender
+        },
+        to: [
+          {
+            email: "contact@glass-funding.com", // ✅ Your receiving inbox
+            name: "Glass Team",
+          },
+        ],
+        subject: "📩 New Contact Form Submission",
         htmlContent: `
+          <h2>New Message from Glass Contact Form</h2>
           <p><strong>Name:</strong> ${name}</p>
           <p><strong>Email:</strong> ${email}</p>
-          <p><strong>Message:</strong></p>
-          <p>${message}</p>
+          <p><strong>Message:</strong><br>${message}</p>
         `,
       },
       {
         headers: {
-          "api-key": process.env.BREVO_API_KEY,
           "Content-Type": "application/json",
+          "api-key": process.env.BREVO_SMTP_KEY,
         },
       }
     );
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ message: "Message sent!" }),
+      body: JSON.stringify({ message: "Email sent!" }),
     };
   } catch (error) {
-    console.error("Brevo email error:", error.response?.data || error.message);
+    console.error("Brevo SMTP error:", error.response?.data || error.message);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: "Failed to send email" }),
+      body: JSON.stringify({
+        error: "Failed to send email",
+        details: error.response?.data || error.message,
+      }),
     };
   }
 };
