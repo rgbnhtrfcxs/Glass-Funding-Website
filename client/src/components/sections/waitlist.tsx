@@ -8,24 +8,23 @@ import { Form, FormControl, FormField, FormItem, FormMessage } from "@/component
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
 
 export function Waitlist() {
   const { toast } = useToast();
   const [submitted, setSubmitted] = useState(false);
 
   const form = useForm<InsertWaitlist>({
-    // resolver: zodResolver(insertWaitlistSchema),
+    resolver: zodResolver(insertWaitlistSchema), // ✅ Restore this if schema is valid
     defaultValues: {
       name: "",
-      email: ""
-    }
+      email: "",
+    },
   });
 
   const mutation = useMutation({
     mutationFn: async (data: InsertWaitlist) => {
       try {
-        console.log("Submitting email:", data.email);
+        console.log("Submitting:", data);
         const res = await fetch("/.netlify/functions/subscribe", {
           method: "POST",
           headers: {
@@ -33,21 +32,20 @@ export function Waitlist() {
           },
           body: JSON.stringify({
             email: data.email,
+            name: data.name,
           }),
         });
-    
+
         if (!res.ok) {
           throw new Error("Failed to add to waitlist");
         }
-    
-        const result = await res.json();
-        return result;
+
+        return await res.json();
       } catch (error) {
         console.error("Error:", error);
         throw error;
       }
     },
-    
     onSuccess: () => {
       setSubmitted(true);
       toast({
