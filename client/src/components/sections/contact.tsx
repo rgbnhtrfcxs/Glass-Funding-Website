@@ -25,7 +25,11 @@ export function Contact() {
 
   const mutation = useMutation({
     mutationFn: async (data: InsertContact) => {
-      const res = await apiRequest("POST", "/api/contact", data);
+      const res = await fetch("/.netlify/functions/sendContact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
       return res.json();
     },
     onSuccess: () => {
