@@ -17,12 +17,12 @@ exports.handler = async (event) => {
     };
   }
 
-  const { email } = JSON.parse(event.body);
+  const { email, name } = JSON.parse(event.body);
 
-  if (!email) {
+  if (!email || !name) {
     return {
       statusCode: 400,
-      body: JSON.stringify({ error: "Email is required" }),
+      body: JSON.stringify({ error: "Email and name are required" }),
     };
   }
 
@@ -31,7 +31,10 @@ exports.handler = async (event) => {
       "https://api.brevo.com/v3/contacts",
       {
         email,
-        listIds: [3], // ✅ your Brevo waitlist ID
+        attributes: {
+          FIRSTNAME: name, // ✅ Send name here
+        },
+        listIds: [3],
         updateEnabled: true,
       },
       {
