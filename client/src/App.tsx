@@ -8,6 +8,9 @@ import About from "@/pages/about";
 import Contact from "@/pages/contact";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
+import Research from "@/pages/Research";
+import ResearchDetails from "@/pages/ResearchDetails";
+
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -22,6 +25,8 @@ function ScrollToTop() {
 function Router() {
   return (
     <Switch>
+      <Route path="/research" component={Research} />
+      <Route path="/research-details/:id" component={ResearchDetails} />
       <Route path="/" component={Home} />
       <Route path="/about" component={About} />
       <Route path="/contact" component={Contact} />
