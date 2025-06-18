@@ -10,6 +10,8 @@ import Contact from "@/pages/contact";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 import { Footer } from "./components/sections/footer";
+import Login from "@/pages/Login";
+import Signup from "@/pages/Signup";
 
 import Research from "@/pages/Research";
 import ResearchDetails from "@/pages/ResearchDetails";
@@ -20,6 +22,10 @@ import DonateConfirmation from "@/pages/DonateConfirmation";
 import InvestConfirmation from "@/pages/InvestConfirmation";
 import FollowUp from "@/pages/FollowUp";
 import FollowUpDetails from "@/pages/FollowUpDetails";
+import Favorites from "@/pages/favorites";
+import Profile from "@/pages/profile";
+import MyFollowups from "@/pages/MyFollowUps";
+import SubmitProject from "@/pages/submit";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -44,6 +50,14 @@ function Router() {
       <Route path="/invest-confirmation" component={InvestConfirmation} />
       <Route path="/followup" component={FollowUp} />
       <Route path="/followup/:id" component={FollowUpDetails} />
+      <Route path="/favorites" component={Favorites} />
+      <Route path="/profile" component={Profile} />
+      <Route path="/myfollowups" component={MyFollowups} />
+      <Route path="/submit" component={SubmitProject} />
+
+      {/* Auth Pages */}
+      <Route path="/login" component={Login} />
+      <Route path="/signup" component={Signup} />
 
       {/* Base Pages */}
       <Route path="/" component={Home} />
@@ -65,6 +79,12 @@ function App() {
     "/donate-confirmation",
     "/invest-confirmation",
     "/followup",
+    "/Signup",
+    "/login",
+    "/profile",
+    "/favorites",
+    "/myfollowups",
+    "/submit",
   ].some(path => location.startsWith(path)) || 
     location.startsWith("/research-details/") || 
     location.startsWith("/followup/");
