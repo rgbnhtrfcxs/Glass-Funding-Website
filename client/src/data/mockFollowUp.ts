@@ -24,6 +24,7 @@ export interface FollowUpItem {
     timeline?: { title: string; date: string; status: "pending" | "in progress" | "complete" }[];
   }
   // TODO add one more research to make it pretty
+  
   export const mockFollowUp: FollowUpItem[] = [
     {
       id: 101,
