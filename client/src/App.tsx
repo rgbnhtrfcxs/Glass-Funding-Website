@@ -10,7 +10,7 @@ import Contact from "@/pages/contact";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 
-import Research from "@/pages/demo/Research";
+import Research from "@/pages/Research";
 import ResearchDetails from "@/pages/demo/ResearchDetails";
 import Donate from "@/pages/demo/Donate";
 import InvestFlow from "@/pages/demo/InvestFlow";

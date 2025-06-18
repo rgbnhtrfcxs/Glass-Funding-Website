@@ -1,7 +1,7 @@
 import { useLocation } from "wouter";
 import { useState } from "react";
-import { mockResearch } from "../../data/mockResearch";
-import type { ResearchItem } from "../../data/mockResearch";
+import { mockResearch } from "../data/mockResearch";
+import type { ResearchItem } from "../data/mockResearch";
 
 type SortableKey = "name" | "category" | "grade" | "date" | "funded" | "goal" | "percent";
 
