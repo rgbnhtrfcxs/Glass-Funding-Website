@@ -30,7 +30,7 @@ export default function Research() {
 
   return (
     <section className="py-20 bg-background min-h-screen">
-      <div className="container mx-auto px-18">
+      <div className="container mx-auto px-4 pt-16">
         <h2 className="text-3xl font-bold mb-8 text-center">Research Projects</h2>
 
         {/* Controls */}
