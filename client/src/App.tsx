@@ -55,7 +55,11 @@ function Router() {
 
 function App() {
   const [location] = useLocation();
-  const isDemo = location.startsWith("/demo");
+  const isDemo = 
+  location.startsWith("/demo") ||
+  location === "/research" ||
+  location === "/donate" ||
+  location.startsWith("/followup"); 
 
   return (
     <QueryClientProvider client={queryClient}>
