@@ -9,6 +9,7 @@ import About from "@/pages/about";
 import Contact from "@/pages/contact";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
+import { Footer } from "./components/sections/footer";
 
 import Research from "@/pages/Research";
 import ResearchDetails from "@/pages/demo/ResearchDetails";
@@ -50,6 +51,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/about" component={About} />
       <Route path="/contact" component={Contact} />
+      <Footer />
       <Route component={NotFound} />
     </Switch>
   );

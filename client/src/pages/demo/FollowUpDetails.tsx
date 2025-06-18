@@ -2,7 +2,7 @@ import { useParams } from "wouter";
 import { useEffect, useState } from "react";
 import { mockFollowUp, FollowUpItem } from "../../data/mockFollowUp";
 
-// TODO buffer topside pt-14 and botside something
+// TODO buffer topside pt-16 and botside something
 // TODO non UN tags made unclickable or delete the non UN ones
 // TODO make tag hover faster and bigger and styled
 // TODO add a description of impact tags
@@ -25,7 +25,7 @@ export default function FollowUpDetails() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto pt-28 px-4">
+    <div className="max-w-3xl mx-auto pt-44 px-4">
       <h1 className="text-3xl font-bold mb-4">{item.name}</h1>
       <p className="text-muted-foreground mb-6">{item.description}</p>
 
