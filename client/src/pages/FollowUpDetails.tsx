@@ -1,6 +1,6 @@
 import { useParams } from "wouter";
 import { useEffect, useState } from "react";
-import { mockFollowUp, FollowUpItem } from "../../data/mockFollowUp";
+import { mockFollowUp, FollowUpItem } from "../data/mockFollowUp";
 
 // TODO buffer topside pt-16 and botside something
 // TODO non UN tags made unclickable or delete the non UN ones

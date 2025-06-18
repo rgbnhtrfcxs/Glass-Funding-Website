@@ -2,7 +2,7 @@ import { useLocation } from "wouter";
 import { mockResearch } from "@/data/mockResearch";
 import { Link } from "wouter";
 
-// TODO buffer topside pt-14 and botside something
+// TODO buffer topside pt-16 and botside something
 // TODO make tag hover faster and bigger and styled
 // TODO add a description of impact tags
 
@@ -36,7 +36,7 @@ export default function ResearchDetails() {
       <div className="p-6 text-center">
         <h1 className="text-2xl font-semibold mb-4">Research Not Found</h1>
         <button
-          onClick={() => navigate("/demo/research")}
+          onClick={() => navigate("/research")}
           className="px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-700"
         >
           Go Back
@@ -51,13 +51,13 @@ export default function ResearchDetails() {
     <div className="pt-24 px-6 flex justify-center relative">
       {/* Sidebar buttons */}
       <div className="absolute right-6 top-28 hidden lg:flex flex-col gap-4">
-        <Link href="/demo/investflow">
+        <Link href="/investflow">
           <button className="px-4 py-2 w-40 rounded bg-green-600 text-white font-semibold hover:bg-green-500 transition">
             Invest
           </button>
         </Link>
 
-        <Link href="/demo/donateflow">
+        <Link href="/donateflow">
           <button className="px-4 py-2 w-40 rounded bg-indigo-600 text-white font-semibold hover:bg-indigo-500 transition">
             Donate
           </button>
@@ -154,12 +154,12 @@ export default function ResearchDetails() {
 
         {/* Mobile-friendly buttons */}
         <div className="lg:hidden flex flex-col sm:flex-row gap-4 mb-10">
-          <Link href="/demo/investflow">
+          <Link href="/investflow">
             <button className="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 transition">
               Invest in this project
             </button>
           </Link>
-          <Link href="/demo/donateflow">
+          <Link href="/donateflow">
             <button className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-500 transition">
               Donate to this project
             </button>
@@ -167,7 +167,7 @@ export default function ResearchDetails() {
         </div>
 
         <button
-          onClick={() => navigate("/demo/research")}
+          onClick={() => navigate("/research")}
           className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500"
         >
           ← Back to List

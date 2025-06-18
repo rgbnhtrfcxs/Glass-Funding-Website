@@ -11,16 +11,17 @@ import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 import { Footer } from "./components/sections/footer";
 
+// TODO add footer to every page
+
 import Research from "@/pages/Research";
-import ResearchDetails from "@/pages/demo/ResearchDetails";
+import ResearchDetails from "@/pages/ResearchDetails";
 import Donate from "@/pages/Donate";
-import InvestFlow from "@/pages/demo/InvestFlow";
-import DonateFlow from "@/pages/demo/DonateFlow";
-import DonateConfirmation from "@/pages/demo/DonateConfirmation";
-import InvestConfirmation from "@/pages/demo/InvestConfirmation";
+import InvestFlow from "@/pages/InvestFlow";
+import DonateFlow from "@/pages/DonateFlow";
+import DonateConfirmation from "@/pages/DonateConfirmation";
+import InvestConfirmation from "@/pages/InvestConfirmation";
 import FollowUp from "@/pages/FollowUp";
-import FollowUpDetails from "@/pages/demo/FollowUpDetails";
-import DemoIndex from "./pages/demo";
+import FollowUpDetails from "@/pages/FollowUpDetails";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -37,30 +38,34 @@ function Router() {
     <Switch>
       {/* Demo Routes */}
       <Route path="/research" component={Research} />
-      <Route path="/demo/research-details/:id" component={ResearchDetails} />
+      <Route path="/research-details/:id" component={ResearchDetails} />
       <Route path="/donate" component={Donate} />
-      <Route path="/demo/investflow" component={InvestFlow} />
-      <Route path="/demo/donateflow" component={DonateFlow} />
-      <Route path="/demo/donate-confirmation" component={DonateConfirmation} />
-      <Route path="/demo/invest-confirmation" component={InvestConfirmation} />
+      <Route path="/investflow" component={InvestFlow} />
+      <Route path="/donateflow" component={DonateFlow} />
+      <Route path="/donate-confirmation" component={DonateConfirmation} />
+      <Route path="/invest-confirmation" component={InvestConfirmation} />
       <Route path="/followup" component={FollowUp} />
-      <Route path="/demo/followup/:id" component={FollowUpDetails} />
-      <Route path="/demo" component={DemoIndex} />
+      <Route path="/followup/:id" component={FollowUpDetails} />
 
       {/* Base Pages */}
       <Route path="/" component={Home} />
       <Route path="/about" component={About} />
       <Route path="/contact" component={Contact} />
-      <Footer />
       <Route component={NotFound} />
     </Switch>
+
   );
 }
 
 function App() {
   const [location] = useLocation();
   const isDemo = 
-  location.startsWith("/demo") ||
+  location === "/research-details" ||
+  location === "/investflow" ||
+  location === "/invest-confirmation" ||
+  location === "/followup/:id" ||
+  location === "/donateflow" ||
+  location === "/donate-confirmation" ||
   location === "/research" ||
   location === "/donate" ||
   location.startsWith("/followup"); 
