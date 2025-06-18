@@ -11,8 +11,6 @@ import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 import { Footer } from "./components/sections/footer";
 
-// TODO add footer to every page
-
 import Research from "@/pages/Research";
 import ResearchDetails from "@/pages/ResearchDetails";
 import Donate from "@/pages/Donate";
@@ -53,22 +51,23 @@ function Router() {
       <Route path="/contact" component={Contact} />
       <Route component={NotFound} />
     </Switch>
-
   );
 }
 
 function App() {
   const [location] = useLocation();
-  const isDemo = 
-  location === "/research-details" ||
-  location === "/investflow" ||
-  location === "/invest-confirmation" ||
-  location === "/followup/:id" ||
-  location === "/donateflow" ||
-  location === "/donate-confirmation" ||
-  location === "/research" ||
-  location === "/donate" ||
-  location.startsWith("/followup"); 
+
+  const isDemo = [
+    "/research",
+    "/donate",
+    "/investflow",
+    "/donateflow",
+    "/donate-confirmation",
+    "/invest-confirmation",
+    "/followup",
+  ].some(path => location.startsWith(path)) || 
+    location.startsWith("/research-details/") || 
+    location.startsWith("/followup/");
 
   return (
     <QueryClientProvider client={queryClient}>
