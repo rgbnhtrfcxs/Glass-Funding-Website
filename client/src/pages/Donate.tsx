@@ -191,7 +191,7 @@ export default function Donate() {
 
   return (
     <section className="py-20 bg-background min-h-screen">
-      <div className="container mx-auto px-4 text-center">
+      <div className="container mx-auto px-18 text-center">
         <h2 className="text-3xl font-bold mb-6">Donate to a Cause</h2>
         <p className="text-muted-foreground max-w-xl mx-auto mb-10">
           Choose a scientific cause you care about. Your donation will help fund vetted research projects within that theme.
