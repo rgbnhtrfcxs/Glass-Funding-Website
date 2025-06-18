@@ -10,7 +10,7 @@ import Contact from "@/pages/contact";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 
-import Research from "@/pages/Research";
+import Research from "@/pages/demo/Research";
 import ResearchDetails from "@/pages/demo/ResearchDetails";
 import Donate from "@/pages/demo/Donate";
 import InvestFlow from "@/pages/demo/InvestFlow";
@@ -34,7 +34,7 @@ function Router() {
   return (
     <Switch>
       {/* Demo Routes */}
-      <Route path="/research" component={Research} />
+      <Route path="/demo/research" component={Research} />
       <Route path="/demo/research-details/:id" component={ResearchDetails} />
       <Route path="/demo/donate" component={Donate} />
       <Route path="/demo/investflow" component={InvestFlow} />
