@@ -10,21 +10,21 @@ export default function DemoIndex() {
 
       <div className="grid gap-4">
         <Link
-          href="/demo/research"
+          href="/research"
           className="bg-black text-white py-2 px-4 rounded hover:bg-gray-800 transition"
         >
           🔬 View Research Projects
         </Link>
 
         <Link
-          href="/demo/donate"
+          href="/donate"
           className="bg-black text-white py-2 px-4 rounded hover:bg-gray-800 transition"
         >
           ❤️ Donate to a Cause
         </Link>
 
         <Link
-          href="/demo/followup/101"
+          href="/followup/101"
           className="bg-black text-white py-2 px-4 rounded hover:bg-gray-800 transition"
         >
           📈 Follow Project Progress
