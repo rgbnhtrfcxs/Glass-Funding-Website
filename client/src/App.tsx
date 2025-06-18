@@ -34,7 +34,7 @@ function Router() {
   return (
     <Switch>
       {/* Demo Routes */}
-      <Route path="/demo/research" component={Research} />
+      <Route path="/research" component={Research} />
       <Route path="/demo/research-details/:id" component={ResearchDetails} />
       <Route path="/demo/donate" component={Donate} />
       <Route path="/demo/investflow" component={InvestFlow} />
