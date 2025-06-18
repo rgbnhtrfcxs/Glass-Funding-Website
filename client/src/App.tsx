@@ -79,7 +79,7 @@ function App() {
     "/donate-confirmation",
     "/invest-confirmation",
     "/followup",
-    "/Signup",
+    "/signup",
     "/login",
     "/profile",
     "/favorites",
