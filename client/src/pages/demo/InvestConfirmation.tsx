@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+// TODO project name not loading correctly in two places
+
 export default function InvestConfirmation() {
   const [amount, setAmount] = useState<number | null>(null);
   const [project, setProject] = useState<string | null>(null);

@@ -2,6 +2,11 @@ import { useParams } from "wouter";
 import { useEffect, useState } from "react";
 import { mockFollowUp, FollowUpItem } from "../../data/mockFollowUp";
 
+// TODO buffer topside pt-14 and botside something
+// TODO non UN tags made unclickable or delete the non UN ones
+// TODO make tag hover faster and bigger and styled
+// TODO add a description of impact tags
+
 export default function FollowUpDetails() {
   const { id } = useParams();
   const [item, setItem] = useState<FollowUpItem | null>(null);

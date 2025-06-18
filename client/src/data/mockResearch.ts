@@ -19,6 +19,8 @@ export interface ResearchItem {
   tokenPerformance?: string;
 }
 
+// TODO make the documents .pdf
+
 export const mockResearch: ResearchItem[] = [
   {
     id: 1,

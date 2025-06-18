@@ -5,6 +5,9 @@ import type { ResearchItem } from "../data/mockResearch";
 
 type SortableKey = "name" | "category" | "grade" | "date" | "funded" | "goal" | "percent";
 
+// TODO fix category filter for only live categories and alphebatize (A>Z)
+// TODO in mobile align sort by right
+
 export default function Research() {
   const [, navigate] = useLocation();
   const [researchList] = useState<ResearchItem[]>(mockResearch);

@@ -2,6 +2,10 @@ import { useLocation } from "wouter";
 import { mockResearch } from "@/data/mockResearch";
 import { Link } from "wouter";
 
+// TODO buffer topside pt-14 and botside something
+// TODO make tag hover faster and bigger and styled
+// TODO add a description of impact tags
+
 const sdgDescriptions: Record<string, string> = {
   "UN SDG 1": "No Poverty",
   "UN SDG 2": "Zero Hunger",
