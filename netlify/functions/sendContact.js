@@ -25,6 +25,7 @@ exports.handler = async (event) => {
   }
 
   try {
+    console.log("BREVO KEY in Netlify:", process.env.BREVO_SMTP_KEY);
     const brevoRes = await axios.post(
       "https://api.brevo.com/v3/smtp/email",
       {
