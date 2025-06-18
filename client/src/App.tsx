@@ -19,6 +19,7 @@ import DonateConfirmation from "@/pages/demo/DonateConfirmation";
 import InvestConfirmation from "@/pages/demo/InvestConfirmation";
 import FollowUp from "@/pages/FollowUp";
 import FollowUpDetails from "@/pages/demo/FollowUpDetails";
+import DemoIndex from "./pages/demo";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -43,6 +44,7 @@ function Router() {
       <Route path="/demo/invest-confirmation" component={InvestConfirmation} />
       <Route path="/followup" component={FollowUp} />
       <Route path="/demo/followup/:id" component={FollowUpDetails} />
+      <Route path="/demo" component={DemoIndex} />
 
       {/* Base Pages */}
       <Route path="/" component={Home} />
