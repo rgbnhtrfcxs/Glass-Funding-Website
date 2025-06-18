@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { mockFollowUp } from "../../data/mockFollowUp";
+import { mockFollowUp } from "../data/mockFollowUp";
 
 
 export default function FollowUp() {

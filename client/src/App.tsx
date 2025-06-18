@@ -10,14 +10,14 @@ import Contact from "@/pages/contact";
 import NotFound from "@/pages/not-found";
 import { useEffect } from "react";
 
-import Research from "@/pages/demo/Research";
+import Research from "@/pages/Research";
 import ResearchDetails from "@/pages/demo/ResearchDetails";
-import Donate from "@/pages/demo/Donate";
+import Donate from "@/pages/Donate";
 import InvestFlow from "@/pages/demo/InvestFlow";
 import DonateFlow from "@/pages/demo/DonateFlow";
 import DonateConfirmation from "@/pages/demo/DonateConfirmation";
 import InvestConfirmation from "@/pages/demo/InvestConfirmation";
-import FollowUp from "@/pages/demo/FollowUp";
+import FollowUp from "@/pages/FollowUp";
 import FollowUpDetails from "@/pages/demo/FollowUpDetails";
 
 function ScrollToTop() {
@@ -34,14 +34,14 @@ function Router() {
   return (
     <Switch>
       {/* Demo Routes */}
-      <Route path="/demo/research" component={Research} />
+      <Route path="/research" component={Research} />
       <Route path="/demo/research-details/:id" component={ResearchDetails} />
-      <Route path="/demo/donate" component={Donate} />
+      <Route path="/donate" component={Donate} />
       <Route path="/demo/investflow" component={InvestFlow} />
       <Route path="/demo/donateflow" component={DonateFlow} />
       <Route path="/demo/donate-confirmation" component={DonateConfirmation} />
       <Route path="/demo/invest-confirmation" component={InvestConfirmation} />
-      <Route path="/demo/followup" component={FollowUp} />
+      <Route path="/followup" component={FollowUp} />
       <Route path="/demo/followup/:id" component={FollowUpDetails} />
 
       {/* Base Pages */}
