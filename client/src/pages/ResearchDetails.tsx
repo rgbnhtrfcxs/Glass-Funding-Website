@@ -50,7 +50,7 @@ export default function ResearchDetails() {
   return (
     <div className="pt-24 px-6 flex justify-center relative">
       {/* Sidebar buttons */}
-      <div className="absolute right-6 top-28 hidden lg:flex flex-col gap-4">
+      <div className="absolute pt-16 right-6 top-28 hidden lg:flex flex-col gap-4">
         <Link href="/investflow">
           <button className="px-4 py-2 w-40 rounded bg-green-600 text-white font-semibold hover:bg-green-500 transition">
             Invest
@@ -65,7 +65,7 @@ export default function ResearchDetails() {
       </div>
 
       {/* Main content */}
-      <div className="max-w-3xl w-full">
+      <div className="max-w-3xl pt-16 w-full">
         <h1 className="text-3xl font-bold mb-4">{researchItem.name}</h1>
         <p className="mb-2 text-gray-600"><strong>Category:</strong> {researchItem.category}</p>
         <p className="mb-2 text-gray-600"><strong>Date:</strong> {researchItem.date}</p>
