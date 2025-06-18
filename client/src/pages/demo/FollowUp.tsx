@@ -10,7 +10,7 @@ export default function FollowUp() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {mockFollowUp.map((project) => (
-          <Link key={project.id} href={`/followup/${project.id}`}>
+          <Link key={project.id} href={`/demo/followup/${project.id}`}>
             <div className="border border-gray-200 p-6 rounded-lg shadow hover:shadow-md cursor-pointer transition">
               <h2 className="text-xl font-semibold mb-2">{project.name}</h2>
               <p className="text-sm text-muted-foreground mb-2">{project.category}</p>

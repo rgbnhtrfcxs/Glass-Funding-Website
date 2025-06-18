@@ -90,7 +90,7 @@ export default function Research() {
                   <tr
                     key={item.id}
                     className="hover:bg-muted/20 cursor-pointer"
-                    onClick={() => navigate(`/research-details/${item.id}`)}
+                    onClick={() => navigate(`/demo/research-details/${item.id}`)}
                   >
                     <td className="px-4 py-2 font-medium text-primary underline">{item.name}</td>
                     <td className="px-4 py-2">{item.category}</td>

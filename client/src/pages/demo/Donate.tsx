@@ -227,7 +227,7 @@ export default function Donate() {
               </div>
             )}
 
-            <Link href={`/donateflow?category=${activeCategory.id}`}>
+            <Link href={`/demo/donateflow?category=${activeCategory.id}`}>
               <button className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-500">
                 Donate
               </button>

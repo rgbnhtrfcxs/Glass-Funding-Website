@@ -60,7 +60,7 @@ export default function InvestFlow() {
             className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-500 transition"
         onClick={() => {
             navigate(
-      `/invest-confirmation?amount=${total}&project=${encodeURIComponent("Your Project")}&email=${encodeURIComponent(email)}`);
+      `/demo/invest-confirmation?amount=${total}&project=${encodeURIComponent("Your Project")}&email=${encodeURIComponent(email)}`);
         }}
   disabled={typeof amount !== "number" || !email}
 >

@@ -58,7 +58,7 @@ export default function DonateFlow() {
 
       <button
         className="w-full bg-indigo-600 text-white py-2 rounded hover:bg-indigo-500 transition"
-        onClick={() => navigate("/donate-confirmation")}
+        onClick={() => navigate("/demo/donate-confirmation")}
         disabled={typeof amount !== "number" || !email}
       >
         Proceed to Donate
