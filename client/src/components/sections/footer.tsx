@@ -2,6 +2,8 @@ import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { Facebook, Twitter, Linkedin, Instagram } from "lucide-react";
 
+// TODO add footer to all pages
+
 export function Footer() {
   return (
     <footer className="bg-muted py-12">

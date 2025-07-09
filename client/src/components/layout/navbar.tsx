@@ -11,11 +11,10 @@ export function Navbar() {
     >
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
-          <div className="flex items-center"> {/* Added div for styling */}
+          <div className="flex items-center">
             <Link href="/">
               <img src="/GlassLogo5.png" alt="Glass" className="h-12 w-auto" />
             </Link>
-            {/* fallback text */}
           </div>
 
           <div className="hidden md:flex space-x-8">

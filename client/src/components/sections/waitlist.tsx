@@ -8,24 +8,43 @@ import { Form, FormControl, FormField, FormItem, FormMessage } from "@/component
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
 
 export function Waitlist() {
   const { toast } = useToast();
   const [submitted, setSubmitted] = useState(false);
 
   const form = useForm<InsertWaitlist>({
-    resolver: zodResolver(insertWaitlistSchema),
+    resolver: zodResolver(insertWaitlistSchema), // ✅ Restore this if schema is valid
     defaultValues: {
       name: "",
-      email: ""
-    }
+      email: "",
+    },
   });
 
   const mutation = useMutation({
     mutationFn: async (data: InsertWaitlist) => {
-      const res = await apiRequest("POST", "/api/waitlist", data);
-      return res.json();
+      try {
+        console.log("Submitting:", data);
+        const res = await fetch("/.netlify/functions/subscribe", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: data.email,
+            name: data.name,
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error("Failed to add to waitlist");
+        }
+
+        return await res.json();
+      } catch (error) {
+        console.error("Error:", error);
+        throw error;
+      }
     },
     onSuccess: () => {
       setSubmitted(true);
@@ -40,7 +59,7 @@ export function Waitlist() {
         title: "Error",
         description: "Something went wrong. Please try again.",
       });
-    }
+    },
   });
 
   const onSubmit = (data: InsertWaitlist) => {
@@ -96,8 +115,8 @@ export function Waitlist() {
                     </FormItem>
                   )}
                 />
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="w-full"
                   disabled={mutation.isPending}
                 >

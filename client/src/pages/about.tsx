@@ -1,81 +1,61 @@
 import { motion } from "framer-motion";
-import { Waitlist } from "@/components/sections/waitlist";
-import { Footer } from "@/components/sections/footer";
+import { Card, CardContent } from "@/components/ui/card";
+import { BeakerIcon, Users2Icon, Rocket } from "lucide-react";
 
-function Section({ title, content, index }: { title: string; content: string; index: number }) {
+export function About() {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.6, delay: index * 0.2 }}
-      className="mb-16"
-    >
-      <h2 className="text-3xl font-bold mb-6">{title}</h2>
-      <p className="text-lg text-muted-foreground">{content}</p>
-    </motion.div>
-  );
-}
-
-export default function About() {
-  const sections = [
-    {
-      title: "What is Glass?",
-      content: "Glass is the next-generation platform revolutionizing scientific funding and collaboration. We bridge the gap between researchers, private labs, universities, and investors, ensuring groundbreaking ideas receive the resources they need to become reality. Traditional funding models are slow, bureaucratic, and inefficient—Glass changes that."
-    },
-    {
-      title: "Why Glass?",
-      content: "In today’s world, brilliant research often goes unfunded, and cutting-edge labs lack the partnerships needed to accelerate discoveries. Glass provides a transparent, efficient, and impact-driven ecosystem that connects researchers with funding, infrastructure, and industry partnerships."
-    },
-    {
-      title: "What We Aim to Do",
-      content: (
-        <ul>
-          <li><strong>Investors:</strong> We create a new asset class—allowing angel investors, VCs, and private funds to directly invest in high-impact research, with clear pathways to commercialization.</li>
-          <li><strong>Universities & Labs:</strong> We provide a streamlined platform to secure private funding and industry partnerships, ensuring research moves beyond the academic world into real-world applications.</li>
-          <li><strong>For the Future:</strong> By democratizing access to research funding, we empower scientists to innovate faster, reduce dependence on slow-moving grants, and create a sustainable, high-impact funding model.</li>
-        </ul>
-      )
-    },
-    {
-      title: "Why You Should Join Us",
-      content: (
-        <ul>
-          <li><strong>Investors:</strong> Be part of the next wave of deep-tech, biotech, and cutting-edge science investments with real ROI potential.</li>
-          <li><strong>Universities & Labs:</strong> Gain access to private capital and strategic partnerships that accelerate research without bureaucratic hurdles.</li>
-          <li><strong>Visionaries & Innovators:</strong> Join a movement that transforms the way research is funded, developed, and commercialized.</li>
-        </ul>
-      )
-    },
-    {
-      title: "Let’s Build the Future of Science Together.",
-      content: "Glass is more than a platform—it’s a movement. Whether you’re an investor seeking high-growth opportunities, or a research institution looking to accelerate discovery, Glass is your gateway to the future of scientific innovation."
-    },
-  ];
-
-  return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-20">
-        <motion.h1
+    <section id="about-section" className="py-20 bg-muted/30">
+      <div className="container mx-auto px-4">
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="text-4xl md:text-5xl font-bold text-center mb-16"
+          className="text-center mb-12"
         >
-          About Glass
-        </motion.h1>
+          <h2 className="text-3xl font-bold mb-4">About Glass</h2>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            Glass is a revolutionary platform that bridges the gap between researchers and funding opportunities, 
+            fostering collaboration and accelerating scientific breakthroughs.
+          </p>
+        </motion.div>
 
-        {sections.map((section, index) => (
-          <Section
-            key={index}
-            title={section.title}
-            content={section.content}
-            index={index}
-          />
-        ))}
+        <div className="grid md:grid-cols-3 gap-8 mt-12">
+          {[
+            {
+              icon: <BeakerIcon className="h-10 w-10 text-primary" />,
+              title: "Research Funding",
+              description: "Access diverse funding opportunities tailored to your research needs"
+            },
+            {
+              icon: <Users2Icon className="h-10 w-10 text-primary" />,
+              title: "Collaboration",
+              description: "Connect with leading researchers and institutions worldwide"
+            },
+            {
+              icon: <Rocket className="h-10 w-10 text-primary" />,
+              title: "Innovation",
+              description: "Accelerate scientific progress through streamlined funding processes"
+            }
+          ].map((item, index) => (
+            <motion.div
+              key={index}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6, delay: index * 0.2 }}
+            >
+              <Card>
+                <CardContent className="pt-6 text-center">
+                  <div className="mb-4 flex justify-center">{item.icon}</div>
+                  <h3 className="text-xl font-semibold mb-2">{item.title}</h3>
+                  <p className="text-muted-foreground">{item.description}</p>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
       </div>
-      <Waitlist />
-      <Footer />
-    </div>
+    </section>
   );
 }
