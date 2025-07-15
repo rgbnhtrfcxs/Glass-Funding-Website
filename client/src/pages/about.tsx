@@ -21,19 +21,19 @@ export default function About() {
   const sections = [
     {
       title: "What is Glass?",
-      content: "Glass is the next-generation platform revolutionizing scientific funding and collaboration. We bridge the gap between researchers, private labs, universities, and investors, ensuring groundbreaking ideas receive the resources they need to become reality. Traditional funding models are slow, bureaucratic, and inefficient—Glass changes that."
+      content: "Glass is a next-generation platform transforming how scientific research is funded and accelerated. We connect researchers, private labs, and institutions with forward-thinking funders and partners.Traditional funding models are slow, bureaucratic, and often overlook bold ideas—Glass changes that by making research funding faster, more transparent, and directly accessible."
     },
     {
       title: "Why Glass?",
-      content: "In today’s world, brilliant research often goes unfunded, and cutting-edge labs lack the partnerships needed to accelerate discoveries. Glass provides a transparent, efficient, and impact-driven ecosystem that connects researchers with funding, infrastructure, and industry partnerships."
+      content: "In today’s world, countless brilliant research projects go unfunded, and cutting-edge labs lack the partnerships needed to thrive. Glass creates a trusted, efficient ecosystem where researchers, donors, and collaborators come together to unlock real-world innovation. Our mission is simple: empower science, not paperwork."
     },
     {
       title: "What We Aim to Do",
       content: (
         <ul>
-          <li><strong>Investors:</strong> We create a new asset class—allowing angel investors, VCs, and private funds to directly invest in high-impact research, with clear pathways to commercialization.</li>
-          <li><strong>Universities & Labs:</strong> We provide a streamlined platform to secure private funding and industry partnerships, ensuring research moves beyond the academic world into real-world applications.</li>
-          <li><strong>For the Future:</strong> By democratizing access to research funding, we empower scientists to innovate faster, reduce dependence on slow-moving grants, and create a sustainable, high-impact funding model.</li>
+          <li><strong>Funders & Supporters:</strong> Enable individuals, philanthropists, and future-focused organizations to support high-impact research with clear transparency and long-term impact tracking.</li>
+          <li><strong>Universities, Labs:</strong> Offer a streamlined way to connect with private funding and external collaborators—helping projects move beyond academic pipelines and into real-world application.</li>
+          <li><strong>For the Future:</strong> Our long-term vision includes enabling optional participation in research outcomes, including shared benefits from IP and commercialization—once the legal structure is in place.</li>
         </ul>
       )
     },
@@ -41,15 +41,15 @@ export default function About() {
       title: "Why You Should Join Us",
       content: (
         <ul>
-          <li><strong>Investors:</strong> Be part of the next wave of deep-tech, biotech, and cutting-edge science investments with real ROI potential.</li>
-          <li><strong>Universities & Labs:</strong> Gain access to private capital and strategic partnerships that accelerate research without bureaucratic hurdles.</li>
-          <li><strong>Visionaries & Innovators:</strong> Join a movement that transforms the way research is funded, developed, and commercialized.</li>
+          <li><strong>Supporters & Visionaries:</strong> Contribute to breakthroughs that matter. Help fund cancer research, climate innovation, biotech advances, and more—with full visibility into progress and results.</li>
+          <li><strong>Universities & Labs:</strong> Gain access to alternative funding and strategic partnerships—without the delays or constraints of legacy systems.</li>
+          <li><strong>Innovators & Builders:</strong> Be part of the movement reshaping how science gets done. Whether you’re a researcher or a funder, Glass puts the future of science in your hands.</li>
         </ul>
       )
     },
     {
       title: "Let’s Build the Future of Science Together.",
-      content: "Glass is more than a platform—it’s a movement. Whether you’re an investor seeking high-growth opportunities, or a research institution looking to accelerate discovery, Glass is your gateway to the future of scientific innovation."
+      content: "Glass is more than a platform. It’s a growing movement dedicated to funding better science, faster. Whether you're looking to support transformative ideas or bring your research to life, Glass is your gateway to the next era of scientific innovation."
     },
   ];
 
