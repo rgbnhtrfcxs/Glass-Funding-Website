@@ -26,6 +26,8 @@ import Favorites from "@/pages/favorites";
 import Profile from "@/pages/profile";
 import MyFollowups from "@/pages/MyFollowUps";
 import SubmitProject from "@/pages/submit";
+import Terms from "@/pages/Terms";
+import Privacy from "@/pages/Privacy";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -63,6 +65,8 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/about" component={About} />
       <Route path="/contact" component={Contact} />
+      <Route path="/terms" component={Terms} />
+      <Route path="/privacy" component={Privacy} />
       <Route component={NotFound} />
     </Switch>
   );
