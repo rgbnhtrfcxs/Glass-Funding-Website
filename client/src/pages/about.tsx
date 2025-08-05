@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
-import { Waitlist } from "@/components/sections/waitlist";
 import { Footer } from "@/components/sections/footer";
+import { PartnerLogos } from "@/components/sections/PartnerLogos";
 
 function Section({ title, content, index }: { title: string; content: string; index: number }) {
   return (
@@ -74,7 +74,7 @@ export default function About() {
           />
         ))}
       </div>
-      <Waitlist />
+      <PartnerLogos />
       <Footer />
     </div>
   );
