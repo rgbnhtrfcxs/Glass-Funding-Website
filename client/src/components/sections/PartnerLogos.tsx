@@ -39,18 +39,19 @@ export function PartnerLogos() {
               alt: "Pépite Eténa",
               href: "https://etena.unistra.fr/",
               className: "scale-[1.2]"
-            }/*,
+            },/*,
             {
                 src: "/logos/Strasbourg.jpg",
                 alt: "Strasbourg",
                 className: "scale-[1.2]"
             },
+            */
             {
-                src: "/logos/logo-laRuche.png",
+                src: "/logos/logo-LaRucheAProjets.png",
                 alt: "La Ruche a projets",
                 href: "https://www.em-strasbourg.com/fr/etudiant/vie-etudiante-et-services/centre-entrepreneurial-la-ruche/incubateur-la-ruche-a-projets",
                 className: "invert" //so it is visible
-              }*/
+            } 
           ].map((logo, index) => (
             <a
               key={index}
