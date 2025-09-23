@@ -50,7 +50,7 @@ export function PartnerLogos() {
                 src: "/logos/logo-LaRucheAProjets.png",
                 alt: "La Ruche a projets",
                 href: "https://www.em-strasbourg.com/fr/etudiant/vie-etudiante-et-services/centre-entrepreneurial-la-ruche/incubateur-la-ruche-a-projets",
-                className: "invert" //so it is visible
+                className: "scale-[1.7]" //so it is visible
             } 
           ].map((logo, index) => (
             <a
