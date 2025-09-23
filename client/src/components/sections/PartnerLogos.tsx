@@ -38,7 +38,7 @@ export function PartnerLogos() {
               src: "/logos/logo-etena.png",
               alt: "Pépite Eténa",
               href: "https://etena.unistra.fr/",
-              className: "scale-[1.2]"
+              className: "scale-[1]"
             },/*,
             {
                 src: "/logos/Strasbourg.jpg",
