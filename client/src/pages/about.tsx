@@ -20,6 +20,10 @@ function Section({ title, content, index }: { title: string; content: string; in
 export default function About() {
   const sections = [
     {
+      title: "Who are we?",
+      content: "I first fell in love with science in high school. A summer research camp gave me the chance to do real experiments and ask real questions, but it also revealed how painfully slow and bureaucratic the funding process was. Promising projects sat idle, paperwork clogged progress, and ideas lost momentum before they could even be tested. That frustration stayed with me for years. I could not stop thinking about how much potential was being wasted and how many discoveries never happened because the system was designed for gatekeepers rather than for scientists and society. Glass is my answer. A platform built to strip away elitism and bureaucracy, focused on three promises: Quality (every project is vetted for scientific rigor), Simplicity (the funding flow is clear and intuitive), and Transparency (live budgets, milestone based releases, and public updates). My mission is simple: to give the best ideas a fair chance to move forward quickly, responsibly, and openly. That is why I started Glass."
+    },
+    {
       title: "What is Glass?",
       content: "Glass is a next-generation platform transforming how scientific research is funded and accelerated. We connect researchers, private labs, and institutions with forward-thinking funders and partners.Traditional funding models are slow, bureaucratic, and often overlook bold ideas—Glass changes that by making research funding faster, more transparent, and directly accessible."
     },
