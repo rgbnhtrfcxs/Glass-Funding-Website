@@ -32,7 +32,7 @@ export default function Contact() {
             <a href="https://x.com/GlassFunding" className="text-muted-foreground hover:text-primary transition-colors">
               <Twitter className="h-8 w-8" />
             </a>
-            <a href="https://www.linkedin.com/in/funding-glass-803485355/" className="text-muted-foreground hover:text-primary transition-colors">
+            <a href="https://www.linkedin.com/company/glass-funding/" className="text-muted-foreground hover:text-primary transition-colors">
               <Linkedin className="h-8 w-8" />
             </a>
             <a href="https://www.instagram.com/glass_funding/" className="text-muted-foreground hover:text-primary transition-colors">
