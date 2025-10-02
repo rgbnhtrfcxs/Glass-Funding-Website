@@ -26,9 +26,6 @@ export default function Contact() {
           </div>
 
           <div className="flex justify-center space-x-6">
-            <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
-              <Facebook className="h-8 w-8" />
-            </a>
             <a href="https://x.com/GlassFunding" className="text-muted-foreground hover:text-primary transition-colors">
               <Twitter className="h-8 w-8" />
             </a>

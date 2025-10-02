@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
-import { BeakerIcon, Users2Icon, Rocket } from "lucide-react";
+import { BadgeCheck, Zap, Eye } from "lucide-react";
 
 export function About() {
   return (
@@ -15,28 +15,35 @@ export function About() {
         >
           <h2 className="text-3xl font-bold mb-4">About Glass</h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Glass is a revolutionary platform that bridges the gap between researchers and funding opportunities, 
-            fostering collaboration and accelerating scientific breakthroughs.
+            Glass bridges researchers and funding with three promises:
+            <span className="font-semibold"> Quality</span>,{" "}
+            <span className="font-semibold">Simplicity</span>, and{" "}
+            <span className="font-semibold">Transparency</span>. We rigorously
+            vet projects, make the funding flow effortless, and show exactly how
+            every euro moves.
           </p>
         </motion.div>
 
         <div className="grid md:grid-cols-3 gap-8 mt-12">
           {[
             {
-              icon: <BeakerIcon className="h-10 w-10 text-primary" />,
-              title: "Research Funding",
-              description: "Access diverse funding opportunities tailored to your research needs"
+              icon: <BadgeCheck className="h-10 w-10 text-primary" />,
+              title: "Quality",
+              description:
+                "Quality-first projects with clear hypotheses, milestones, and budgets.",
             },
             {
-              icon: <Users2Icon className="h-10 w-10 text-primary" />,
-              title: "Collaboration",
-              description: "Connect with leading researchers and institutions worldwide"
+              icon: <Zap className="h-10 w-10 text-primary" />,
+              title: "Simplicity",
+              description:
+                "Simple, guided flows that connect funders, researchers, and institutions.",
             },
             {
-              icon: <Rocket className="h-10 w-10 text-primary" />,
-              title: "Innovation",
-              description: "Accelerate scientific progress through streamlined funding processes"
-            }
+              icon: <Eye className="h-10 w-10 text-primary" />,
+              title: "Transparency",
+              description:
+                "Live budgets, milestone-based releases, and public progress updates.",
+            },
           ].map((item, index) => (
             <motion.div
               key={index}

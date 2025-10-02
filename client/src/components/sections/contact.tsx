@@ -11,7 +11,6 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Mail, Phone, MapPin } from "lucide-react";
 
-// TODO: Fix DNS records with Brevo
 
 export function Contact() {
   const { toast } = useToast();
