@@ -28,6 +28,7 @@ import MyFollowups from "@/pages/MyFollowUps";
 import SubmitProject from "@/pages/submit";
 import Terms from "@/pages/terms";
 import Privacy from "@/pages/privacy";
+import Waitlist1 from "@/pages/Waitlist";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -67,6 +68,7 @@ function Router() {
       <Route path="/contact" component={Contact} />
       <Route path="/terms" component={Terms} />
       <Route path="/privacy" component={Privacy} />
+      <Route path="/Waitlist"component={Waitlist1} />
       <Route component={NotFound} />
     </Switch>
   );
