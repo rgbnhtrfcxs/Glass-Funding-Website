@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { motion } from "framer-motion";
-import { Facebook, Twitter, Linkedin, Instagram } from "lucide-react";
+import { Linkedin, Instagram, X as XIcon } from "lucide-react";
 
 // TODO add footer to all pages
 
@@ -63,7 +63,7 @@ export function Footer() {
             <h4 className="font-semibold mb-4">Follow Us</h4>
             <div className="flex space-x-4">
               <a href="https://x.com/GlassFunding" className="text-muted-foreground hover:text-primary transition-colors">
-                <Twitter className="h-5 w-5" />
+                <XIcon className="h-5 w-5" />
               </a>
               <a href="https://www.linkedin.com/company/glass-funding/" className="text-muted-foreground hover:text-primary transition-colors">
                 <Linkedin className="h-5 w-5" />
