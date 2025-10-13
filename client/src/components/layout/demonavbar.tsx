@@ -49,7 +49,6 @@ export function DemoNavbar() {
               <Link href="/followup">
                 <a className="text-muted-foreground hover:text-primary transition-colors">Follow-Up</a>
               </Link>
-
               <div
                 className="relative"
                 onMouseEnter={handleMouseEnter}

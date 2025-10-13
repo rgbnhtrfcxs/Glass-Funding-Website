@@ -29,6 +29,8 @@ import SubmitProject from "@/pages/submit";
 import Terms from "@/pages/terms";
 import Privacy from "@/pages/privacy";
 import Waitlist1 from "@/pages/Waitlist";
+import OnePagers from "@/pages/OnePagers";
+import Roadmap from "@/pages/Roadmap";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -66,6 +68,8 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/about" component={About} />
       <Route path="/contact" component={Contact} />
+      <Route path="/one-pagers" component={OnePagers} />
+      <Route path="/roadmap" component={Roadmap} />
       <Route path="/terms" component={Terms} />
       <Route path="/privacy" component={Privacy} />
       <Route path="/Waitlist"component={Waitlist1} />
