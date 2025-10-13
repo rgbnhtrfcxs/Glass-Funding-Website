@@ -14,7 +14,7 @@ const howItWorks = [
   {
     title: "2. Fund together with milestones",
     description:
-      "Anyone can invest or donate to specific milestones. Instead of blind grants, capital is unlocked as supporters see evidence, updates, and lab notes—all open by default.",
+      "Anyone can donate to specific milestones. Instead of blind grants, capital is unlocked as supporters see evidence, updates, and lab notes—all open by default.",
   },
   {
     title: "3. Track progress in public view",
@@ -27,7 +27,7 @@ const audiences = [
   {
     title: "Funders & Supporters",
     description:
-      "Give citizens, angel donors, and philanthropists the tools to back frontier science with clarity, control, and updates that prove impact—no accredited investor badge required.",
+      "Give citizens and philanthropists the tools to back frontier science with clarity, control, and updates that prove impact—no gatekeeping required.",
   },
   {
     title: "Universities & Labs",
@@ -55,7 +55,7 @@ const democratizePoints = [
   {
     title: "Build a new frontier together",
     description:
-      "By pooling support from scientists, citizens, and mission-driven investors, we create a funding frontier that reflects the world we want to live in.",
+      "By pooling support from scientists, citizens, and mission-driven donors, we create a funding frontier that reflects the world we want to live in.",
   },
 ];
 
@@ -106,7 +106,7 @@ export default function About() {
           <h2 className="text-2xl font-semibold text-center">Democratising science funding</h2>
           <p className="mt-3 max-w-3xl mx-auto text-center text-muted-foreground leading-relaxed">
             Glass is built so that breakthroughs are no longer decided behind closed doors. We hand the
-            power to invest or donate back to the people who believe in a new era of discovery.
+            power to fund discovery back to the people who believe in a new era of research.
           </p>
           <div className="mt-12 grid gap-6 md:grid-cols-3">
             {democratizePoints.map(point => (
@@ -135,7 +135,7 @@ export default function About() {
               <h2 className="text-2xl font-semibold">Why Glass matters</h2>
               <p className="mt-4 text-muted-foreground leading-relaxed">
                 In today’s world, countless brilliant research projects go unfunded, and communities are left
-                watching from the sidelines. Glass lets supporters invest or donate directly into the lab,
+                watching from the sidelines. Glass lets supporters donate directly into the lab,
                 creating a public ledger of progress and impact. Our mission is simple: democratise science,
                 not paperwork.
               </p>

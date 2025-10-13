@@ -58,9 +58,9 @@ export default function MyFollowups() {
             <div className="rounded-3xl border border-dashed border-border bg-muted/30 p-16 text-center">
               <p className="text-lg font-medium">No funded projects yet</p>
               <p className="mt-2 text-sm text-muted-foreground">
-                Once you donate or invest, those projects will appear here with milestone tracking.
+                Once you donate, those projects will appear here with milestone tracking.
               </p>
-              <Link href="/research">
+              <Link href="/projects">
                 <a className="mt-6 inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition">
                   Browse opportunities
                   <ArrowUpRight className="h-4 w-4" />
@@ -91,11 +91,9 @@ export default function MyFollowups() {
                         <p className="mt-2 text-lg font-semibold">
                           €{project.committed.toLocaleString()}
                         </p>
-                        {project.ownershipShare && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Ownership {project.ownershipShare}
-                          </p>
-                        )}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {project.status === "Active" ? "Recurring donation schedule active" : "One-time donation recorded"}
+                        </p>
                       </div>
                       <div className="rounded-2xl border border-border bg-background/70 px-4 py-3">
                         <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
@@ -105,9 +103,9 @@ export default function MyFollowups() {
                         <p className="mt-2 text-lg font-semibold">
                           €{project.released.toLocaleString()}
                         </p>
-                        {project.yieldToDate && (
-                          <p className="text-xs text-emerald-500 mt-1">{project.yieldToDate} yield to date</p>
-                        )}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Donations disbursed to date
+                        </p>
                       </div>
                       <div className="rounded-2xl border border-border bg-background/70 px-4 py-3">
                         <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">

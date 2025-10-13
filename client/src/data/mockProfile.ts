@@ -2,7 +2,7 @@ export type ReceiptStatus = "Active" | "Completed" | "Exited" | "Pending";
 
 export interface Receipt {
   id: string;
-  type: "Investment" | "Donation";
+  type: "Donation";
   project: string;
   amount: string;
   date: string;
@@ -20,9 +20,9 @@ export interface ProfileOverview {
   initials: string;
   fullName: string;
   tagline: string;
-  totalInvested: string;
-  activePositionsLabel: string;
   totalDonated: string;
+  activeRecurringCount: number;
+  recurringSupportLabel: string;
   supportedProjectsLabel: string;
   lastContributionDate: string;
   lastContributionNote: string;
@@ -39,17 +39,17 @@ export const profileSnapshot: ProfileSnapshot = {
     initials: "LG",
     fullName: "Lucy Glass",
     tagline: "Glass Supporter since 2023 · San Francisco, CA · lucy@glass.fund",
-    totalInvested: "$7,500",
-    activePositionsLabel: "• 2 active positions",
-    totalDonated: "$4,200",
+    totalDonated: "$11,700",
+    activeRecurringCount: 3,
+    recurringSupportLabel: "• 3 recurring pledges active",
     supportedProjectsLabel: "• 6 projects supported",
     lastContributionDate: "Jan 18, 2025",
-    lastContributionNote: "Oncology Cohort tranche released",
+    lastContributionNote: "Oncology Cohort milestone unlocked",
   },
   receipts: [
     {
-      id: "INV-2041",
-      type: "Investment",
+      id: "DON-2041",
+      type: "Donation",
       project: "Glass Oncology Cohort",
       amount: "$2,500",
       date: "Jan 18, 2025",
@@ -64,12 +64,12 @@ export const profileSnapshot: ProfileSnapshot = {
       status: "Completed",
     },
     {
-      id: "INV-1983",
-      type: "Investment",
+      id: "DON-1983",
+      type: "Donation",
       project: "Carbon Capture Field Trials",
       amount: "$5,000",
       date: "Nov 11, 2024",
-      status: "Exited",
+      status: "Completed",
     },
   ],
   workspaceLinks: [

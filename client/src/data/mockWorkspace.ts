@@ -9,7 +9,7 @@ export interface FavoriteProject {
   goal: number;
   progressPercent: number;
   addedAt: string;
-  invested: number;
+  donated: number;
   autoTopUp: boolean;
   latestUpdate: string;
   nextMilestone?: {
@@ -42,13 +42,11 @@ export interface PortfolioProject {
   id: number;
   title: string;
   category: string;
-  type: "Investment" | "Donation";
+  type: "Donation";
   status: "Active" | "Completed" | "Pending";
   committed: number;
   released: number;
   currency: "EUR" | "USD";
-  ownershipShare?: string;
-  yieldToDate?: string;
   nextMilestone?: {
     title: string;
     date: string;
@@ -81,7 +79,7 @@ export const milestoneTemplates = [
 const favoriteProjectSources = [
   {
     researchId: 1,
-    invested: 2500,
+    donated: 2500,
     autoTopUp: true,
     addedAt: "Added Feb 2025",
     latestUpdate: "Clinical review board approved next experiment cohort.",
@@ -92,7 +90,7 @@ const favoriteProjectSources = [
   },
   {
     researchId: 3,
-    invested: 1800,
+    donated: 1800,
     autoTopUp: false,
     addedAt: "Added Jan 2025",
     latestUpdate: "AI pipeline cleared internal replication checks.",
@@ -103,7 +101,7 @@ const favoriteProjectSources = [
   },
   {
     researchId: 5,
-    invested: 3200,
+    donated: 3200,
     autoTopUp: true,
     addedAt: "Added Nov 2024",
     latestUpdate: "Municipal partner confirmed pilot deployment site.",
@@ -128,7 +126,7 @@ export const favoriteProjects: FavoriteProject[] = favoriteProjectSources.map(so
     goal: research.goal,
     funded: research.funded,
     progressPercent: Math.round((research.funded / research.goal) * 100),
-    invested: source.invested,
+    donated: source.donated,
     autoTopUp: source.autoTopUp,
     addedAt: source.addedAt,
     latestUpdate: source.latestUpdate,
@@ -153,7 +151,7 @@ export const followUpTasks: FollowUpTask[] = [
     lastUpdate: "Uploaded revised terms on Apr 16",
     filesRequired: 1,
     progress: followUpSourceMap.get(103)?.progress ?? 0,
-    link: `/followup/103`,
+    link: `/followups/103`,
   },
   {
     id: 101,
@@ -161,11 +159,11 @@ export const followUpTasks: FollowUpTask[] = [
     projectName: followUpSourceMap.get(101)?.name ?? "AI-Enhanced Cancer Detection",
     status: "scheduled",
     dueDate: "Apr 25, 2025",
-    summary: "Principal investigator requested investor questions ahead of lab visit.",
+    summary: "Principal investigator requested supporter questions ahead of lab visit.",
     lastUpdate: "Reminder email sent Apr 15",
     filesRequired: 2,
     progress: followUpSourceMap.get(101)?.progress ?? 0,
-    link: `/followup/101`,
+    link: `/followups/101`,
   },
   {
     id: 105,
@@ -177,46 +175,36 @@ export const followUpTasks: FollowUpTask[] = [
     lastUpdate: "Draft feedback saved Apr 17",
     filesRequired: 0,
     progress: followUpSourceMap.get(105)?.progress ?? 0,
-    link: `/followup/105`,
+    link: `/followups/105`,
   },
 ];
 
 const portfolioProjectSources: Array<{
   followUpId: number;
-  type: PortfolioProject["type"];
   status: PortfolioProject["status"];
   committed: number;
   released: number;
   currency: PortfolioProject["currency"];
-  ownershipShare?: string;
-  yieldToDate?: string;
   nextMilestone?: { title: string; date: string };
 }> = [
   {
     followUpId: 101,
-    type: "Investment",
     status: "Active",
     committed: 5000,
     released: 3500,
     currency: "EUR",
-    ownershipShare: "0.85%",
-    yieldToDate: "+6.2%",
     nextMilestone: { title: "Clinical validation briefing", date: "Apr 29, 2025" },
   },
   {
     followUpId: 103,
-    type: "Investment",
     status: "Active",
     committed: 4200,
     released: 2800,
     currency: "EUR",
-    ownershipShare: "0.40%",
-    yieldToDate: "+4.8%",
     nextMilestone: { title: "Hardware demo walkthrough", date: "May 08, 2025" },
   },
   {
     followUpId: 105,
-    type: "Donation",
     status: "Completed",
     committed: 2500,
     released: 2500,
@@ -245,18 +233,16 @@ export const portfolioProjects: PortfolioProject[] = portfolioProjectSources.map
     id: followUp.id,
     title: followUp.name,
     category: followUp.category,
-    type: source.type,
+    type: "Donation",
     status: source.status,
     committed: source.committed,
     released: source.released,
     currency: source.currency,
-    ownershipShare: source.ownershipShare,
-    yieldToDate: source.yieldToDate,
     nextMilestone: source.nextMilestone ?? followUp.timeline?.find(item => item.status !== "complete"),
     latestUpdate,
     researchLead,
     contactEmail: `${baseEmail || "team"}@research.glass`,
-    followUpLink: `/followup/${followUp.id}`,
+    followUpLink: `/followups/${followUp.id}`,
     tags: followUp.impactTags ?? [],
     progress: followUp.progress ?? 0,
   };

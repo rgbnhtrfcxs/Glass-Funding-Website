@@ -23,7 +23,7 @@ export default function Contact() {
             <h1 className="text-4xl md:text-5xl font-bold">Contact Glass</h1>
             <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
               Every question, partnership idea, or introduction helps us democratise science. Whether you are a
-              researcher, supporter, investor, journalist, or collaborator—you can reach the team at{" "}
+              researcher, supporter, donor, journalist, or collaborator—you can reach the team at{" "}
               <a
                 href="mailto:contact@glass-funding.com"
                 className="font-medium text-primary hover:underline"
@@ -62,9 +62,9 @@ export default function Contact() {
                   </p>
                 </div>
                 <div className="rounded-2xl bg-background border border-border/80 p-4">
-                  <p className="font-medium text-foreground">Supporters & Investors</p>
+                  <p className="font-medium text-foreground">Supporters & Donors</p>
                   <p className="mt-2">
-                    Learn how to back science you believe in—whether you’re donating €50 or structuring a larger tranche.
+                    Learn how to back science you believe in—whether you’re donating €50 or exploring a matched pledge.
                   </p>
                 </div>
                 <div className="rounded-2xl bg-background border border-border/80 p-4">
@@ -96,7 +96,7 @@ export default function Contact() {
                   </AccordionTrigger>
                   <AccordionContent>
                     <p className="text-muted-foreground text-sm leading-relaxed">
-                      No. Glass is built so anyone can contribute. For larger investments we’ll walk you through any extra checks,
+                      No. Glass is built so anyone can contribute. For larger donations we’ll walk you through any extra checks,
                       but transparency is the same for everyone.
                     </p>
                   </AccordionContent>

@@ -29,7 +29,7 @@ function formatCurrency(value: number) {
   }).format(value);
 }
 
-export default function Research() {
+export default function Projects() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
@@ -91,7 +91,7 @@ export default function Research() {
         >
           <span className="text-sm uppercase tracking-[0.35em] text-muted-foreground">Explore</span>
           <h1 className="mt-4 text-4xl md:text-5xl font-semibold leading-tight">
-            Discover the research you can invest in today.
+            Discover the research you can fuel with donations today.
           </h1>
           <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
             Every project listed on Glass has passed our scientific review. Filter by domain, check progress,
@@ -111,7 +111,7 @@ export default function Research() {
               <span className="text-xs font-medium uppercase tracking-[0.3em] text-muted-foreground">Active</span>
             </div>
             <p className="mt-3 text-2xl font-semibold text-foreground">{activeProjects} projects</p>
-            <p className="mt-1 text-sm text-muted-foreground">Available to invest or donate right now.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Available to support with donations right now.</p>
           </div>
           <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm">
             <div className="flex items-center gap-3">
@@ -259,12 +259,12 @@ export default function Research() {
                     </dl>
                   </div>
                   <div className="border-t border-border bg-muted/20 px-6 py-4 flex items-center justify-between gap-4 text-sm">
-                    <span className="text-muted-foreground">Invest from €100</span>
+                    <span className="text-muted-foreground">Donate from €25</span>
                     <button
-                      onClick={() => navigate(`/investflow?projectId=${project.id}`)}
+                      onClick={() => navigate(`/donateflow?projectId=${project.id}`)}
                       className="rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition"
                     >
-                      Invest
+                      Donate
                     </button>
                   </div>
                 </motion.article>
@@ -296,7 +296,7 @@ export default function Research() {
                       className="border-b border-border/80 hover:bg-muted/20 transition"
                     >
                       <td className="px-4 py-4">
-                        <p className="font-medium text-primary underline cursor-pointer" onClick={() => navigate(`/research-details/${project.id}`)}>
+                        <p className="font-medium text-primary underline cursor-pointer" onClick={() => navigate(`/projects/${project.id}`)}>
                           {project.name}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
@@ -327,10 +327,10 @@ export default function Research() {
                       </td>
                       <td className="px-4 py-4">
                         <button
-                          onClick={() => navigate(`/investflow?projectId=${project.id}`)}
+                          onClick={() => navigate(`/donateflow?projectId=${project.id}`)}
                           className="rounded-full bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition"
                         >
-                          Invest
+                          Donate
                         </button>
                       </td>
                     </tr>

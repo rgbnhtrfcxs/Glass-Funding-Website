@@ -40,13 +40,13 @@ export function DemoNavbar() {
             </div>
 
             <div className="hidden md:flex space-x-8 items-center">
-              <Link href="/research">
-                <a className="text-muted-foreground hover:text-primary transition-colors">Invest</a>
+              <Link href="/bubbles">
+                <a className="text-muted-foreground hover:text-primary transition-colors">Bubbles</a>
               </Link>
-              <Link href="/donate">
-                <a className="text-muted-foreground hover:text-primary transition-colors">Donate</a>
+              <Link href="/projects">
+                <a className="text-muted-foreground hover:text-primary transition-colors">Projects</a>
               </Link>
-              <Link href="/followup">
+              <Link href="/followups">
                 <a className="text-muted-foreground hover:text-primary transition-colors">Follow-Up</a>
               </Link>
               <div

@@ -14,15 +14,13 @@ import { Footer } from "./components/sections/footer";
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
 
-import Research from "@/pages/Research";
-import ResearchDetails from "@/pages/ResearchDetails";
-import Donate from "@/pages/Donate";
-import InvestFlow from "@/pages/InvestFlow";
+import Projects from "@/pages/Projects";
+import ProjectDetails from "@/pages/ProjectDetails";
+import Bubbles from "@/pages/Bubbles";
 import DonateFlow from "@/pages/DonateFlow";
 import DonateConfirmation from "@/pages/DonateConfirmation";
-import InvestConfirmation from "@/pages/InvestConfirmation";
 import FollowUp from "@/pages/FollowUp";
-import FollowUpDetails from "@/pages/FollowUpDetails";
+import FollowUpStory from "@/pages/FollowUpStory";
 import Favorites from "@/pages/favorites";
 import Profile from "@/pages/profile";
 import MyFollowups from "@/pages/MyFollowUps";
@@ -69,15 +67,18 @@ function Router() {
   return (
     <Switch>
       {/* Demo Routes */}
-      <Route path="/research" component={Research} />
-      <Route path="/research-details/:id" component={ResearchDetails} />
-      <Route path="/donate" component={Donate} />
-      <Route path="/investflow" component={InvestFlow} />
+      <Route path="/projects" component={Projects} />
+      <Route path="/research" component={Projects} />
+      <Route path="/projects/:id" component={ProjectDetails} />
+      <Route path="/research-details/:id" component={ProjectDetails} />
+      <Route path="/bubbles" component={Bubbles} />
+      <Route path="/donate" component={Bubbles} />
       <Route path="/donateflow" component={DonateFlow} />
       <Route path="/donate-confirmation" component={DonateConfirmation} />
-      <Route path="/invest-confirmation" component={InvestConfirmation} />
+      <Route path="/followups" component={FollowUp} />
+      <Route path="/followups/:id" component={FollowUpStory} />
       <Route path="/followup" component={FollowUp} />
-      <Route path="/followup/:id" component={FollowUpDetails} />
+      <Route path="/followup/:id" component={FollowUpStory} />
       <Route path="/favorites" component={Favorites} />
       <Route path="/profile" component={Profile} />
       <Route path="/myfollowups" component={MyFollowups} />
@@ -105,12 +106,13 @@ function App() {
   const [location] = useLocation();
 
   const isDemo = [
+    "/projects",
     "/research",
+    "/bubbles",
     "/donate",
-    "/investflow",
     "/donateflow",
     "/donate-confirmation",
-    "/invest-confirmation",
+    "/followups",
     "/followup",
     "/signup",
     "/login",
@@ -119,7 +121,9 @@ function App() {
     "/myfollowups",
     "/submit",
   ].some(path => location.startsWith(path)) || 
+    location.startsWith("/projects/") ||
     location.startsWith("/research-details/") || 
+    location.startsWith("/followups/") ||
     location.startsWith("/followup/");
 
   return (

@@ -1,10 +1,10 @@
 import { Link } from "wouter";
-import { TrendingUp, RefreshCcw, Clock, ArrowUpRight } from "lucide-react";
+import { RefreshCcw, Clock, ArrowUpRight, Heart } from "lucide-react";
 import { favoriteProjects } from "@/data/mockWorkspace";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 
-const totalInvested = favoriteProjects.reduce((acc, project) => acc + project.invested, 0);
+const totalDonated = favoriteProjects.reduce((acc, project) => acc + project.donated, 0);
 const activeAutoTopUps = favoriteProjects.filter(project => project.autoTopUp).length;
 
 export default function Favorites() {
@@ -22,7 +22,7 @@ export default function Favorites() {
           <div className="flex gap-4">
             <div className="rounded-2xl border border-border bg-background px-5 py-4">
               <p className="text-xs uppercase tracking-wider text-muted-foreground">Total committed</p>
-              <p className="mt-2 text-2xl font-semibold">€{totalInvested.toLocaleString()}</p>
+              <p className="mt-2 text-2xl font-semibold">€{totalDonated.toLocaleString()}</p>
             </div>
             <div className="rounded-2xl border border-border bg-background px-5 py-4">
               <p className="text-xs uppercase tracking-wider text-muted-foreground">Auto top-ups</p>
@@ -37,9 +37,9 @@ export default function Favorites() {
             <p className="mt-2 text-sm text-muted-foreground">
               Browse the research directory and tap the star icon to pin new projects here.
             </p>
-            <Link href="/research">
+            <Link href="/projects">
               <a className="mt-6 inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition">
-                Explore research
+                Explore projects
                 <ArrowUpRight className="h-4 w-4" />
               </a>
             </Link>
@@ -74,8 +74,8 @@ export default function Favorites() {
 
                   <div className="flex flex-col gap-4 rounded-2xl border border-border bg-background/80 px-6 py-5 min-w-[220px]">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">You’ve invested</span>
-                      <span className="font-semibold text-primary">€{project.invested.toLocaleString()}</span>
+                      <span className="text-muted-foreground">You’ve donated</span>
+                      <span className="font-semibold text-primary">€{project.donated.toLocaleString()}</span>
                     </div>
                     <div>
                       <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
@@ -85,8 +85,8 @@ export default function Favorites() {
                       <Progress value={project.progressPercent} className="mt-3 h-2 rounded-full" />
                     </div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <TrendingUp className="h-4 w-4" />
-                      Signal boosted in daily digest
+                      <Heart className="h-4 w-4" />
+                      Highlighted in supporter digest
                     </div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <RefreshCcw className="h-4 w-4" />
@@ -98,7 +98,7 @@ export default function Favorites() {
                         {project.nextMilestone.title} · {project.nextMilestone.date}
                       </div>
                     )}
-                    <Link href={`/research-details/${project.id}`}>
+                    <Link href={`/projects/${project.id}`}>
                       <a className="mt-2 inline-flex items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition">
                         View project
                         <ArrowUpRight className="h-4 w-4" />
