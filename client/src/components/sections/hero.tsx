@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
+import { Link } from "wouter";
 
 export function Hero() {
   const scrollToAbout = () => {
@@ -27,9 +28,14 @@ export function Hero() {
           <p className="text-lg md:text-xl text-muted-foreground mb-12">
             Connecting researchers with the resources they need to drive progress
           </p>
-          <Button size="lg" className="text-lg px-8" onClick={scrollToAbout}>
-            Get Started
-          </Button>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Button size="lg" className="text-lg px-8" onClick={scrollToAbout}>
+              Get Started
+            </Button>
+            <Button size="lg" variant="outline" className="text-lg px-8" asChild>
+              <Link href="/roadmap">View Roadmap</Link>
+            </Button>
+          </div>
         </motion.div>
       </div>
     </section>

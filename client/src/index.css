@@ -10,5 +10,32 @@
   body {
     @apply font-sans antialiased text-foreground;
     background: linear-gradient(135deg, #e0f2fe 0%, #fce7f3 100%);
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity 300ms ease, transform 300ms ease;
   }
+
+  body.is-page-loaded {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.page-transition {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 260ms ease, transform 260ms ease;
+}
+
+.page-transition--active {
+  opacity: 1;
+  transform: none;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }

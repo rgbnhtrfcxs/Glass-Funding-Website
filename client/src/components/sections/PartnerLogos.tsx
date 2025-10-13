@@ -95,6 +95,32 @@ export function PartnerLogos() {
     };
   }, []);
 
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+
+    let animationFrame: number;
+
+    const autoScroll = () => {
+      const groupWidth = container.scrollWidth / 3;
+      if (groupWidth === 0) return;
+
+      container.scrollLeft += 0.4;
+
+      if (container.scrollLeft >= groupWidth * 2) {
+        container.scrollLeft -= groupWidth;
+      }
+
+      animationFrame = window.requestAnimationFrame(autoScroll);
+    };
+
+    animationFrame = window.requestAnimationFrame(autoScroll);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, []);
+
   const scroll = (direction: "left" | "right") => {
     const container = scrollRef.current;
     if (!container) return;
@@ -154,7 +180,7 @@ export function PartnerLogos() {
             <ChevronRight className="h-5 w-5" />
           </button>
 
-          <div ref={scrollRef} className="overflow-x-auto scroll-smooth">
+          <div ref={scrollRef} className="overflow-x-auto scroll-smooth no-scrollbar">
             <div className="flex gap-6 md:gap-8 min-w-max pb-2">
               {repeatedLogos.map((logo, index) => (
                 <a
@@ -166,9 +192,8 @@ export function PartnerLogos() {
                 >
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.4, delay: index * 0.08 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25, delay: index * 0.04 }}
                   >
                     <div className="bg-white border border-border rounded-xl px-6 py-5 h-28 flex items-center justify-center shadow-sm hover:shadow-md transition">
                       <img

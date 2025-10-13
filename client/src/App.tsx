@@ -1,4 +1,5 @@
 import { Switch, Route, useLocation } from "wouter";
+import type { ReactNode } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
@@ -8,7 +9,7 @@ import Home from "@/pages/home";
 import About from "@/pages/about";
 import Contact from "@/pages/contact";
 import NotFound from "@/pages/not-found";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Footer } from "./components/sections/footer";
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
@@ -40,6 +41,28 @@ function ScrollToTop() {
   }, [location]);
 
   return null;
+}
+
+function PageTransition({ children }: { children: ReactNode }) {
+  const [location] = useLocation();
+  const [isActive, setIsActive] = useState(false);
+
+  useEffect(() => {
+    setIsActive(false);
+    const frame = window.requestAnimationFrame(() => setIsActive(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [location]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => setIsActive(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  return (
+    <div className={`page-transition ${isActive ? "page-transition--active" : ""}`}>
+      {children}
+    </div>
+  );
 }
 
 function Router() {
@@ -103,7 +126,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       {isDemo ? <DemoNavbar /> : <Navbar />}
       <ScrollToTop />
-      <Router />
+      <PageTransition>
+        <Router />
+      </PageTransition>
       <Toaster />
     </QueryClientProvider>
   );
