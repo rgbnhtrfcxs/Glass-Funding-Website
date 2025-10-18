@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
 import { Sparkles, Filter, ArrowDownAZ, ArrowUpAZ } from "lucide-react";
 import { mockResearch } from "@/data/mockResearch";
@@ -225,7 +225,13 @@ export default function Projects() {
                         Grade {project.grade}
                       </span>
                     </div>
-                    <h3 className="mt-4 text-2xl font-semibold text-foreground">{project.name}</h3>
+                    <h3 className="mt-4 text-2xl font-semibold">
+                      <Link href={`/projects/${project.id}`}>
+                        <a className="inline-block text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded">
+                          {project.name}
+                        </a>
+                      </Link>
+                    </h3>
                     <p className="mt-3 text-sm text-muted-foreground leading-relaxed">{project.description}</p>
 
                     <div className="mt-5 space-y-3">
@@ -296,9 +302,11 @@ export default function Projects() {
                       className="border-b border-border/80 hover:bg-muted/20 transition"
                     >
                       <td className="px-4 py-4">
-                        <p className="font-medium text-primary underline cursor-pointer" onClick={() => navigate(`/projects/${project.id}`)}>
-                          {project.name}
-                        </p>
+                        <Link href={`/projects/${project.id}`}>
+                          <a className="font-medium text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded">
+                            {project.name}
+                          </a>
+                        </Link>
                         <p className="text-xs text-muted-foreground mt-1">
                           Lead {project.researcher?.name ?? "Glass team"}
                         </p>

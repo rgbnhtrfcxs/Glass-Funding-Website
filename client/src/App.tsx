@@ -13,6 +13,8 @@ import { useEffect, useState } from "react";
 import { Footer } from "./components/sections/footer";
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ForgotPasswordConfirmation from "@/pages/ForgotPasswordConfirmation";
 
 import Projects from "@/pages/Projects";
 import ProjectDetails from "@/pages/ProjectDetails";
@@ -30,6 +32,9 @@ import Privacy from "@/pages/privacy";
 import Waitlist1 from "@/pages/Waitlist";
 import OnePagers from "@/pages/OnePagers";
 import Roadmap from "@/pages/Roadmap";
+import Status from "@/pages/status";
+import ServerError from "@/pages/server-error";
+import Maintenance from "@/pages/maintenance";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -87,6 +92,8 @@ function Router() {
       {/* Auth Pages */}
       <Route path="/login" component={Login} />
       <Route path="/signup" component={Signup} />
+      <Route path="/forgot-password" component={ForgotPassword} />
+      <Route path="/forgot-password/confirmation" component={ForgotPasswordConfirmation} />
 
       {/* Base Pages */}
       <Route path="/" component={Home} />
@@ -94,6 +101,9 @@ function Router() {
       <Route path="/contact" component={Contact} />
       <Route path="/one-pagers" component={OnePagers} />
       <Route path="/roadmap" component={Roadmap} />
+      <Route path="/status" component={Status} />
+      <Route path="/500" component={ServerError} />
+      <Route path="/maintenance" component={Maintenance} />
       <Route path="/terms" component={Terms} />
       <Route path="/privacy" component={Privacy} />
       <Route path="/Waitlist"component={Waitlist1} />
@@ -115,11 +125,15 @@ function App() {
     "/followups",
     "/followup",
     "/signup",
+    "/forgot-password",
+    "/forgot-password/confirmation",
     "/login",
     "/profile",
     "/favorites",
     "/myfollowups",
     "/submit",
+    "/500",
+    "/maintenance",
   ].some(path => location.startsWith(path)) || 
     location.startsWith("/projects/") ||
     location.startsWith("/research-details/") || 

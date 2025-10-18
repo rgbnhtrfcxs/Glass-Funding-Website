@@ -332,6 +332,7 @@ export default function Bubbles() {
                     animate={isActive ? "active" : isDimmed ? "popped" : "idle"}
                     variants={bubbleVariants}
                     transition={{ type: "spring", stiffness: 220, damping: 18 }}
+                    whileHover={!isDimmed ? { scale: isActive ? 1.2 : 1.08 } : undefined}
                     onClick={() => setActive(prev => (prev === category.id ? null : category.id))}
                     className={`group relative flex items-center justify-center rounded-full text-center text-base font-semibold text-foreground shadow-lg shadow-primary/20 focus:outline-none focus-visible:ring-4 focus-visible:ring-primary/20 transition-all duration-300 ${isActive ? "h-48 w-48 md:h-60 md:w-60" : "h-32 w-32 md:h-40 md:w-40"}`}
                     style={{ pointerEvents: isDimmed ? "none" : "auto" }}
