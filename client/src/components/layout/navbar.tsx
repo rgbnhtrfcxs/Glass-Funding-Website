@@ -1,7 +1,19 @@
+import { useState } from "react";
 import { Link } from "wouter";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 
 export function Navbar() {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const navItems = [
+    { href: "/", label: "Home" },
+    { href: "/about", label: "About" },
+    { href: "/contact", label: "Contact" },
+  ];
+
+  const toggleMenu = () => setIsMenuOpen(prev => !prev);
+  const closeMenu = () => setIsMenuOpen(false);
+
   return (
     <motion.nav 
       initial={{ opacity: 0, y: -20 }}
@@ -17,19 +29,96 @@ export function Navbar() {
             </Link>
           </div>
 
+          <div className="md:hidden">
+            <button
+              type="button"
+              onClick={toggleMenu}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-md border text-muted-foreground transition hover:border-primary/40 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              aria-expanded={isMenuOpen}
+              aria-controls="mobile-nav"
+            >
+              <span className="sr-only">Toggle navigation menu</span>
+              <div className="flex flex-col items-center justify-center gap-1.5">
+                <span className="block h-0.5 w-6 rounded bg-current" />
+                <span className="block h-0.5 w-6 rounded bg-current" />
+                <span className="block h-0.5 w-6 rounded bg-current" />
+              </div>
+            </button>
+          </div>
+
           <div className="hidden md:flex space-x-8">
-            <Link href="/">
-              <a className="text-muted-foreground hover:text-primary transition-colors">Home</a>
-            </Link>
-            <Link href="/about">
-              <a className="text-muted-foreground hover:text-primary transition-colors">About</a>
-            </Link>
-            <Link href="/contact">
-              <a className="text-muted-foreground hover:text-primary transition-colors">Contact</a>
-            </Link>
+            {navItems.map(item => (
+              <Link href={item.href} key={item.href}>
+                <a
+                  className="text-muted-foreground hover:text-primary transition-colors"
+                >
+                  {item.label}
+                </a>
+              </Link>
+            ))}
           </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {isMenuOpen && (
+          <>
+            <motion.div
+              key="overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden"
+              onClick={closeMenu}
+            />
+            <motion.aside
+              key="panel"
+              id="mobile-nav"
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "tween", duration: 0.3 }}
+              className="fixed top-0 right-0 z-50 flex h-screen w-64 flex-col bg-background shadow-lg md:hidden"
+            >
+              <div className="flex items-center justify-between border-b px-4 py-3">
+                <Link href="/">
+                  <a onClick={closeMenu}>
+                    <img src="/GlassLogo5.png" alt="Glass" className="h-10 w-auto" />
+                  </a>
+                </Link>
+                <button
+                  type="button"
+                  onClick={closeMenu}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border text-muted-foreground transition hover:border-primary/40 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                >
+                  <span className="sr-only">Close navigation menu</span>
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+                    <path
+                      d="M6 6l12 12M18 6L6 18"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <nav className="flex flex-1 flex-col gap-2 px-4 py-6">
+                {navItems.map(item => (
+                  <Link href={item.href} key={item.href}>
+                    <a
+                      onClick={closeMenu}
+                      className="rounded-md px-3 py-2 text-lg font-medium text-muted-foreground transition hover:bg-muted hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                    >
+                      {item.label}
+                    </a>
+                  </Link>
+                ))}
+              </nav>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
     </motion.nav>
   );
 }
