@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
-import { Menu } from "lucide-react";
+import { Menu, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetClose, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -53,8 +53,18 @@ export function Navbar() {
               </SheetTrigger>
               <SheetContent
                 side="right"
-                className="w-full max-w-xs border-l bg-background px-6 py-16"
+                className="relative w-full max-w-xs border-l bg-background px-6 py-16 [&>button:last-child]:hidden"
               >
+                <SheetClose asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Close navigation menu"
+                    className="absolute right-4 top-4"
+                  >
+                    <X className="h-5 w-5" />
+                  </Button>
+                </SheetClose>
                 <nav className="flex flex-col space-y-6 text-lg font-medium">
                   {navigationLinks.map(link => (
                     <Link key={link.href} href={link.href}>
