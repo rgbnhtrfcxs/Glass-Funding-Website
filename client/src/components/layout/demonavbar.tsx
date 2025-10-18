@@ -1,9 +1,14 @@
 import { Link } from "wouter";
 import { motion } from "framer-motion";
+import { Menu } from "lucide-react";
 import { useState, useRef } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 export function DemoNavbar() {
   const [showDropdown, setShowDropdown] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleMouseEnter = () => {
@@ -16,6 +21,15 @@ export function DemoNavbar() {
       setShowDropdown(false);
     }, 250); // Delay before hiding the dropdown
   };
+
+  const navigationLinks = [
+    { href: "/research", label: "Invest" },
+    { href: "/donate", label: "Donate" },
+    { href: "/followup", label: "Follow-Up" },
+    { href: "/profile", label: "My Profile" },
+    { href: "/login", label: "Login" },
+    { href: "/signup", label: "Sign Up" },
+  ];
 
   return (
     <motion.nav
@@ -79,6 +93,37 @@ export function DemoNavbar() {
                 )}
               </div>
             </div>
+          </div>
+
+          <div className="md:hidden">
+            <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+              <SheetTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Open navigation menu"
+                >
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent
+                side="right"
+                className="w-full max-w-xs border-l bg-background px-6 py-16"
+              >
+                <nav className="flex flex-col space-y-6 text-lg font-medium">
+                  {navigationLinks.map(link => (
+                    <Link key={link.href} href={link.href}>
+                      <a
+                        className="text-muted-foreground hover:text-primary transition-colors"
+                        onClick={() => setIsMenuOpen(false)}
+                      >
+                        {link.label}
+                      </a>
+                    </Link>
+                  ))}
+                </nav>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
       </div>
