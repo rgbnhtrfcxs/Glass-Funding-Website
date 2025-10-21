@@ -41,6 +41,11 @@ export function DemoNavbar() {
 
             <div className="hidden md:flex space-x-8 items-center">
               <Link href="/bubbles">
+                <a className="inline-flex items-center justify-center rounded-full bg-yellow-400 px-4 py-2 text-sm font-semibold text-black shadow transition hover:bg-yellow-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-yellow-500">
+                  DEMO
+                </a>
+              </Link>
+              <Link href="/bubbles">
                 <a className="text-muted-foreground hover:text-primary transition-colors">Bubbles</a>
               </Link>
               <Link href="/projects">
