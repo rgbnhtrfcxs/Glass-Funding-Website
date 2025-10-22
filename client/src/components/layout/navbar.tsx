@@ -7,6 +7,10 @@ export function Navbar() {
 
   const navItems = [
     { href: "/", label: "Home" },
+    { href: "/labs", label: "Labs" },
+    { href: "/pricing", label: "Pricing" },
+    { href: "/lab-profile", label: "Lab Profile" },
+    { href: "/admin/labs", label: "Admin" },
     { href: "/about", label: "About" },
     { href: "/contact", label: "Contact" },
   ];
@@ -47,13 +51,6 @@ export function Navbar() {
           </div>
 
           <div className="hidden md:flex items-center space-x-8">
-            <Link href="/bubbles">
-              <a
-                className="inline-flex items-center justify-center rounded-full bg-yellow-400 px-4 py-2 text-sm font-semibold text-black shadow transition hover:bg-yellow-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-yellow-500"
-              >
-                DEMO
-              </a>
-            </Link>
             {navItems.map(item => (
               <Link href={item.href} key={item.href}>
                 <a
@@ -111,14 +108,6 @@ export function Navbar() {
                 </button>
               </div>
               <nav className="flex flex-1 flex-col gap-2 px-4 py-6">
-                <Link href="/bubbles">
-                  <a
-                    onClick={closeMenu}
-                    className="inline-flex items-center justify-center rounded-full bg-yellow-400 px-4 py-2 text-base font-semibold text-black shadow transition hover:bg-yellow-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-yellow-500"
-                  >
-                    DEMO
-                  </a>
-                </Link>
                 {navItems.map(item => (
                   <Link href={item.href} key={item.href}>
                     <a

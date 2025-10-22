@@ -12,8 +12,8 @@ export default function NotFound() {
           Looks like this page drifted off the map.
         </h1>
         <p className="mt-4 max-w-2xl text-lg text-muted-foreground leading-relaxed">
-          The link you followed might be broken or the content may have been moved. Try returning to the homepage or explore
-          our live projects.
+          The link you followed might be broken or the content may have been moved. Try returning to the homepage or browse
+          our available lab partners.
         </p>
 
         <div className="mt-10 flex flex-col gap-3 sm:flex-row">
@@ -22,10 +22,10 @@ export default function NotFound() {
               Back to homepage
             </a>
           </Link>
-          <Link href="/projects">
+          <Link href="/labs">
             <a className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-background px-5 py-2 text-sm font-medium text-foreground hover:text-primary transition">
               <Search className="h-4 w-4" />
-              Explore projects
+              Browse labs
             </a>
           </Link>
         </div>
