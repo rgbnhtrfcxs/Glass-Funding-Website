@@ -1,52 +1,122 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { mockLabs, type LabPartner } from "@/data/mockLabs";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import type { InsertLab, LabPartner, UpdateLab } from "@shared/labs";
 
-type LabInput = Omit<LabPartner, "id"> & { id?: number };
-type LabUpdate = Partial<Omit<LabPartner, "id">>;
+type LabInput = InsertLab;
+type LabUpdate = UpdateLab;
 
 interface LabsContextValue {
   labs: LabPartner[];
-  addLab: (lab: LabInput) => LabPartner;
-  updateLab: (id: number, updates: LabUpdate) => void;
-  removeLab: (id: number) => void;
+  isLoading: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
+  addLab: (lab: LabInput) => Promise<LabPartner>;
+  updateLab: (id: number, updates: LabUpdate) => Promise<LabPartner>;
+  removeLab: (id: number) => Promise<void>;
 }
 
 const LabsContext = createContext<LabsContextValue | undefined>(undefined);
 
-export function LabsProvider({ children }: { children: ReactNode }) {
-  const [labs, setLabs] = useState<LabPartner[]>(mockLabs);
+async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  const { headers, ...rest } = init ?? {};
+  const response = await fetch(url, {
+    ...rest,
+    headers: {
+      "Content-Type": "application/json",
+      ...(headers ?? {}),
+    },
+  });
 
-  const addLab = useCallback((lab: LabInput) => {
-    let createdLab: LabPartner | null = null;
-    setLabs(current => {
-      const nextId = lab.id ?? (current.length ? Math.max(...current.map(item => item.id)) + 1 : 1);
-      createdLab = { ...lab, id: nextId };
-      return [...current, createdLab];
-    });
-    if (!createdLab) {
-      throw new Error("Failed to create lab entry");
+  if (!response.ok) {
+    let message = "Request failed";
+    try {
+      const payload = await response.json();
+      if (payload?.message) {
+        message = payload.message;
+      }
+    } catch {
+      // ignore JSON parse failures
     }
-    return createdLab;
+    throw new Error(message);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return (await response.json()) as T;
+}
+
+export function LabsProvider({ children }: { children: ReactNode }) {
+  const [labs, setLabs] = useState<LabPartner[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchLabs = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const data = await request<LabPartner[]>("/api/labs");
+      setLabs(data);
+      setError(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to load labs";
+      setError(message);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  const updateLab = useCallback((id: number, updates: LabUpdate) => {
-    setLabs(current =>
-      current.map(lab => (lab.id === id ? { ...lab, ...updates } : lab)),
-    );
+  useEffect(() => {
+    fetchLabs();
+  }, [fetchLabs]);
+
+  const addLab = useCallback(async (lab: LabInput) => {
+    const created = await request<LabPartner>("/api/labs", {
+      method: "POST",
+      body: JSON.stringify(lab),
+    });
+    setLabs(current => [...current, created]);
+    return created;
   }, []);
 
-  const removeLab = useCallback((id: number) => {
+  const updateLab = useCallback(async (id: number, updates: LabUpdate) => {
+    const updated = await request<LabPartner>(`/api/labs/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(updates),
+    });
+    setLabs(current => current.map(lab => (lab.id === id ? updated : lab)));
+    return updated;
+  }, []);
+
+  const removeLab = useCallback(async (id: number) => {
+    await request<undefined>(`/api/labs/${id}`, {
+      method: "DELETE",
+    });
     setLabs(current => current.filter(lab => lab.id !== id));
   }, []);
+
+  const refresh = useCallback(async () => {
+    await fetchLabs();
+  }, [fetchLabs]);
 
   const value = useMemo(
     () => ({
       labs,
+      isLoading,
+      error,
+      refresh,
       addLab,
       updateLab,
       removeLab,
     }),
-    [labs, addLab, updateLab, removeLab],
+    [labs, isLoading, error, refresh, addLab, updateLab, removeLab],
   );
 
   return <LabsContext.Provider value={value}>{children}</LabsContext.Provider>;

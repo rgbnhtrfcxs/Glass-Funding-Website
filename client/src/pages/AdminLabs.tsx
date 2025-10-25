@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import {
@@ -17,8 +17,12 @@ import {
   X,
 } from "lucide-react";
 import { useLabs } from "@/context/LabsContext";
-import type { LabPartner, MediaAsset, OfferOption } from "@/data/mockLabs";
-import { offerOptions } from "@/data/mockLabs";
+import {
+  offerOptions,
+  type LabPartner,
+  type MediaAsset,
+  type OfferOption,
+} from "@shared/labs";
 
 type VerificationOption = "yes" | "no";
 type PricePrivacyOption = "yes" | "no";
@@ -83,6 +87,32 @@ function parseList(value: string) {
     .filter(Boolean);
 }
 
+function readFilesAsAssets(files: FileList): Promise<MediaAsset[]> {
+  const fileArray = Array.from(files);
+  return Promise.all(
+    fileArray.map(
+      file =>
+        new Promise<MediaAsset>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result !== "string") {
+              reject(new Error("Unsupported file format"));
+              return;
+            }
+            resolve({
+              name: file.name,
+              url: reader.result,
+            });
+          };
+          reader.onerror = () => {
+            reject(reader.error ?? new Error("Failed to read file"));
+          };
+          reader.readAsDataURL(file);
+        }),
+    ),
+  );
+}
+
 function formToPayload(
   form: LabFormState,
   photos: MediaAsset[],
@@ -115,13 +145,22 @@ type StatusMessage = { type: "success" | "error"; text: string } | null;
 type EditingState = number | "new" | null;
 
 export default function AdminLabs() {
-  const { labs, addLab, updateLab, removeLab } = useLabs();
+  const {
+    labs,
+    addLab,
+    updateLab,
+    removeLab,
+    isLoading,
+    error: labsError,
+    refresh,
+  } = useLabs();
   const [editing, setEditing] = useState<EditingState>(null);
   const [formState, setFormState] = useState<LabFormState>(emptyForm);
   const [statusMessage, setStatusMessage] = useState<StatusMessage>(null);
   const [photoAssets, setPhotoAssets] = useState<MediaAsset[]>([]);
   const [complianceAssets, setComplianceAssets] = useState<MediaAsset[]>([]);
-  const objectUrlsRef = useRef<string[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const startCreate = () => {
     setEditing("new");
@@ -185,54 +224,47 @@ export default function AdminLabs() {
     setFormState(prev => ({ ...prev, complianceDocUrlInput: "" }));
   };
 
-  const handlePhotoUpload: React.ChangeEventHandler<HTMLInputElement> = event => {
+  const handlePhotoUpload: React.ChangeEventHandler<HTMLInputElement> = async event => {
     const files = event.target.files;
-    if (!files) return;
-    const uploaded: MediaAsset[] = [];
-    Array.from(files).forEach(file => {
-      const url = URL.createObjectURL(file);
-      objectUrlsRef.current.push(url);
-      uploaded.push({ name: file.name, url });
-    });
-    setPhotoAssets(prev => [...prev, ...uploaded]);
-    event.target.value = "";
+    if (!files || files.length === 0) return;
+    try {
+      const uploaded = await readFilesAsAssets(files);
+      setPhotoAssets(prev => [...prev, ...uploaded]);
+      setStatusMessage(null);
+    } catch (error) {
+      setStatusMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Unable to process photo uploads",
+      });
+    } finally {
+      event.target.value = "";
+    }
   };
 
-  const handleComplianceUpload: React.ChangeEventHandler<HTMLInputElement> = event => {
+  const handleComplianceUpload: React.ChangeEventHandler<HTMLInputElement> = async event => {
     const files = event.target.files;
-    if (!files) return;
-    const uploaded: MediaAsset[] = [];
-    Array.from(files).forEach(file => {
-      const url = URL.createObjectURL(file);
-      objectUrlsRef.current.push(url);
-      uploaded.push({ name: file.name, url });
-    });
-    setComplianceAssets(prev => [...prev, ...uploaded]);
-    event.target.value = "";
+    if (!files || files.length === 0) return;
+    try {
+      const uploaded = await readFilesAsAssets(files);
+      setComplianceAssets(prev => [...prev, ...uploaded]);
+      setStatusMessage(null);
+    } catch (error) {
+      setStatusMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Unable to process document uploads",
+      });
+    } finally {
+      event.target.value = "";
+    }
   };
 
   const removePhoto = (asset: MediaAsset) => {
     setPhotoAssets(prev => prev.filter(item => item.url !== asset.url));
-    if (objectUrlsRef.current.includes(asset.url)) {
-      URL.revokeObjectURL(asset.url);
-      objectUrlsRef.current = objectUrlsRef.current.filter(url => url !== asset.url);
-    }
   };
 
   const removeComplianceDoc = (asset: MediaAsset) => {
     setComplianceAssets(prev => prev.filter(item => item.url !== asset.url));
-    if (objectUrlsRef.current.includes(asset.url)) {
-      URL.revokeObjectURL(asset.url);
-      objectUrlsRef.current = objectUrlsRef.current.filter(url => url !== asset.url);
-    }
   };
-
-  useEffect(() => {
-    return () => {
-      objectUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
-      objectUrlsRef.current = [];
-    };
-  }, []);
 
   const validateRequiredFields = () => {
     if (!formState.name.trim()) {
@@ -249,17 +281,18 @@ export default function AdminLabs() {
     }
   };
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     try {
+      setIsSaving(true);
       validateRequiredFields();
       const payload = formToPayload(formState, photoAssets, complianceAssets);
 
       if (editing === "new") {
-        const created = addLab(payload);
+        const created = await addLab(payload);
         setStatusMessage({ type: "success", text: `Created ${created.name}` });
       } else if (typeof editing === "number") {
-        updateLab(editing, payload);
+        await updateLab(editing, payload);
         setStatusMessage({ type: "success", text: "Lab details updated" });
       }
 
@@ -269,15 +302,27 @@ export default function AdminLabs() {
         type: "error",
         text: error instanceof Error ? error.message : "Unable to save lab details",
       });
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleDelete = (id: number) => {
-    removeLab(id);
-    if (editing === id) {
-      cancelEdit();
+  const handleDelete = async (id: number) => {
+    try {
+      setDeletingId(id);
+      await removeLab(id);
+      if (editing === id) {
+        cancelEdit();
+      }
+      setStatusMessage({ type: "success", text: "Lab removed from the directory" });
+    } catch (error) {
+      setStatusMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Unable to remove lab",
+      });
+    } finally {
+      setDeletingId(null);
     }
-    setStatusMessage({ type: "success", text: "Lab removed from the directory" });
   };
 
   return (
@@ -327,6 +372,19 @@ export default function AdminLabs() {
           </motion.div>
         )}
 
+        {labsError && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <span>{labsError}</span>
+            <button
+              type="button"
+              onClick={refresh}
+              className="rounded-full border border-destructive/40 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em]"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         <div className="mt-10 grid gap-8 lg:grid-cols-[1.05fr_1fr]">
           <motion.div
             initial={{ opacity: 0, y: 18 }}
@@ -336,7 +394,11 @@ export default function AdminLabs() {
           >
             {labs.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-border bg-card/50 p-10 text-center text-muted-foreground">
-                No labs in the directory yet. Use “Add lab” to create your first listing.
+                {isLoading
+                  ? "Loading lab directory…"
+                  : labsError
+                    ? "Unable to load the lab directory right now."
+                    : "No labs in the directory yet. Use “Add lab” to create your first listing."}
               </div>
             ) : (
               labs.map(lab => (
@@ -429,10 +491,11 @@ export default function AdminLabs() {
                     <button
                       type="button"
                       onClick={() => handleDelete(lab.id)}
-                      className="inline-flex items-center gap-2 rounded-full border border-destructive/40 px-3 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-destructive"
+                      disabled={deletingId === lab.id}
+                      className="inline-flex items-center gap-2 rounded-full border border-destructive/40 px-3 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-destructive disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                      Remove
+                      {deletingId === lab.id ? "Removing…" : "Remove"}
                     </button>
                   </div>
                 </div>
@@ -759,10 +822,11 @@ export default function AdminLabs() {
                 <div className="flex flex-wrap gap-3 pt-2">
                   <button
                     type="submit"
-                    className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+                    disabled={isSaving}
+                    className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <Save className="h-4 w-4" />
-                    Save changes
+                    {isSaving ? "Saving…" : "Save changes"}
                   </button>
                   <button
                     type="button"

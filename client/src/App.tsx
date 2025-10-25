@@ -24,9 +24,12 @@ import Status from "@/pages/status";
 import ServerError from "@/pages/server-error";
 import Maintenance from "@/pages/maintenance";
 import LabDetails from "@/pages/LabDetails";
+import LabRequest from "@/pages/LabRequest";
 import AdminLabs from "@/pages/AdminLabs";
 import Pricing from "@/pages/Pricing";
 import LabProfile from "@/pages/LabProfile";
+import ProfilePortal from "@/pages/ProfilePortal";
+import PaymentFlow from "@/pages/PaymentFlow";
 import { LabsProvider } from "@/context/LabsContext";
 
 function ScrollToTop() {
@@ -66,8 +69,11 @@ function Router() {
     <Switch>
       <Route path="/labs" component={Labs} />
       <Route path="/labs/:id" component={LabDetails} />
+      <Route path="/labs/:id/request" component={LabRequest} />
       <Route path="/admin/labs" component={AdminLabs} />
       <Route path="/lab-profile" component={LabProfile} />
+      <Route path="/account" component={ProfilePortal} />
+      <Route path="/payments" component={PaymentFlow} />
 
       {/* Auth Pages */}
       <Route path="/login" component={Login} />

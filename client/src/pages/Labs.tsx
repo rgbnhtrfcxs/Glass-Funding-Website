@@ -17,7 +17,7 @@ import { useMemo } from "react";
 import { useLabs } from "@/context/LabsContext";
 
 export default function Labs() {
-  const { labs } = useLabs();
+  const { labs, isLoading, error, refresh } = useLabs();
 
   const labCount = labs.length;
   const verifiedCount = labs.filter(lab => lab.isVerified).length;
@@ -33,7 +33,9 @@ export default function Labs() {
     ? Number((labs.reduce((sum, lab) => sum + lab.rating, 0) / labs.length).toFixed(1))
     : 0;
   const getImageUrl = (url: string, width = 1200) =>
-    `${url}${url.includes("?") ? "&" : "?"}auto=format&fit=crop&w=${width}&q=75`;
+    url.startsWith("data:")
+      ? url
+      : `${url}${url.includes("?") ? "&" : "?"}auto=format&fit=crop&w=${width}&q=${width >= 1600 ? 80 : 75}`;
 
   return (
     <section className="bg-background min-h-screen">
@@ -123,160 +125,187 @@ export default function Labs() {
           supporting a broad range of wet lab, fabrication, and analytics workflows.
         </p>
 
-        <div className="mt-12 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {labs.map((lab, index) => (
-            <motion.div
-              key={lab.id}
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.1 * (index % 3) }}
-              className="flex h-full flex-col rounded-3xl border border-border bg-card/80 p-8 shadow-sm"
+        {error && (
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <span>{error}</span>
+            <button
+              type="button"
+              onClick={refresh}
+              className="rounded-full border border-destructive/40 px-3 py-1 text-xs font-medium uppercase tracking-[0.3em]"
             >
-              {lab.photos.length > 0 && (
-                <div className="mb-6 overflow-hidden rounded-2xl border border-border/60 bg-background/40">
-                  <img
-                    src={getImageUrl(lab.photos[0].url)}
-                    alt={`${lab.name} preview - ${lab.photos[0].name}`}
-                    className="h-48 w-full object-cover"
-                    loading="lazy"
-                  />
-                </div>
-              )}
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-xl font-semibold text-foreground">{lab.name}</h3>
-                  <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                    <MapPin className="h-4 w-4 text-primary" />
-                    <span>{lab.location}</span>
+              Retry
+            </button>
+          </div>
+        )}
+
+        <div className="mt-12">
+          {isLoading && labs.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-border bg-card/70 p-10 text-center text-muted-foreground">
+              Loading labs…
+            </div>
+          ) : labs.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-border bg-card/70 p-10 text-center text-muted-foreground">
+              {error
+                ? "We couldn't load the lab directory. Please retry."
+                : "No partner labs are available yet. Check back soon."}
+            </div>
+          ) : (
+            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+              {labs.map((lab, index) => (
+                <motion.div
+                  key={lab.id}
+                  initial={{ opacity: 0, y: 24 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.1 * (index % 3) }}
+                  className="flex h-full flex-col rounded-3xl border border-border bg-card/80 p-8 shadow-sm"
+                >
+                  {lab.photos.length > 0 && (
+                    <div className="mb-6 overflow-hidden rounded-2xl border border-border/60 bg-background/40">
+                      <img
+                        src={getImageUrl(lab.photos[0].url)}
+                        alt={`${lab.name} preview - ${lab.photos[0].name}`}
+                        className="h-48 w-full object-cover"
+                        loading="lazy"
+                      />
+                    </div>
+                  )}
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-xl font-semibold text-foreground">{lab.name}</h3>
+                      <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                        <MapPin className="h-4 w-4 text-primary" />
+                        <span>{lab.location}</span>
+                      </div>
+                    </div>
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
+                        lab.isVerified
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-amber-50 text-amber-700"
+                      }`}
+                    >
+                      {lab.isVerified ? (
+                        <>
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Verified
+                        </>
+                      ) : (
+                        <>
+                          <ShieldAlert className="h-3.5 w-3.5" />
+                          Pending
+                        </>
+                      )}
+                    </span>
                   </div>
-                </div>
-                <span
-                  className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
-                    lab.isVerified
-                      ? "bg-emerald-50 text-emerald-700"
-                      : "bg-amber-50 text-amber-700"
-                  }`}
-                >
-                  {lab.isVerified ? (
-                    <>
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                      Verified
-                    </>
-                  ) : (
-                    <>
-                      <ShieldAlert className="h-3.5 w-3.5" />
-                      Pending
-                    </>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground">
+                      <Star className="h-3.5 w-3.5 text-primary" />
+                      {lab.rating.toFixed(1)}
+                    </span>
+                    <span className="inline-flex items-center gap-2">
+                      {lab.pricePrivacy ? (
+                        <>
+                          <Lock className="h-4 w-4 text-primary" />
+                          Private pricing
+                        </>
+                      ) : (
+                        <>
+                          <Unlock className="h-4 w-4 text-primary" />
+                          Transparent rates
+                        </>
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 text-sm text-muted-foreground">
+                    <div className="flex items-start gap-2">
+                      <Users className="h-4 w-4 flex-shrink-0 text-primary" />
+                      <span>{lab.labManager}</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <ShieldCheck className="h-4 w-4 flex-shrink-0 text-primary" />
+                      <span>{lab.compliance.join(" • ")}</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <CalendarClock className="h-4 w-4 flex-shrink-0 text-primary" />
+                      <span>{lab.minimumStay}</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-5">
+                    <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+                      Offers
+                    </h4>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {lab.offers.map(offer => (
+                        <span
+                          key={offer}
+                          className="rounded-full bg-muted/60 px-3 py-1 text-xs font-medium text-muted-foreground"
+                        >
+                          {offer}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-5">
+                    <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+                      Focus areas
+                    </h4>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {lab.focusAreas.map(area => (
+                        <span
+                          key={area}
+                          className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
+                        >
+                          {area}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-5">
+                    <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+                      Equipment highlights
+                    </h4>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      {lab.equipment.map(item => (
+                        <span
+                          key={item}
+                          className="rounded-full bg-muted/60 px-3 py-1"
+                        >
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  {lab.photos.length > 1 && (
+                    <div className="mt-5 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1">
+                        <Images className="h-3.5 w-3.5 text-primary" />
+                        {lab.photos.length} photos provided
+                      </span>
+                    </div>
                   )}
-                </span>
-              </div>
 
-              <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                <span className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground">
-                  <Star className="h-3.5 w-3.5 text-primary" />
-                  {lab.rating.toFixed(1)}
-                </span>
-                <span className="inline-flex items-center gap-2">
-                  {lab.pricePrivacy ? (
-                    <>
-                      <Lock className="h-4 w-4 text-primary" />
-                      Private pricing
-                    </>
-                  ) : (
-                    <>
-                      <Unlock className="h-4 w-4 text-primary" />
-                      Transparent rates
-                    </>
-                  )}
-                </span>
-              </div>
-
-              <div className="mt-4 grid gap-3 text-sm text-muted-foreground">
-                <div className="flex items-start gap-2">
-                  <Users className="h-4 w-4 flex-shrink-0 text-primary" />
-                  <span>{lab.labManager}</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <ShieldCheck className="h-4 w-4 flex-shrink-0 text-primary" />
-                  <span>{lab.compliance.join(" • ")}</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <CalendarClock className="h-4 w-4 flex-shrink-0 text-primary" />
-                  <span>{lab.minimumStay}</span>
-                </div>
-              </div>
-
-              <div className="mt-5">
-                <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-                  Offers
-                </h4>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {lab.offers.map(offer => (
-                    <span
-                      key={offer}
-                      className="rounded-full bg-muted/60 px-3 py-1 text-xs font-medium text-muted-foreground"
+                  <div className="mt-8 flex flex-wrap gap-3">
+                    <Link href={`/labs/${lab.id}`}>
+                      <a className="inline-flex items-center justify-center rounded-full border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary">
+                        View details
+                      </a>
+                    </Link>
+                    <a
+                      href={`mailto:${lab.contactEmail}`}
+                      className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
                     >
-                      {offer}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-5">
-                <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-                  Focus areas
-                </h4>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {lab.focusAreas.map(area => (
-                    <span
-                      key={area}
-                      className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
-                    >
-                      {area}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-5">
-                <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-                  Equipment highlights
-                </h4>
-                <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                  {lab.equipment.map(item => (
-                    <span
-                      key={item}
-                      className="rounded-full bg-muted/60 px-3 py-1"
-                    >
-                      {item}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              {lab.photos.length > 1 && (
-                <div className="mt-5 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                  <span className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1">
-                    <Images className="h-3.5 w-3.5 text-primary" />
-                    {lab.photos.length} photos provided
-                  </span>
-                </div>
-              )}
-
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Link href={`/labs/${lab.id}`}>
-                  <a className="inline-flex items-center justify-center rounded-full border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary">
-                    View details
-                  </a>
-                </Link>
-                <a
-                  href={`mailto:${lab.contactEmail}`}
-                  className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
-                >
-                  Contact lab
-                </a>
-              </div>
-            </motion.div>
-          ))}
+                      Contact lab
+                    </a>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </section>

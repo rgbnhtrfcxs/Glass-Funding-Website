@@ -24,10 +24,23 @@ interface LabDetailsProps {
 }
 
 export default function LabDetails({ params }: LabDetailsProps) {
-  const { labs } = useLabs();
+  const { labs, isLoading } = useLabs();
   const lab = labs.find(item => item.id === Number(params.id));
   const getImageUrl = (url: string, width = 1600) =>
-    `${url}${url.includes("?") ? "&" : "?"}auto=format&fit=crop&w=${width}&q=80`;
+    url.startsWith("data:")
+      ? url
+      : `${url}${url.includes("?") ? "&" : "?"}auto=format&fit=crop&w=${width}&q=80`;
+
+  if (isLoading && labs.length === 0) {
+    return (
+      <section className="bg-background min-h-screen">
+        <div className="container mx-auto px-4 py-24 max-w-3xl text-center space-y-6">
+          <h1 className="text-4xl font-semibold text-foreground">Loading lab details…</h1>
+          <p className="text-muted-foreground">Pulling the latest information from the lab directory.</p>
+        </div>
+      </section>
+    );
+  }
 
   if (!lab) {
     return (
@@ -257,6 +270,11 @@ export default function LabDetails({ params }: LabDetailsProps) {
           </section>
 
           <footer className="flex flex-wrap gap-3">
+            <Link href={`/labs/${lab.id}/request`}>
+              <a className="inline-flex items-center justify-center rounded-full border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary">
+                Request lab time
+              </a>
+            </Link>
             <a
               href={`mailto:${lab.contactEmail}`}
               className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"

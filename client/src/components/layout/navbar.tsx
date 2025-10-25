@@ -9,9 +9,7 @@ export function Navbar() {
     { href: "/", label: "Home" },
     { href: "/labs", label: "Labs" },
     { href: "/pricing", label: "Pricing" },
-    { href: "/lab-profile", label: "Lab Profile" },
-    { href: "/admin/labs", label: "Admin" },
-    { href: "/about", label: "About" },
+    { href: "/payments", label: "Payments" },
     { href: "/contact", label: "Contact" },
   ];
 
@@ -50,16 +48,24 @@ export function Navbar() {
             </button>
           </div>
 
-          <div className="hidden md:flex items-center space-x-8">
+          <div className="hidden md:flex items-center space-x-6">
             {navItems.map(item => (
               <Link href={item.href} key={item.href}>
-                <a
-                  className="text-muted-foreground hover:text-primary transition-colors"
-                >
+                <a className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
                   {item.label}
                 </a>
               </Link>
             ))}
+            <Link href="/login">
+              <a className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+                Sign in
+              </a>
+            </Link>
+            <Link href="/account">
+              <a className="inline-flex items-center rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90">
+                My profile
+              </a>
+            </Link>
           </div>
         </div>
       </div>
@@ -108,7 +114,7 @@ export function Navbar() {
                 </button>
               </div>
               <nav className="flex flex-1 flex-col gap-2 px-4 py-6">
-                {navItems.map(item => (
+                {[...navItems, { href: "/login", label: "Sign in" }, { href: "/account", label: "My profile" }].map(item => (
                   <Link href={item.href} key={item.href}>
                     <a
                       onClick={closeMenu}

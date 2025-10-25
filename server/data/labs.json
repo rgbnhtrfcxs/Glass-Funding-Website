@@ -1,0 +1,257 @@
+[
+  {
+    "name": "test test test",
+    "location": "Boston, MA",
+    "labManager": "Naomi Chen",
+    "contactEmail": "labs+atlas@glass.demo",
+    "compliance": [
+      "BSL-2",
+      "ISO 7 Cleanroom",
+      "GMP-aligned SOPs"
+    ],
+    "complianceDocs": [
+      {
+        "name": "Atlas-GMP-SOP.pdf",
+        "url": "https://files.glass-demo.com/atlas/Atlas-GMP-SOP.pdf"
+      }
+    ],
+    "isVerified": true,
+    "equipment": [
+      "Single-use bioreactors",
+      "Process analytics suite",
+      "Cryostorage",
+      "Sequencing core"
+    ],
+    "focusAreas": [
+      "Cell therapy",
+      "Process development",
+      "Bioprocess analytics"
+    ],
+    "offers": [
+      "Hourly rate",
+      "Equipment use rate",
+      "Day rate"
+    ],
+    "pricePrivacy": false,
+    "minimumStay": "20 lab hours per month",
+    "rating": 4.8,
+    "photos": [
+      {
+        "name": "Atlas main lab",
+        "url": "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b"
+      },
+      {
+        "name": "Bioreactor suite",
+        "url": "https://images.unsplash.com/photo-1581092160607-1e7a480fe1d3"
+      }
+    ],
+    "id": 1
+  },
+  {
+    "name": "North Coast NeuroLab",
+    "location": "Seattle, WA",
+    "labManager": "Dr. Leo Fernandez",
+    "contactEmail": "labs+neuro@glass.demo",
+    "compliance": [
+      "BSL-2",
+      "IACUC certified staff"
+    ],
+    "complianceDocs": [],
+    "isVerified": true,
+    "equipment": [
+      "Patch-clamp rigs",
+      "In vivo imaging suite",
+      "Behavioral analytics pods"
+    ],
+    "focusAreas": [
+      "Neuroscience",
+      "Neurotech",
+      "Behavioral analytics"
+    ],
+    "offers": [
+      "Hourly rate",
+      "Day rate"
+    ],
+    "pricePrivacy": true,
+    "minimumStay": "12 hours per week",
+    "rating": 4.6,
+    "photos": [
+      {
+        "name": "NeuroLab electrophysiology",
+        "url": "https://images.unsplash.com/photo-1559757175-5700dde6753a"
+      },
+      {
+        "name": "Imaging hallway",
+        "url": "https://images.unsplash.com/photo-1601047021843-1bb0ed760a1f"
+      }
+    ],
+    "id": 2
+  },
+  {
+    "name": "Coastal Genomics Hub",
+    "location": "San Diego, CA",
+    "labManager": "Priya Narayanan",
+    "contactEmail": "labs+genomics@glass.demo",
+    "compliance": [
+      "BSL-2",
+      "CLIA-like QA procedures"
+    ],
+    "complianceDocs": [
+      {
+        "name": "Coastal-CLIA-letter.pdf",
+        "url": "https://files.glass-demo.com/coastal/Coastal-CLIA-letter.pdf"
+      }
+    ],
+    "isVerified": false,
+    "equipment": [
+      "NovaSeq 6000",
+      "qPCR suites",
+      "Automated liquid handlers",
+      "BSL-2+ hoods"
+    ],
+    "focusAreas": [
+      "Genomics",
+      "Molecular diagnostics",
+      "Synthetic biology"
+    ],
+    "offers": [
+      "Monthly rent",
+      "Hourly rate",
+      "Equipment use rate"
+    ],
+    "pricePrivacy": true,
+    "minimumStay": "40 sequencer hours per project",
+    "rating": 4.4,
+    "photos": [
+      {
+        "name": "Sequencing core",
+        "url": "https://images.unsplash.com/photo-1583912268181-79d81fee4b4f"
+      },
+      {
+        "name": "Sample processing benches",
+        "url": "https://images.unsplash.com/photo-1521791136064-7986c2920216"
+      }
+    ],
+    "id": 3
+  },
+  {
+    "name": "Forge Biofabrication",
+    "location": "Austin, TX",
+    "labManager": "Harper Mahmoud",
+    "contactEmail": "labs+forge@glass.demo",
+    "compliance": [
+      "BSL-1",
+      "ISO 8 cleanroom"
+    ],
+    "complianceDocs": [],
+    "isVerified": true,
+    "equipment": [
+      "3D bioprinters",
+      "Mechanical testing lab",
+      "Cleanroom assembly line"
+    ],
+    "focusAreas": [
+      "Biofabrication",
+      "Regenerative medicine",
+      "Biomaterials"
+    ],
+    "offers": [
+      "Monthly rent",
+      "Day rate"
+    ],
+    "pricePrivacy": false,
+    "minimumStay": "One-week sprint",
+    "rating": 4.7,
+    "photos": [
+      {
+        "name": "Biofabrication floor",
+        "url": "https://images.unsplash.com/photo-1524567492595-49e0b121c1f8"
+      },
+      {
+        "name": "Cleanroom assembly",
+        "url": "https://images.unsplash.com/photo-1628595351029-c2bf17511435"
+      }
+    ],
+    "id": 4
+  },
+  {
+    "name": "Polar Proteomics Studio",
+    "location": "Chicago, IL",
+    "labManager": "Isabella Duarte",
+    "contactEmail": "labs+proteomics@glass.demo",
+    "compliance": [
+      "BSL-2",
+      "GLP documentation"
+    ],
+    "complianceDocs": [],
+    "isVerified": true,
+    "equipment": [
+      "Orbitrap Eclipse",
+      "UPLC systems",
+      "Cold chain logistics"
+    ],
+    "focusAreas": [
+      "Proteomics",
+      "Metabolomics",
+      "Biomarker discovery"
+    ],
+    "offers": [
+      "Equipment use rate",
+      "Hourly rate"
+    ],
+    "pricePrivacy": true,
+    "minimumStay": "30 sample batch",
+    "rating": 4.9,
+    "photos": [
+      {
+        "name": "Proteomics instruments",
+        "url": "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80"
+      },
+      {
+        "name": "Sample prep bays",
+        "url": "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158"
+      }
+    ],
+    "id": 5
+  },
+  {
+    "name": "Frontier Robotics Lab",
+    "location": "Pittsburgh, PA",
+    "labManager": "Maya Li",
+    "contactEmail": "labs+robotics@glass.demo",
+    "compliance": [
+      "UL certified equipment",
+      "On-site safety officer"
+    ],
+    "complianceDocs": [],
+    "isVerified": false,
+    "equipment": [
+      "Collaborative robot cells",
+      "Rapid prototyping suite",
+      "Environmental stress chambers"
+    ],
+    "focusAreas": [
+      "Robotics",
+      "Automation",
+      "Advanced manufacturing"
+    ],
+    "offers": [
+      "Monthly rent",
+      "Equipment use rate"
+    ],
+    "pricePrivacy": false,
+    "minimumStay": "Two-week sprints",
+    "rating": 4.3,
+    "photos": [
+      {
+        "name": "Robot testing floor",
+        "url": "https://images.unsplash.com/photo-1503023345310-bd7c1de61c7d"
+      },
+      {
+        "name": "Automation lab",
+        "url": "https://images.unsplash.com/photo-1485827404703-89b55fcc595e"
+      }
+    ],
+    "id": 6
+  }
+]

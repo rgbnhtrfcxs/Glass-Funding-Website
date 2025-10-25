@@ -1,34 +1,4 @@
-export const offerOptions = [
-  "Monthly rent",
-  "Hourly rate",
-  "Equipment use rate",
-  "Day rate",
-] as const;
-
-export type OfferOption = (typeof offerOptions)[number];
-
-export interface MediaAsset {
-  name: string;
-  url: string;
-}
-
-export interface LabPartner {
-  id: number;
-  name: string;
-  location: string;
-  labManager: string;
-  contactEmail: string;
-  compliance: string[];
-  complianceDocs: MediaAsset[];
-  isVerified: boolean;
-  equipment: string[];
-  focusAreas: string[];
-  offers: OfferOption[];
-  pricePrivacy: boolean;
-  minimumStay: string;
-  rating: number;
-  photos: MediaAsset[];
-}
+import type { LabPartner } from "./labs";
 
 export const mockLabs: LabPartner[] = [
   {
@@ -199,23 +169,23 @@ export const mockLabs: LabPartner[] = [
     complianceDocs: [],
     isVerified: false,
     equipment: [
-      "Collaborative robots",
-      "Machine vision suite",
-      "Rapid prototyping shop",
+      "Collaborative robot cells",
+      "Rapid prototyping suite",
+      "Environmental stress chambers",
     ],
-    focusAreas: ["Lab automation", "Assistive robotics", "AI/ML integration"],
+    focusAreas: ["Robotics", "Automation", "Advanced manufacturing"],
     offers: ["Monthly rent", "Equipment use rate"],
     pricePrivacy: false,
-    minimumStay: "60 hours per quarter",
+    minimumStay: "Two-week sprints",
     rating: 4.3,
     photos: [
       {
-        name: "Automation bays",
-        url: "https://images.unsplash.com/photo-1582719478181-2cf4e7b2d6fa",
+        name: "Robot testing floor",
+        url: "https://images.unsplash.com/photo-1503023345310-bd7c1de61c7d",
       },
       {
-        name: "Robotics lab overview",
-        url: "https://images.unsplash.com/photo-1582719478171-2cf4e7b2d6fb",
+        name: "Automation lab",
+        url: "https://images.unsplash.com/photo-1485827404703-89b55fcc595e",
       },
     ],
   },
