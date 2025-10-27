@@ -50,21 +50,15 @@ export function Navbar() {
 
           <div className="hidden md:flex items-center space-x-6">
             {navItems.map(item => (
-              <Link href={item.href} key={item.href}>
-                <a className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
-                  {item.label}
-                </a>
+              <Link href={item.href} key={item.href} className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+                {item.label}
               </Link>
             ))}
-            <Link href="/login">
-              <a className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
-                Sign in
-              </a>
+            <Link href="/login" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+              Sign in
             </Link>
-            <Link href="/account">
-              <a className="inline-flex items-center rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90">
-                My profile
-              </a>
+            <Link href="/account" className="inline-flex items-center rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90">
+              My profile
             </Link>
           </div>
         </div>
@@ -92,10 +86,8 @@ export function Navbar() {
               className="fixed top-0 right-0 z-50 flex h-screen w-64 flex-col bg-background shadow-lg md:hidden"
             >
               <div className="flex items-center justify-between border-b px-4 py-3">
-                <Link href="/">
-                  <a onClick={closeMenu}>
-                    <img src="/GlassLogo5.png" alt="Glass" className="h-10 w-auto" />
-                  </a>
+                <Link href="/" onClick={closeMenu}>
+                  <img src="/GlassLogo5.png" alt="Glass" className="h-10 w-auto" />
                 </Link>
                 <button
                   type="button"
@@ -115,13 +107,13 @@ export function Navbar() {
               </div>
               <nav className="flex flex-1 flex-col gap-2 px-4 py-6">
                 {[...navItems, { href: "/login", label: "Sign in" }, { href: "/account", label: "My profile" }].map(item => (
-                  <Link href={item.href} key={item.href}>
-                    <a
-                      onClick={closeMenu}
-                      className="rounded-md px-3 py-2 text-lg font-medium text-muted-foreground transition hover:bg-muted hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                    >
-                      {item.label}
-                    </a>
+                  <Link
+                    href={item.href}
+                    key={item.href}
+                    onClick={closeMenu}
+                    className="rounded-md px-3 py-2 text-lg font-medium text-muted-foreground transition hover:bg-muted hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  >
+                    {item.label}
                   </Link>
                 ))}
               </nav>

@@ -25,6 +25,7 @@ import ServerError from "@/pages/server-error";
 import Maintenance from "@/pages/maintenance";
 import LabDetails from "@/pages/LabDetails";
 import LabRequest from "@/pages/LabRequest";
+import LabCollaboration from "@/pages/LabCollaboration";
 import AdminLabs from "@/pages/AdminLabs";
 import Pricing from "@/pages/Pricing";
 import LabProfile from "@/pages/LabProfile";
@@ -70,6 +71,7 @@ function Router() {
       <Route path="/labs" component={Labs} />
       <Route path="/labs/:id" component={LabDetails} />
       <Route path="/labs/:id/request" component={LabRequest} />
+      <Route path="/labs/:id/collaborate" component={LabCollaboration} />
       <Route path="/admin/labs" component={AdminLabs} />
       <Route path="/lab-profile" component={LabProfile} />
       <Route path="/account" component={ProfilePortal} />

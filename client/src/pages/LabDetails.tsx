@@ -64,11 +64,9 @@ export default function LabDetails({ params }: LabDetailsProps) {
   return (
     <section className="bg-background min-h-screen">
       <div className="container mx-auto px-4 py-20 lg:py-24 max-w-5xl">
-        <Link href="/labs">
-          <a className="inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-primary">
-            <ArrowLeft className="h-4 w-4" />
-            Back to labs
-          </a>
+        <Link href="/labs" className="inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-primary">
+          <ArrowLeft className="h-4 w-4" />
+          Back to labs
         </Link>
 
         <motion.div
@@ -270,21 +268,23 @@ export default function LabDetails({ params }: LabDetailsProps) {
           </section>
 
           <footer className="flex flex-wrap gap-3">
-            <Link href={`/labs/${lab.id}/request`}>
-              <a className="inline-flex items-center justify-center rounded-full border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary">
-                Request lab time
-              </a>
+            <Link
+              href={`/labs/${lab.id}/request`}
+              className="inline-flex items-center justify-center rounded-full border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+            >
+              Request lab time
             </Link>
-            <a
-              href={`mailto:${lab.contactEmail}`}
+            <Link
+              href={`/labs/${lab.id}/collaborate`}
               className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
             >
-              Contact {lab.labManager}
-            </a>
-            <Link href="/labs">
-              <a className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary">
-                Explore other labs
-              </a>
+              Collaborate
+            </Link>
+            <Link
+              href="/labs"
+              className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+            >
+              Explore other labs
             </Link>
           </footer>
         </motion.div>
