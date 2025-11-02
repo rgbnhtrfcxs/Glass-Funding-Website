@@ -1,23 +1,43 @@
 import { useState, type FormEvent } from "react";
 import { useLocation, Link } from "wouter";
+import { supabase } from "../lib/supabaseClient"; 
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [, navigate] = useLocation();
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (event: FormEvent<HTMLFormElement>) => {
+  const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
     if (!email || !password) {
       setError("Enter your email and password to continue.");
       return;
     }
 
     setError(null);
-    // Fake login logic for MVP
-    alert("Logged in successfully!");
-    navigate("/");
+    setLoading(true);
+
+    try {
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError) {
+        setError(authError.message);
+      } else if (data.session) {
+        // Successful login
+        navigate("/"); // Redirect to homepage or dashboard
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Unexpected error occurred. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -32,8 +52,7 @@ export default function Login() {
               Sign in to keep backing the science that matters to you.
             </h1>
             <p className="text-sm md:text-base text-muted-foreground leading-relaxed">
-              Access your portfolio, track donations, and stay close to the research teams you support. Your credentials are
-              for this demo experience only.
+              Access your portfolio, track donations, and stay close to the research teams you support.
             </p>
             <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground shadow-sm">
               <p className="font-medium text-foreground">New to Glass?</p>
@@ -56,7 +75,7 @@ export default function Login() {
                   type="email"
                   className="mt-2 w-full rounded-full border border-border bg-background px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   value={email}
-                  onChange={event => setEmail(event.target.value)}
+                  onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.org"
                   required
                 />
@@ -75,19 +94,20 @@ export default function Login() {
                   type="password"
                   className="mt-2 w-full rounded-full border border-border bg-background px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   value={password}
-                  onChange={event => setPassword(event.target.value)}
+                  onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
                   required
                 />
               </div>
 
-              {error ? <p className="text-sm text-destructive">{error}</p> : null}
+              {error && <p className="text-sm text-destructive">{error}</p>}
 
               <button
                 type="submit"
                 className="w-full rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition"
+                disabled={loading}
               >
-                Log in
+                {loading ? "Signing in..." : "Log in"}
               </button>
             </form>
 

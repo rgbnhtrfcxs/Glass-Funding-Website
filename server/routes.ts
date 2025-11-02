@@ -6,6 +6,8 @@ import { storage } from "./storage";
 import { labStore } from "./labs-store";
 import { labRequestStore } from "./lab-requests-store";
 import { labCollaborationStore } from "./collaboration-store";
+import jwt from "jsonwebtoken";
+import { supabasePublic } from "./supabasePublicClient.js";
 
 import { ZodError } from "zod";
 
@@ -255,6 +257,67 @@ app.post("/api/profile/:id", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
+
+// Signup
+app.post("/api/signup", async (req, res) => {
+  try {
+    const { email, password, display_name } = req.body;
+
+    const { data, error } = await supabasePublic.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { display_name },
+      },
+    });
+
+    if (error) throw error;
+
+    res.status(201).json({ message: "Signup successful, check your email", user: data.user });
+  } catch (err) {
+    res.status(400).json({ message: err instanceof Error ? err.message : "Signup failed" });
+  }
+});
+
+// Login
+app.post("/api/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const { data, error } = await supabasePublic.auth.signInWithPassword({ email, password });
+
+    if (error) throw error;
+
+    // Return the session/token
+    res.json({
+      message: "Login successful",
+      access_token: data.session?.access_token,
+      refresh_token: data.session?.refresh_token,
+      user: data.user,
+    });
+  } catch (err) {
+    res.status(401).json({ message: err instanceof Error ? err.message : "Login failed" });
+  }
+});
+
+
+
+const authenticate = async (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ message: "Missing token" });
+
+  const { data, error } = await supabasePublic.auth.getUser(token);
+  if (error || !data?.user) return res.status(401).json({ message: "Invalid token" });
+
+  req.user = data.user;
+  next();
+};
+
+// Example of a protected route
+app.get("/api/profile", authenticate, async (req, res) => {
+  res.json({ message: "Authenticated!", user: req.user });
+});
+
 
 
   // --------- Return HTTP server ----------

@@ -1,21 +1,50 @@
-// client/src/pages/Signup.tsx
 import { useState, type FormEvent } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import { supabase } from "../lib/supabaseClient"; // Make sure path is correct
 
 export default function Signup() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [, navigate] = useLocation();
 
-  const handleSignup = (event: FormEvent<HTMLFormElement>) => {
+  const handleSignup = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
     if (!email.includes("@") || password.length < 6) {
       setError("Use a valid email address and a password with at least 6 characters.");
       return;
     }
+
     setError(null);
-    alert("Sign up functionality coming soon!");
+    setLoading(true);
+
+    try {
+      // Sign up the user
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (signUpError) {
+        setError(signUpError.message);
+        setLoading(false);
+        return;
+      }
+
+      
+      
+
+      // Navigate to a "welcome" or dashboard page
+      navigate("/login");
+    } catch (err) {
+      console.error(err);
+      setError("Unexpected error occurred. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -30,8 +59,7 @@ export default function Signup() {
               Build your Glass profile and direct capital where breakthroughs happen.
             </h1>
             <p className="text-sm md:text-base text-muted-foreground leading-relaxed">
-              Tell us a little about you and we’ll surface handpicked projects, personalised reports, and donation workflows
-              built for science philanthropy.
+              Tell us a little about you and we’ll surface handpicked projects, personalized reports, and donation workflows.
             </p>
             <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground shadow-sm">
               <p className="font-medium text-foreground">Already supporting teams?</p>
@@ -52,7 +80,7 @@ export default function Signup() {
                   type="text"
                   className="mt-2 w-full rounded-full border border-border bg-background px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   value={name}
-                  onChange={event => setName(event.target.value)}
+                  onChange={(e) => setName(e.target.value)}
                   placeholder="Your full name"
                   required
                 />
@@ -64,7 +92,7 @@ export default function Signup() {
                   type="email"
                   className="mt-2 w-full rounded-full border border-border bg-background px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   value={email}
-                  onChange={event => setEmail(event.target.value)}
+                  onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.org"
                   required
                 />
@@ -76,20 +104,21 @@ export default function Signup() {
                   type="password"
                   className="mt-2 w-full rounded-full border border-border bg-background px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   value={password}
-                  onChange={event => setPassword(event.target.value)}
+                  onChange={(e) => setPassword(e.target.value)}
                   placeholder="Minimum 6 characters"
                   required
                   minLength={6}
                 />
               </div>
 
-              {error ? <p className="text-sm text-destructive">{error}</p> : null}
+              {error && <p className="text-sm text-destructive">{error}</p>}
 
               <button
                 type="submit"
                 className="w-full rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition"
+                disabled={loading}
               >
-                Create account
+                {loading ? "Creating account..." : "Create account"}
               </button>
             </form>
 
