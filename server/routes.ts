@@ -1,86 +1,97 @@
-import type { Express } from "express";
+// server/routes.ts
+import express, { Express } from "express";
 import { createServer } from "http";
+import { supabase } from "./supabaseClient.js";
 import { storage } from "./storage";
 import { labStore } from "./labs-store";
 import { labRequestStore } from "./lab-requests-store";
-import { insertWaitlistSchema, insertContactSchema } from "@shared/schema";
-import { insertLabCollaborationSchema } from "@shared/collaborations";
 import { labCollaborationStore } from "./collaboration-store";
+
+import { ZodError } from "zod";
+
+import {
+  insertWaitlistSchema,
+  insertContactSchema,
+} from "@shared/schema";
+
+import { insertLabCollaborationSchema } from "@shared/collaborations";
 import {
   insertLabRequestSchema,
   updateLabRequestStatusSchema,
 } from "@shared/labRequests";
-import { ZodError } from "zod";
 
-export async function registerRoutes(app: Express) {
+import { insertDonationSchema } from "@shared/donations";
+
+export function registerRoutes(app: Express) {
+  // Middleware
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+
+  // --------- Donations ----------
+  app.post("/api/donations", async (req, res) => {
+    try {
+      const payload = insertDonationSchema.parse(req.body);
+      const { data, error } = await supabase
+        .from("donations")
+        .insert(payload)
+        .select()
+        .single();
+      if (error) throw error;
+      res.status(201).json(data);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const issue = error.issues[0];
+        return res
+          .status(400)
+          .json({ message: issue?.message ?? "Invalid donation payload" });
+      }
+      res
+        .status(500)
+        .json({ message: error instanceof Error ? error.message : "Unable to save donation" });
+    }
+  });
+
+  app.get("/api/donations", async (_req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from("donations")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      res.json(data ?? []);
+    } catch (error) {
+      res
+        .status(500)
+        .json({ message: error instanceof Error ? error.message : "Unable to load donations" });
+    }
+  });
+
+  // --------- Waitlist ----------
   app.post("/api/waitlist", async (req, res) => {
     try {
       const data = insertWaitlistSchema.parse(req.body);
       const result = await storage.addToWaitlist(data);
       res.json(result);
-    } catch (error) {
+    } catch (_error) {
       res.status(400).json({ message: "Invalid waitlist submission" });
     }
   });
 
+  // --------- Contact ----------
   app.post("/api/contact", async (req, res) => {
     try {
       const data = insertContactSchema.parse(req.body);
       const result = await storage.submitContact(data);
       res.json(result);
-    } catch (error) {
+    } catch (_error) {
       res.status(400).json({ message: "Invalid contact submission" });
     }
   });
 
+  // --------- Labs ----------
   app.get("/api/labs", async (_req, res) => {
     const labs = await labStore.list();
     res.json(labs);
-  });
-
-  app.post("/api/lab-collaborations", async (req, res) => {
-    try {
-      const payload = insertLabCollaborationSchema.parse(req.body);
-      const lab = await labStore.findById(payload.labId);
-      if (!lab) {
-        return res.status(404).json({ message: "Selected lab no longer exists" });
-      }
-      const created = await labCollaborationStore.create({
-        ...payload,
-        labName: lab.name,
-      });
-      res.status(201).json(created);
-    } catch (error) {
-      if (error instanceof ZodError) {
-        const issue = error.issues[0];
-        return res.status(400).json({ message: issue?.message ?? "Invalid collaboration payload" });
-      }
-      const msg = error instanceof Error ? error.message : "Unable to submit collaboration request";
-      res.status(500).json({ message: msg });
-    }
-  });
-
-  // Debug endpoint to verify saved collaborations (optional; can remove later)
-  app.get("/api/lab-collaborations", async (req, res) => {
-    try {
-      const labId = Number(req.query.labId);
-      const { supabase } = await import("./supabaseClient");
-      let query = supabase
-        .from("lab_collaborations")
-        .select("id, lab_name, contact_name, contact_email, target_labs, collaboration_focus, resources_offered, desired_timeline, additional_notes, created_at")
-        .order("id", { ascending: false });
-      // labId is only used to look up lab_name; if provided, filter by the resolved lab name
-      if (!Number.isNaN(labId)) {
-        const lab = await (await import("./labs-store")).labStore.findById(labId);
-        if (lab) query = query.eq("lab_name", lab.name);
-      }
-      const { data, error } = await query;
-      if (error) throw error;
-      res.json(data ?? []);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : "Unable to load collaborations";
-      res.status(500).json({ message: msg });
-    }
   });
 
   app.post("/api/labs", async (req, res) => {
@@ -90,7 +101,9 @@ export async function registerRoutes(app: Express) {
     } catch (error) {
       if (error instanceof ZodError) {
         const issue = error.issues[0];
-        return res.status(400).json({ message: issue?.message ?? "Invalid lab payload" });
+        return res
+          .status(400)
+          .json({ message: issue?.message ?? "Invalid lab payload" });
       }
       res.status(500).json({ message: "Unable to create lab" });
     }
@@ -107,7 +120,9 @@ export async function registerRoutes(app: Express) {
     } catch (error) {
       if (error instanceof ZodError) {
         const issue = error.issues[0];
-        return res.status(400).json({ message: issue?.message ?? "Invalid lab update" });
+        return res
+          .status(400)
+          .json({ message: issue?.message ?? "Invalid lab update" });
       }
       if (error instanceof Error && error.message === "Lab not found") {
         return res.status(404).json({ message: error.message });
@@ -132,6 +147,30 @@ export async function registerRoutes(app: Express) {
     }
   });
 
+  // --------- Lab Collaborations ----------
+  app.post("/api/lab-collaborations", async (req, res) => {
+    try {
+      const payload = insertLabCollaborationSchema.parse(req.body);
+      const lab = await labStore.findById(payload.labId);
+      if (!lab) return res.status(404).json({ message: "Lab not found" });
+
+      const created = await labCollaborationStore.create({
+        ...payload,
+        labName: lab.name,
+      });
+      res.status(201).json(created);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const issue = error.issues[0];
+        return res
+          .status(400)
+          .json({ message: issue?.message ?? "Invalid collaboration payload" });
+      }
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to submit collaboration" });
+    }
+  });
+
+  // --------- Lab Requests ----------
   app.get("/api/lab-requests", async (_req, res) => {
     const requests = await labRequestStore.list();
     res.json(requests);
@@ -141,9 +180,8 @@ export async function registerRoutes(app: Express) {
     try {
       const payload = insertLabRequestSchema.parse(req.body);
       const lab = await labStore.findById(payload.labId);
-      if (!lab) {
-        return res.status(404).json({ message: "Selected lab no longer exists" });
-      }
+      if (!lab) return res.status(404).json({ message: "Lab not found" });
+
       const created = await labRequestStore.create({
         ...payload,
         labName: lab.name,
@@ -152,17 +190,18 @@ export async function registerRoutes(app: Express) {
     } catch (error) {
       if (error instanceof ZodError) {
         const issue = error.issues[0];
-        return res.status(400).json({ message: issue?.message ?? "Invalid request" });
+        return res
+          .status(400)
+          .json({ message: issue?.message ?? "Invalid lab request payload" });
       }
-      res.status(500).json({ message: "Unable to submit request" });
+      res.status(500).json({ message: "Unable to submit lab request" });
     }
   });
 
   app.patch("/api/lab-requests/:id/status", async (req, res) => {
     const id = Number(req.params.id);
-    if (Number.isNaN(id)) {
-      return res.status(400).json({ message: "Invalid request id" });
-    }
+    if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid request id" });
+
     try {
       const data = updateLabRequestStatusSchema.parse(req.body);
       const updated = await labRequestStore.updateStatus(id, data);
@@ -170,14 +209,54 @@ export async function registerRoutes(app: Express) {
     } catch (error) {
       if (error instanceof ZodError) {
         const issue = error.issues[0];
-        return res.status(400).json({ message: issue?.message ?? "Invalid status update" });
+        return res
+          .status(400)
+          .json({ message: issue?.message ?? "Invalid status update" });
       }
       if (error instanceof Error && error.message.includes("not found")) {
         return res.status(404).json({ message: error.message });
       }
-      res.status(500).json({ message: "Unable to update request" });
+      res.status(500).json({ message: "Unable to update request status" });
     }
   });
 
+  // Get a profile by ID
+app.get("/api/profile/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error) return res.status(404).json({ error: error.message });
+    res.status(200).json(data);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Create or update a profile
+app.post("/api/profile/:id", async (req, res) => {
+  const { id } = req.params;
+  const updates = req.body; // e.g., { full_name: "John Doe" }
+
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .upsert({ id, ...updates })
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.status(200).json(data);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+
+  // --------- Return HTTP server ----------
   return createServer(app);
 }
