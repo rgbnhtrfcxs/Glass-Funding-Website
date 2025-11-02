@@ -1,31 +1,31 @@
 import { motion } from "framer-motion";
-import { Link, useLocation } from "wouter";
-import type { ReactNode } from "react";
+import { Link } from "wouter";
+import type { ReactNode, ChangeEvent } from "react";
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { useAuth } from "@/context/AuthContext";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export default function ProfilePortal() {
   const inputClasses =
     "w-full rounded-2xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
 
+  const { user, loading: authLoading, signOut } = useAuth();
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [, setLocation] = useLocation();
 
   // Form state
   const [name, setName] = useState("");
-  const [organization, setOrganization] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState("");
-  const [extra1, setExtra1] = useState("");
-  const [extra2, setExtra2] = useState("");
-  const [extra3, setExtra3] = useState("");
+  const [subscriptionStatus, setSubscriptionStatus] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     async function fetchProfile() {
-      const user = supabase.auth.user();
-
       if (!user) {
         setProfileData(null);
         setLoading(false);
@@ -34,55 +34,54 @@ export default function ProfilePortal() {
 
       const { data, error } = await supabase
         .from("profiles")
-        .select("*")
+        .select("user_id,email,display_name,role,subscription_status,name,avatar_url,created_at,updated_at")
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== "PGRST116") {
+      if (error) {
         console.error("Error fetching profile:", error.message);
         setProfileData(null);
       } else {
         setProfileData(data || null);
-
-        // Populate form with existing data
         if (data) {
-          setName(data.name || "");
-          setOrganization(data.organization || "");
-          setRole(data.role || "");
-          setExtra1(data.extra1 || "");
-          setExtra2(data.extra2 || "");
-          setExtra3(data.extra3 || "");
+          setName(data.name ?? "");
+          setDisplayName(data.display_name ?? "");
+          setRole(data.role ?? "");
+          setSubscriptionStatus(data.subscription_status ?? "");
+          setAvatarUrl(data.avatar_url ?? null);
+        } else {
+          // No row yet; initialize read-only fields from defaults
+          setRole("user");
+          setSubscriptionStatus("none");
         }
       }
 
       setLoading(false);
     }
 
-    fetchProfile();
+    if (!authLoading) {
+      fetchProfile();
+    }
 
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (event) => {
-        if (event === "SIGNED_OUT") {
-          setProfileData(null);
-          setLocation("/");
-        } else if (event === "SIGNED_IN") {
-          fetchProfile();
-        }
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session?.user) {
+        setProfileData(null);
+      } else {
+        fetchProfile();
       }
-    );
+    });
 
-    return () => listener?.unsubscribe();
-  }, []);
+    return () => subscription.subscription.unsubscribe();
+  }, [authLoading, user?.id]);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    await signOut();
   };
 
   const handleSaveProfile = async () => {
     setError(null);
     setSaving(true);
 
-    const user = supabase.auth.user();
     if (!user) {
       setError("You must be logged in to save your profile.");
       setSaving(false);
@@ -90,25 +89,23 @@ export default function ProfilePortal() {
     }
 
     try {
-      if (profileData) {
-        // Update existing profile
-        const { error: updateError } = await supabase
-          .from("profiles")
-          .update({ name, organization, role, extra1, extra2, extra3 })
-          .eq("user_id", user.id);
+      const payload = {
+        user_id: user.id,
+        email: user.email,
+        name: name || null,
+        display_name: displayName || null,
+        avatar_url: avatarUrl || null,
+      } as const;
 
-        if (updateError) throw updateError;
-      } else {
-        // Insert new profile
-        const { error: insertError } = await supabase
-          .from("profiles")
-          .insert({ user_id: user.id, name, organization, role, extra1, extra2, extra3 });
+      // Upsert row; RLS allows only own row
+      const { error: upsertError } = await supabase
+        .from("profiles")
+        .upsert(payload, { onConflict: "user_id" });
 
-        if (insertError) throw insertError;
-      }
+      if (upsertError) throw upsertError;
 
       // Refresh profile data
-      setProfileData({ user_id: user.id, name, organization, role, extra1, extra2, extra3 });
+      setProfileData(prev => ({ ...(prev ?? {}), ...payload }));
     } catch (err: any) {
       console.error(err);
       setError(err.message || "Failed to save profile.");
@@ -116,6 +113,38 @@ export default function ProfilePortal() {
       setSaving(false);
     }
   };
+
+  async function handleAvatarChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    setUploading(true);
+    setError(null);
+    try {
+      const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+      const path = `${user.id}/avatar.${ext}`;
+      const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, {
+        cacheControl: "3600",
+        upsert: true,
+        contentType: file.type,
+      });
+      if (upErr) throw upErr;
+
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      const publicUrl = data.publicUrl;
+      setAvatarUrl(publicUrl);
+
+      const { error: profileErr } = await supabase
+        .from("profiles")
+        .upsert({ user_id: user.id, email: user.email, avatar_url: publicUrl }, { onConflict: "user_id" });
+      if (profileErr) throw profileErr;
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "Failed to upload avatar.");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   return (
     <section className="bg-background min-h-screen">
@@ -152,17 +181,15 @@ export default function ProfilePortal() {
               Profile Info
             </h2>
 
-            {loading ? (
+            {loading || authLoading ? (
               <p className="mt-4 text-sm text-muted-foreground">Loading profile...</p>
             ) : profileData ? (
               <div className="mt-4 space-y-2 text-sm text-foreground">
                 <p><strong>Name:</strong> {profileData.name || "—"}</p>
-                <p><strong>Email:</strong> {supabase.auth.user()?.email || "—"}</p>
-                <p><strong>Organization:</strong> {profileData.organization || "—"}</p>
-                <p><strong>Role:</strong> {profileData.role || "—"}</p>
-                <p><strong>Extra1:</strong> {profileData.extra1 || "—"}</p>
-                <p><strong>Extra2:</strong> {profileData.extra2 || "—"}</p>
-                <p><strong>Extra3:</strong> {profileData.extra3 || "—"}</p>
+                <p><strong>Display name:</strong> {profileData.display_name || "—"}</p>
+                <p><strong>Email:</strong> {user?.email || "—"}</p>
+                <p><strong>Role:</strong> {profileData.role || role || "—"}</p>
+                <p><strong>Subscription:</strong> {profileData.subscription_status || subscriptionStatus || "—"}</p>
                 <button
                   className="mt-4 inline-flex items-center justify-center rounded-full bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
                   onClick={handleSignOut}
@@ -189,23 +216,34 @@ export default function ProfilePortal() {
             </h2>
             {error && <p className="text-sm text-destructive mt-2">{error}</p>}
             <form className="mt-6 space-y-4" onSubmit={(e) => e.preventDefault()}>
+              <Field label="Avatar">
+                <div className="flex items-center gap-4">
+                  <Avatar className="h-14 w-14">
+                    <AvatarImage src={avatarUrl ?? undefined} alt={displayName || name || "Avatar"} />
+                    <AvatarFallback className="text-base font-semibold bg-muted">
+                      {(displayName || name || user?.email || "?").slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <label className="inline-flex items-center rounded-full border px-3 py-2 text-xs font-medium cursor-pointer hover:border-primary hover:text-primary">
+                    <input type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+                    {uploading ? "Uploading…" : "Upload photo"}
+                  </label>
+                </div>
+              </Field>
               <Field label="Full name">
                 <input className={inputClasses} value={name} onChange={(e) => setName(e.target.value)} />
               </Field>
-              <Field label="Organization">
-                <input className={inputClasses} value={organization} onChange={(e) => setOrganization(e.target.value)} />
+              <Field label="Display name">
+                <input className={inputClasses} value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
               </Field>
-              <Field label="Role / title">
-                <input className={inputClasses} value={role} onChange={(e) => setRole(e.target.value)} />
+              <Field label="Email">
+                <input className={inputClasses} value={user?.email ?? ""} disabled />
               </Field>
-              <Field label="Extra1">
-                <input className={inputClasses} value={extra1} onChange={(e) => setExtra1(e.target.value)} />
+              <Field label="Role">
+                <input className={inputClasses} value={role} disabled />
               </Field>
-              <Field label="Extra2">
-                <input className={inputClasses} value={extra2} onChange={(e) => setExtra2(e.target.value)} />
-              </Field>
-              <Field label="Extra3">
-                <input className={inputClasses} value={extra3} onChange={(e) => setExtra3(e.target.value)} />
+              <Field label="Subscription status">
+                <input className={inputClasses} value={subscriptionStatus} disabled />
               </Field>
 
               <button

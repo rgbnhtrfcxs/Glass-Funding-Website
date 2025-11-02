@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { AnimatePresence, motion } from "framer-motion";
+import { useAuth } from "@/context/AuthContext";
 
 export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -15,6 +16,8 @@ export function Navbar() {
 
   const toggleMenu = () => setIsMenuOpen(prev => !prev);
   const closeMenu = () => setIsMenuOpen(false);
+
+  const { user, signOut } = useAuth();
 
   return (
     <motion.nav 
@@ -54,12 +57,28 @@ export function Navbar() {
                 {item.label}
               </Link>
             ))}
-            <Link href="/login" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
-              Sign in
-            </Link>
-            <Link href="/account" className="inline-flex items-center rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90">
-              My profile
-            </Link>
+            {!user ? (
+              <>
+                <Link href="/login" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+                  Sign in
+                </Link>
+                <Link href="/signup" className="inline-flex items-center rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90">
+                  Create account
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link href="/account" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+                  My profile
+                </Link>
+                <button
+                  onClick={() => signOut()}
+                  className="inline-flex items-center rounded-full border px-4 py-2 text-sm font-semibold text-muted-foreground transition hover:border-primary hover:text-primary"
+                >
+                  Sign out
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -106,7 +125,10 @@ export function Navbar() {
                 </button>
               </div>
               <nav className="flex flex-1 flex-col gap-2 px-4 py-6">
-                {[...navItems, { href: "/login", label: "Sign in" }, { href: "/account", label: "My profile" }].map(item => (
+                {[...navItems,
+                  ...(user
+                    ? [{ href: "/account", label: "My profile" }]
+                    : [{ href: "/login", label: "Sign in" }, { href: "/signup", label: "Create account" }])].map(item => (
                   <Link
                     href={item.href}
                     key={item.href}
@@ -116,6 +138,14 @@ export function Navbar() {
                     {item.label}
                   </Link>
                 ))}
+                {user && (
+                  <button
+                    onClick={() => { signOut(); closeMenu(); }}
+                    className="rounded-md px-3 py-2 text-lg font-medium text-muted-foreground transition hover:bg-muted hover:text-primary text-left"
+                  >
+                    Sign out
+                  </button>
+                )}
               </nav>
             </motion.aside>
           </>

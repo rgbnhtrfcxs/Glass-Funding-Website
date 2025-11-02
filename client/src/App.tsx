@@ -30,8 +30,11 @@ import AdminLabs from "@/pages/AdminLabs";
 import Pricing from "@/pages/Pricing";
 import LabProfile from "@/pages/LabProfile";
 import ProfilePortal from "@/pages/ProfilePortal";
+import Account from "@/pages/Account";
 import PaymentFlow from "@/pages/PaymentFlow";
 import { LabsProvider } from "@/context/LabsContext";
+import { AuthProvider } from "@/context/AuthContext";
+import ProtectedRoute from "@/components/ProtectedRoute";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -74,7 +77,8 @@ function Router() {
       <Route path="/labs/:id/collaborate" component={LabCollaboration} />
       <Route path="/admin/labs" component={AdminLabs} />
       <Route path="/lab-profile" component={LabProfile} />
-      <Route path="/account" component={ProfilePortal} />
+      <ProtectedRoute path="/account" component={Account} />
+      <ProtectedRoute path="/account/edit" component={ProfilePortal} />
       <Route path="/payments" component={PaymentFlow} />
 
       {/* Auth Pages */}
@@ -104,14 +108,16 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <LabsProvider>
-        <Navbar />
-        <ScrollToTop />
-        <PageTransition>
-          <Router />
-        </PageTransition>
-        <Toaster />
-      </LabsProvider>
+      <AuthProvider>
+        <LabsProvider>
+          <Navbar />
+          <ScrollToTop />
+          <PageTransition>
+            <Router />
+          </PageTransition>
+          <Toaster />
+        </LabsProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }
