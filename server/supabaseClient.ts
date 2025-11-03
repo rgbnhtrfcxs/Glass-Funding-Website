@@ -1,12 +1,13 @@
-// Load dotenv only in development
-if (process.env.NODE_ENV !== "production") {
-  import("dotenv").then(dotenv => {
-    const path = require("path");
-    dotenv.config({ path: path.resolve(".env") });
-  });
-}
-
 import { createClient } from "@supabase/supabase-js";
+
+// Load dotenv synchronously in development only
+if (process.env.NODE_ENV !== "production") {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const dotenv = require("dotenv");
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require("path");
+  dotenv.config({ path: path.resolve(__dirname, ".env") });
+}
 
 const url = process.env.SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
