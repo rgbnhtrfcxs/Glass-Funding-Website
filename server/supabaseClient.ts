@@ -1,14 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
+import path from "path";
+import dotenv from "dotenv";
 
-// Load dotenv synchronously in development only
+// Load dotenv only in development
 if (process.env.NODE_ENV !== "production") {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const dotenv = require("dotenv");
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const path = require("path");
-  dotenv.config({ path: path.resolve(__dirname, ".env") });
+  dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 }
 
+// Supabase environment variables
 const url = process.env.SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -18,6 +17,7 @@ if (!url || !serviceRoleKey) {
   );
 }
 
+// Create Supabase client
 export const supabase = createClient(url, serviceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
