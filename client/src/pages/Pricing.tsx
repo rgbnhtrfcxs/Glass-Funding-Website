@@ -5,14 +5,14 @@ import { Link } from "wouter";
 const tiers = [
   {
     name: "Base",
-    monthlyPrice: 99,
+    monthlyPrice: 0,
     description: "Launch on Glass with the essentials.",
     highlights: ["Profile page", "Equipment showcase", "Inbound contact form"],
     featured: false,
   },
   {
     name: "Verified",
-    monthlyPrice: 149,
+    monthlyPrice: 99,
     description: "Add the badge researchers trust.",
     highlights: ["Remote/on-site verification", "Badge on listing", "Priority placement"],
     featured: false,
