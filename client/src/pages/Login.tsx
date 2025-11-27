@@ -8,6 +8,15 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [, navigate] = useLocation();
   const [loading, setLoading] = useState(false);
+  // Destination after successful login: honor ?next=... or default to /account
+  const next = (() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("next") || "/account";
+    } catch {
+      return "/account";
+    }
+  })();
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -29,8 +38,8 @@ export default function Login() {
       if (authError) {
         setError(authError.message);
       } else if (data.session) {
-        // Successful login
-        navigate("/account");
+        // Successful login — navigate to requested page or account
+        navigate(next, { replace: true });
       }
     } catch (err) {
       console.error(err);
