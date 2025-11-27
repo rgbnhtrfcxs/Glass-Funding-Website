@@ -16,6 +16,9 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { useLabs } from "@/context/LabsContext";
+import { useAuth } from "@/context/AuthContext";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 interface LabDetailsProps {
   params: {
@@ -25,6 +28,32 @@ interface LabDetailsProps {
 
 export default function LabDetails({ params }: LabDetailsProps) {
   const { labs, isLoading } = useLabs();
+  const { user } = useAuth();
+  const [canCollaborate, setCanCollaborate] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    async function checkRole() {
+      if (!user) {
+        setCanCollaborate(false);
+        return;
+      }
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!mounted) return;
+      if (error) {
+        setCanCollaborate(false);
+        return;
+      }
+      setCanCollaborate((data?.role as string) === "lab" || (data?.role as string) === "admin");
+    }
+    checkRole();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id]);
   const lab = labs.find(item => item.id === Number(params.id));
   const getImageUrl = (url: string, width = 1600) =>
     url.startsWith("data:")
@@ -274,12 +303,14 @@ export default function LabDetails({ params }: LabDetailsProps) {
             >
               Request lab time
             </Link>
-            <Link
-              href={`/labs/${lab.id}/collaborate`}
-              className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
-            >
-              Collaborate
-            </Link>
+            {canCollaborate && (
+              <Link
+                href={`/labs/${lab.id}/collaborate`}
+                className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+              >
+                Collaborate
+              </Link>
+            )}
             <Link
               href="/labs"
               className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"

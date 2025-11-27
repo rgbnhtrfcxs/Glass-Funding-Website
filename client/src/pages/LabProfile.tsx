@@ -80,7 +80,7 @@ export default function LabProfile() {
           transition={{ duration: 0.6, delay: 0.2 }}
           className="mt-12 flex flex-wrap gap-3"
         >
-          <Link href="/admin/labs">
+          <Link href="/lab/manage">
             <a className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary">
               Open lab editor
             </a>

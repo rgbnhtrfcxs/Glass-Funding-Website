@@ -31,10 +31,14 @@ import Pricing from "@/pages/Pricing";
 import LabProfile from "@/pages/LabProfile";
 import ProfilePortal from "@/pages/ProfilePortal";
 import Account from "@/pages/Account";
+import MyLab from "@/pages/MyLab";
+import Logout from "@/pages/Logout";
 import PaymentFlow from "@/pages/PaymentFlow";
 import { LabsProvider } from "@/context/LabsContext";
 import { AuthProvider } from "@/context/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import LabRoute from "@/components/LabRoute";
+import AdminRoute from "@/components/AdminRoute";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -74,12 +78,14 @@ function Router() {
       <Route path="/labs" component={Labs} />
       <Route path="/labs/:id" component={LabDetails} />
       <Route path="/labs/:id/request" component={LabRequest} />
-      <Route path="/labs/:id/collaborate" component={LabCollaboration} />
-      <Route path="/admin/labs" component={AdminLabs} />
+      <LabRoute path="/labs/:id/collaborate" component={LabCollaboration} />
+      <AdminRoute path="/admin/labs" component={AdminLabs} />
       <Route path="/lab-profile" component={LabProfile} />
       <ProtectedRoute path="/account" component={Account} />
       <ProtectedRoute path="/account/edit" component={ProfilePortal} />
+      <LabRoute path="/lab/manage" component={MyLab} />
       <Route path="/payments" component={PaymentFlow} />
+      <Route path="/logout" component={Logout} />
 
       {/* Auth Pages */}
       <Route path="/login" component={Login} />

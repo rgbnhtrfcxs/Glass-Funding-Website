@@ -23,12 +23,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     init();
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
 
     return () => {
-      subscription.subscription.unsubscribe();
+      try {
+        // supabase-js v2 returns { data: { subscription } }
+        // Be defensive across versions
+        // @ts-ignore
+        authListener?.subscription?.unsubscribe?.();
+        // @ts-ignore
+        authListener?.unsubscribe?.();
+      } catch {}
       mounted = false;
     };
   }, []);
@@ -49,4 +56,3 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
-

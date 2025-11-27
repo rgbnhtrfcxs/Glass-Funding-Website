@@ -281,7 +281,7 @@ app.post("/api/signup", async (req, res) => {
 });
 
 // Login
-app.post("/api/login", async (req, res) => {
+  app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
     const { data, error } = await supabasePublic.auth.signInWithPassword({ email, password });
@@ -298,7 +298,7 @@ app.post("/api/login", async (req, res) => {
   } catch (err) {
     res.status(401).json({ message: err instanceof Error ? err.message : "Login failed" });
   }
-});
+  });
 
 
 
@@ -316,6 +316,54 @@ const authenticate = async (req, res, next) => {
 // Example of a protected route
 app.get("/api/profile", authenticate, async (req, res) => {
   res.json({ message: "Authenticated!", user: req.user });
+});
+
+// Lab manager endpoints: manage only the lab tied to their email (contact_email)
+app.get("/api/my-lab", authenticate, async (req, res) => {
+  try {
+    const email = req.user?.email;
+    if (!email) return res.status(400).json({ message: "No email on user" });
+
+    // find lab where contact_email matches user email
+    const { data, error } = await supabase
+      .from("labs")
+      .select("id")
+      .eq("contact_email", email)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ message: "No lab linked to this account" });
+
+    const lab = await labStore.findById(Number(data.id));
+    if (!lab) return res.status(404).json({ message: "Lab not found" });
+    res.json(lab);
+  } catch (err) {
+    res.status(500).json({ message: err instanceof Error ? err.message : "Unable to load lab" });
+  }
+});
+
+app.put("/api/my-lab", authenticate, async (req, res) => {
+  try {
+    const email = req.user?.email;
+    if (!email) return res.status(400).json({ message: "No email on user" });
+
+    const { data, error } = await supabase
+      .from("labs")
+      .select("id")
+      .eq("contact_email", email)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ message: "No lab linked to this account" });
+
+    const labId = Number(data.id);
+    const updated = await labStore.update(labId, req.body);
+    res.json(updated);
+  } catch (err) {
+    if (err instanceof ZodError) {
+      const issue = err.issues[0];
+      return res.status(400).json({ message: issue?.message ?? "Invalid lab update" });
+    }
+    res.status(500).json({ message: err instanceof Error ? err.message : "Unable to update lab" });
+  }
 });
 
 

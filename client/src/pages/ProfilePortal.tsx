@@ -63,7 +63,7 @@ export default function ProfilePortal() {
       fetchProfile();
     }
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session?.user) {
         setProfileData(null);
       } else {
@@ -71,7 +71,14 @@ export default function ProfilePortal() {
       }
     });
 
-    return () => subscription.subscription.unsubscribe();
+    return () => {
+      try {
+        // @ts-ignore
+        authListener?.subscription?.unsubscribe?.();
+        // @ts-ignore
+        authListener?.unsubscribe?.();
+      } catch {}
+    };
   }, [authLoading, user?.id]);
 
   const handleSignOut = async () => {

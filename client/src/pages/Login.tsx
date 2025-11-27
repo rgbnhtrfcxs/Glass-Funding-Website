@@ -30,7 +30,7 @@ export default function Login() {
         setError(authError.message);
       } else if (data.session) {
         // Successful login
-        navigate("/"); // Redirect to homepage or dashboard
+        navigate("/account");
       }
     } catch (err) {
       console.error(err);
