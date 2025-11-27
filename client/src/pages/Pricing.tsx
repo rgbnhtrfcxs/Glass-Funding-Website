@@ -105,14 +105,14 @@ export default function Pricing() {
                 ))}
               </ul>
               {tier.name === "Custom" ? (
-                <Link href={`/payments?plan=${encodeURIComponent(tier.name.toLowerCase())}#custom`}>
+                <Link href="/payments#custom">
                   <a className="mt-6 inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary">
                     Talk to partnerships
                     <ArrowUpRight className="ml-2 h-4 w-4" />
                   </a>
                 </Link>
               ) : (
-                <Link href={`/payments?plan=${encodeURIComponent(tier.name.toLowerCase())}`}>
+                <Link href="/payments">
                   <a className="mt-6 inline-flex items-center rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:bg-foreground/90">
                     Get started
                   </a>
@@ -134,7 +134,7 @@ export default function Pricing() {
               Verification visits: €250–€500 depending on geography. Remote verifications are available if you already have documented SOPs.
             </p>
             <p className="text-sm text-muted-foreground">
-              Payments for standard plans are via card or SEPA. Need other rails? Use the Custom intake on the plan details page.
+              Need ACH, wire, or invoices? Use the Custom intake on the plan details page and we’ll send tailored options.
             </p>
           </div>
           <div className="rounded-[32px] border border-border bg-card/80 p-8 shadow-sm space-y-4">
@@ -144,7 +144,7 @@ export default function Pricing() {
               <li>GLASS-Connect activates your listing within one business day and schedules verification if needed.</li>
               <li>Weekly Fridays: we highlight new labs and route qualified requests right to your inbox.</li>
             </ul>
-            <Link href="/payments?plan=base">
+            <Link href="/payments">
               <a className="inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary">
                 View plan details
                 <ArrowUpRight className="ml-2 h-4 w-4" />
