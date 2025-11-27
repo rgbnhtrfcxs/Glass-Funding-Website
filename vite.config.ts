@@ -12,7 +12,8 @@ export default defineConfig({
     react(),
     themePlugin(), // ✅ Safe plugin
   ],
-  base: './', // ✅ Required for Netlify to load assets correctly
+  // Use absolute paths so deep links like /labs/123 load assets
+  base: '/',
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "client", "src"),
