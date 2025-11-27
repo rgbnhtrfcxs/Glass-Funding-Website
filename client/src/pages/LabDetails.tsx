@@ -110,10 +110,6 @@ export default function LabDetails({ params }: LabDetailsProps) {
                 <MapPin className="h-3.5 w-3.5" />
                 {lab.location}
               </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground">
-                <Star className="h-3.5 w-3.5 text-primary" />
-                {lab.rating.toFixed(1)} / 5 rating
-              </span>
               <span
                 className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
                   lab.isVerified

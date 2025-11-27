@@ -13,14 +13,10 @@ export function About() {
           transition={{ duration: 0.6 }}
           className="text-center mb-12"
         >
-          <h2 className="text-3xl font-bold mb-4">About Glass</h2>
+          <h2 className="text-3xl font-bold mb-4">About GLASS-Connect</h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Glass bridges researchers and funding with three promises:
-            <span className="font-semibold"> Quality</span>,{" "}
-            <span className="font-semibold">Simplicity</span>, and{" "}
-            <span className="font-semibold">Transparency</span>. We rigorously
-            vet projects, make the funding flow effortless, and show exactly how
-            every euro moves.
+            GLASS-Connect is the structured directory for research labs. We standardise how teams present capabilities,
+            verify key details once, and route collaboration requests to real humans without endless back-and-forth.
           </p>
         </motion.div>
 
@@ -28,21 +24,18 @@ export function About() {
           {[
             {
               icon: <BadgeCheck className="h-10 w-10 text-primary" />,
-              title: "Quality",
-              description:
-                "Quality-first projects with clear hypotheses, milestones, and budgets.",
+              title: "Trusted details",
+              description: "Light remote/on-site verification so partners know the information and equipment are current.",
             },
             {
               icon: <Zap className="h-10 w-10 text-primary" />,
-              title: "Simplicity",
-              description:
-                "Simple, guided flows that connect funders, researchers, and institutions.",
+              title: "Structured profiles",
+              description: "Clear capabilities, equipment, and collaboration preferences in a consistent, comparable format.",
             },
             {
               icon: <Eye className="h-10 w-10 text-primary" />,
-              title: "Transparency",
-              description:
-                "Live budgets, milestone-based releases, and public progress updates.",
+              title: "Fast routing",
+              description: "Qualified requests go straight to the right contact so labs spend more time collaborating.",
             },
           ].map((item, index) => (
             <motion.div

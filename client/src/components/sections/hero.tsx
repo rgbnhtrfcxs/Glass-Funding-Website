@@ -23,17 +23,25 @@ export function Hero() {
           className="max-w-3xl mx-auto text-center"
         >
           <h1 className="text-4xl md:text-6xl font-bold mb-8 bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-pink-600">
-            The Future of Scientific Investment Starts Here.
+            Infrastructure for scientific collaboration.
           </h1>
           <p className="text-lg md:text-xl text-muted-foreground mb-12">
-            Connecting researchers with the resources they need to drive progress
+            GLASS-Connect gives labs a standard profile, trusted verification, and direct routing so innovation moves faster.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Button size="lg" className="text-lg px-8" onClick={scrollToAbout}>
-              Get Started
+            <Button size="lg" className="text-lg px-8" asChild>
+              <Link href="/admin/labs">List your lab</Link>
             </Button>
             <Button size="lg" variant="outline" className="text-lg px-8" asChild>
-              <Link href="/roadmap">View Roadmap</Link>
+              <Link href="/labs">Browse labs</Link>
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              className="text-lg px-8 bg-pink-500 text-white border-none hover:bg-pink-500/90"
+              onClick={scrollToAbout}
+            >
+              How it works
             </Button>
           </div>
         </motion.div>

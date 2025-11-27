@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Link, useLocation } from "wouter";
 import { CreditCard, ShieldCheck, Building } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/lib/supabaseClient";
 
 const enterpriseInitialState = {
   ownerName: "",
@@ -66,6 +67,23 @@ export default function PaymentFlow() {
 
   useEffect(() => {
     if (!user) return;
+    async function loadProfileName() {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("name")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!error && data?.name) {
+        setProfileName(data.name);
+        setFormState(prev => ({
+          ...prev,
+          ownerName: prev.ownerName || data.name,
+        }));
+      } else {
+        setProfileName(null);
+      }
+    }
+    loadProfileName();
     setFormState(prev => ({
       ...prev,
       ownerName: prev.ownerName || metadataName || user?.email?.split("@")[0] || "",
@@ -408,3 +426,4 @@ export default function PaymentFlow() {
     </section>
   );
 }
+  const [profileName, setProfileName] = useState<string | null>(null);

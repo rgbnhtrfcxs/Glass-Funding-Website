@@ -22,10 +22,10 @@ export default function Contact() {
           >
             <h1 className="text-4xl md:text-5xl font-bold">Contact Glass</h1>
             <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-              Every question, partnership idea, or introduction helps us democratise science. Whether you are a
-              researcher, supporter, donor, journalist, or collaborator—you can reach the team at{" "}
+              Every question, partnership idea, or introduction helps labs collaborate faster. Whether you are a
+              researcher, operator, journalist, or partner—you can reach the GLASS-Connect team at{" "}
               <a
-                href="mailto:contact@glass-funding.com"
+                href="mailto:support@glass.demo"
                 className="font-medium text-primary hover:underline"
               >
                 contact@glass-funding.com
@@ -58,19 +58,19 @@ export default function Contact() {
                 <div className="rounded-2xl bg-background border border-border/80 p-4">
                   <p className="font-medium text-foreground">Researchers & Labs</p>
                   <p className="mt-2">
-                    Share your project, ask about onboarding, or explore how milestone-based funding works for your lab.
+                    Share your lab profile, ask about verification, or get help with listing updates and inbound requests.
                   </p>
                 </div>
                 <div className="rounded-2xl bg-background border border-border/80 p-4">
-                  <p className="font-medium text-foreground">Supporters & Donors</p>
+                  <p className="font-medium text-foreground">Network Operators</p>
                   <p className="mt-2">
-                    Learn how to back science you believe in—whether you’re donating €50 or exploring a matched pledge.
+                    Manage multiple labs, set routing rules, and keep data fresh across your network—we can help.
                   </p>
                 </div>
                 <div className="rounded-2xl bg-background border border-border/80 p-4">
                   <p className="font-medium text-foreground">Media & Partners</p>
                   <p className="mt-2">
-                    Request interviews, press kits, or collaboration details. We’re happy to share what Glass is building.
+                    Request interviews, press kits, or collaboration details. We’re happy to share what GLASS-Connect is building.
                   </p>
                 </div>
               </div>
@@ -92,12 +92,12 @@ export default function Contact() {
                 </AccordionItem>
                 <AccordionItem value="faq-2">
                   <AccordionTrigger className="text-left text-sm">
-                    Do I need to be accredited to support projects?
+                    Do I need verification to list a lab?
                   </AccordionTrigger>
                   <AccordionContent>
                     <p className="text-muted-foreground text-sm leading-relaxed">
-                      No. Glass is built so anyone can contribute. For larger donations we’ll walk you through any extra checks,
-                      but transparency is the same for everyone.
+                      We recommend verification to improve trust and placement. You can publish a profile without it and schedule
+                      verification when you are ready.
                     </p>
                   </AccordionContent>
                 </AccordionItem>
@@ -107,8 +107,7 @@ export default function Contact() {
                   </AccordionTrigger>
                   <AccordionContent>
                     <p className="text-muted-foreground text-sm leading-relaxed">
-                      Yes—drop us a note at contact@glass-funding.com and we’ll share the latest demo environment and roadmap
-                      update.
+                      Yes—drop us a note at contact@glass-funding.com and we’ll share the latest demo environment and roadmap update.
                     </p>
                   </AccordionContent>
                 </AccordionItem>

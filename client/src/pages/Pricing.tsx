@@ -6,7 +6,7 @@ const tiers = [
   {
     name: "Base",
     monthlyPrice: 0,
-    description: "Launch on Glass with the essentials.",
+    description: "Launch on GLASS-Connect with the essentials.",
     highlights: ["Profile page", "Equipment showcase", "Inbound contact form"],
     featured: false,
   },
@@ -21,7 +21,7 @@ const tiers = [
     name: "Premier",
     monthlyPrice: 199,
     description: "Flagship placement plus media support.",
-    highlights: ["Free verification", "Direct collabation managment", "Seminar access"],
+    highlights: ["Free verification", "Direct collaboration management", "Seminar access"],
     featured: true,
   },
   {
@@ -44,22 +44,22 @@ export default function Pricing() {
           transition={{ duration: 0.6 }}
           className="max-w-3xl space-y-6"
         >
-          <span className="text-sm uppercase tracking-[0.3em] text-muted-foreground">Glass pricing</span>
+          <span className="text-sm uppercase tracking-[0.3em] text-muted-foreground">GLASS-Connect pricing</span>
           <h1 className="text-4xl md:text-5xl font-semibold text-foreground leading-tight">
-            Simple tiers. Apple-clean presentation. No hidden fees.
+            Simple plans to showcase your lab. No hidden fees.
           </h1>
           <p className="text-lg text-muted-foreground">
-            Pay only when your lab is live. Switch tiers anytime. Stripe handles billing; we handle operators.
+            Choose how visible you want to be on GLASS-Connect. Switch tiers anytime; your listing stays live.
           </p>
           <div className="flex flex-wrap gap-3">
-            <Link href="/payments">
+            <Link href="/admin/labs">
               <a className="inline-flex items-center rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90">
-                See payment flow
+                List your lab
               </a>
             </Link>
             <Link href="/labs">
               <a className="inline-flex items-center rounded-full border border-border px-5 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary">
-                Browse labs on Glass
+                Browse labs on GLASS-Connect
               </a>
             </Link>
           </div>
@@ -81,10 +81,17 @@ export default function Pricing() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">{tier.name}</p>
-                  <p className="mt-3 text-4xl font-semibold text-foreground">
-                    {tier.monthlyPrice ? `€${tier.monthlyPrice}` : "Custom"}
-                    {tier.monthlyPrice && <span className="text-base text-muted-foreground"> / month</span>}
-                  </p>
+                  {(() => {
+                    const isFree = tier.monthlyPrice === 0 || tier.monthlyPrice === "0";
+                    const hasPrice = tier.monthlyPrice !== null && tier.monthlyPrice !== undefined && !isFree;
+                    const priceLabel = isFree ? "Free" : hasPrice ? `€${tier.monthlyPrice}` : "Custom";
+                    return (
+                      <p className="mt-3 text-4xl font-semibold text-foreground">
+                        {priceLabel}
+                        {hasPrice && <span className="text-base text-muted-foreground"> / month</span>}
+                      </p>
+                    );
+                  })()}
                 </div>
                 {tier.featured && <Sparkles className="h-6 w-6 text-primary" />}
               </div>
@@ -98,14 +105,14 @@ export default function Pricing() {
                 ))}
               </ul>
               {tier.name === "Custom" ? (
-                <Link href="/payments#custom">
+                <Link href={`/payments?plan=${encodeURIComponent(tier.name.toLowerCase())}#custom`}>
                   <a className="mt-6 inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary">
                     Talk to partnerships
                     <ArrowUpRight className="ml-2 h-4 w-4" />
                   </a>
                 </Link>
               ) : (
-                <Link href="/payments">
+                <Link href={`/payments?plan=${encodeURIComponent(tier.name.toLowerCase())}`}>
                   <a className="mt-6 inline-flex items-center rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:bg-foreground/90">
                     Get started
                   </a>
@@ -127,19 +134,19 @@ export default function Pricing() {
               Verification visits: €250–€500 depending on geography. Remote verifications are available if you already have documented SOPs.
             </p>
             <p className="text-sm text-muted-foreground">
-              Need ACH, wire, or invoices? Use the Custom intake on the payment flow page and we’ll send tailored options.
+              Payments for standard plans are via card or SEPA. Need other rails? Use the Custom intake on the plan details page.
             </p>
           </div>
           <div className="rounded-[32px] border border-border bg-card/80 p-8 shadow-sm space-y-4">
-            <h2 className="text-lg font-semibold text-foreground">After you pay</h2>
+            <h2 className="text-lg font-semibold text-foreground">After you subscribe</h2>
             <ul className="space-y-3 text-sm text-muted-foreground">
-              <li>Stripe emails a receipt instantly. You can update payment methods anytime.</li>
-              <li>Glass activates your listing within one business day and schedules verification if needed.</li>
-              <li>Weekly Fridays: we highlight new labs + route qualified requests right to your inbox.</li>
+              <li>Stripe emails a receipt instantly and your listing stays live as you edit.</li>
+              <li>GLASS-Connect activates your listing within one business day and schedules verification if needed.</li>
+              <li>Weekly Fridays: we highlight new labs and route qualified requests right to your inbox.</li>
             </ul>
-            <Link href="/payments">
+            <Link href="/payments?plan=base">
               <a className="inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary">
-                Learn more about billing
+                View plan details
                 <ArrowUpRight className="ml-2 h-4 w-4" />
               </a>
             </Link>
@@ -158,10 +165,10 @@ export default function Pricing() {
             </a>
           </Link>
           <a
-            href="mailto:finance@glass.demo"
+            href="mailto:support@glass.demo"
             className="inline-flex items-center justify-center rounded-full border border-border px-5 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
           >
-            Contact finance
+            Contact support
             <ArrowUpRight className="ml-2 h-4 w-4" />
           </a>
         </div>

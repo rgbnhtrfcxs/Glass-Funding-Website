@@ -1,16 +1,11 @@
 import { motion } from "framer-motion";
 import {
-  CalendarClock,
   CheckCircle2,
   Images,
-  Lock,
   MapPin,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
-  Star,
-  Unlock,
-  Users,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useMemo } from "react";
@@ -21,7 +16,6 @@ export default function Labs() {
 
   const labCount = labs.length;
   const verifiedCount = labs.filter(lab => lab.isVerified).length;
-  const pricePrivateCount = labs.filter(lab => lab.pricePrivacy).length;
   const uniqueEquipmentCount = useMemo(() => {
     const equipment = new Set<string>();
     labs.forEach(lab => {
@@ -29,9 +23,6 @@ export default function Labs() {
     });
     return equipment.size;
   }, [labs]);
-  const averageRating = labs.length
-    ? Number((labs.reduce((sum, lab) => sum + lab.rating, 0) / labs.length).toFixed(1))
-    : 0;
   const getImageUrl = (url: string, width = 1200) =>
     url.startsWith("data:")
       ? url
@@ -62,61 +53,25 @@ export default function Labs() {
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-4"
+          className="mt-10 flex flex-wrap items-start gap-4 md:gap-6"
         >
-          <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm">
-            <div className="flex items-center gap-3">
-              <Sparkles className="h-5 w-5 text-primary" />
-              <span className="text-xs font-medium uppercase tracking-[0.3em] text-muted-foreground">
-                Network size
-              </span>
+          <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm flex-1 min-w-[240px] max-w-sm">
+            <div className="flex items-center gap-3 justify-between">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-[0.3em] text-muted-foreground">Network size</p>
+                <p className="mt-2 text-3xl font-semibold text-foreground">{labCount} labs</p>
+                <p className="mt-1 text-sm text-muted-foreground">Vetted partners with GLASS-Connect alignment.</p>
+              </div>
             </div>
-            <p className="mt-3 text-2xl font-semibold text-foreground">{labCount} labs</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Vetted partners with Glass-aligned safety and operational standards.
-            </p>
           </div>
-          <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm">
-            <div className="flex items-center gap-3">
-              <ShieldCheck className="h-5 w-5 text-primary" />
-              <span className="text-xs font-medium uppercase tracking-[0.3em] text-muted-foreground">
-                Verified labs
-              </span>
+          <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm flex-1 min-w-[240px] max-w-sm">
+            <div className="flex items-center gap-3 justify-between">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-[0.3em] text-muted-foreground">Verified labs</p>
+                <p className="mt-2 text-3xl font-semibold text-foreground">{verifiedCount} verified</p>
+                <p className="mt-1 text-sm text-muted-foreground">Completed verification to boost trust and routing.</p>
+              </div>
             </div>
-            <p className="mt-3 text-2xl font-semibold text-foreground">
-              {verifiedCount} verified
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Labs that completed Glass&apos;s on-site verification workflow.
-            </p>
-          </div>
-          <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm">
-            <div className="flex items-center gap-3">
-              <Lock className="h-5 w-5 text-primary" />
-              <span className="text-xs font-medium uppercase tracking-[0.3em] text-muted-foreground">
-                Private pricing
-              </span>
-            </div>
-            <p className="mt-3 text-2xl font-semibold text-foreground">
-              {pricePrivateCount} labs
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Require a direct quote for their current pricing structure.
-            </p>
-          </div>
-          <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm">
-            <div className="flex items-center gap-3">
-              <Star className="h-5 w-5 text-primary" />
-              <span className="text-xs font-medium uppercase tracking-[0.3em] text-muted-foreground">
-                Avg. rating
-              </span>
-            </div>
-            <p className="mt-3 text-2xl font-semibold text-foreground">
-              {averageRating.toFixed(1)} / 5
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Feedback aggregated from teams that historically booked these labs.
-            </p>
           </div>
         </motion.div>
 
@@ -159,135 +114,97 @@ export default function Labs() {
                   transition={{ duration: 0.5, delay: 0.1 * (index % 3) }}
                   className="flex h-full flex-col rounded-3xl border border-border bg-card/80 p-8 shadow-sm"
                 >
-                  {lab.photos.length > 0 && (
-                    <div className="mb-6 overflow-hidden rounded-2xl border border-border/60 bg-background/40">
-                      <img
-                        src={getImageUrl(lab.photos[0].url)}
-                        alt={`${lab.name} preview - ${lab.photos[0].name}`}
-                        className="h-48 w-full object-cover"
-                        loading="lazy"
-                      />
-                    </div>
-                  )}
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h3 className="text-xl font-semibold text-foreground">{lab.name}</h3>
-                      <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                        <MapPin className="h-4 w-4 text-primary" />
+                {lab.photos.length > 0 && (
+                  <div className="mb-6 overflow-hidden rounded-2xl border border-border/60 bg-background/40">
+                    <img
+                      src={getImageUrl(lab.photos[0].url)}
+                      alt={`${lab.name} preview - ${lab.photos[0].name}`}
+                      className="h-48 w-full object-cover"
+                      loading="lazy"
+                    />
+                  </div>
+                )}
+                {(() => {
+                  const tier = (lab as any).subscriptionTier ?? (lab as any).subscription_tier ?? "base";
+                  return (
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="text-xl font-semibold text-foreground">{lab.name}</h3>
+                        <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                          <MapPin className="h-4 w-4 text-primary" />
                         <span>{lab.location}</span>
                       </div>
                     </div>
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
-                        lab.isVerified
-                          ? "bg-emerald-50 text-emerald-700"
-                          : "bg-amber-50 text-amber-700"
-                      }`}
-                    >
-                      {lab.isVerified ? (
-                        <>
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          Verified
-                        </>
-                      ) : (
-                        <>
-                          <ShieldAlert className="h-3.5 w-3.5" />
-                          Pending
-                        </>
+                    <div className="flex flex-col items-end gap-2 text-right">
+                      {tier === "premier" && (
+                        <div className="h-12 w-12 overflow-hidden rounded-full border border-dashed border-border bg-muted/30 text-[10px] text-muted-foreground flex items-center justify-center">
+                          Logo
+                        </div>
                       )}
-                    </span>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                    <span className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground">
-                      <Star className="h-3.5 w-3.5 text-primary" />
-                      {lab.rating.toFixed(1)}
-                    </span>
-                    <span className="inline-flex items-center gap-2">
-                      {lab.pricePrivacy ? (
-                        <>
-                          <Lock className="h-4 w-4 text-primary" />
-                          Private pricing
-                        </>
-                      ) : (
-                        <>
-                          <Unlock className="h-4 w-4 text-primary" />
-                          Transparent rates
-                        </>
-                      )}
-                    </span>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 text-sm text-muted-foreground">
-                    <div className="flex items-start gap-2">
-                      <Users className="h-4 w-4 flex-shrink-0 text-primary" />
-                      <span>{lab.labManager}</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <ShieldCheck className="h-4 w-4 flex-shrink-0 text-primary" />
-                      <span>{lab.compliance.join(" • ")}</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <CalendarClock className="h-4 w-4 flex-shrink-0 text-primary" />
-                      <span>{lab.minimumStay}</span>
-                    </div>
-                  </div>
-
-                  <div className="mt-5">
-                    <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-                      Offers
-                    </h4>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {lab.offers.map(offer => (
-                        <span
-                          key={offer}
-                          className="rounded-full bg-muted/60 px-3 py-1 text-xs font-medium text-muted-foreground"
-                        >
-                          {offer}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="mt-5">
-                    <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-                      Focus areas
-                    </h4>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {lab.focusAreas.map(area => (
-                        <span
-                          key={area}
-                          className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
-                        >
-                          {area}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="mt-5">
-                    <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-                      Equipment highlights
-                    </h4>
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      {lab.equipment.map(item => (
-                        <span
-                          key={item}
-                          className="rounded-full bg-muted/60 px-3 py-1"
-                        >
-                          {item}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  {lab.photos.length > 1 && (
-                    <div className="mt-5 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1">
-                        <Images className="h-3.5 w-3.5 text-primary" />
-                        {lab.photos.length} photos provided
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
+                          lab.isVerified
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-amber-50 text-amber-700"
+                        }`}
+                      >
+                        {lab.isVerified ? (
+                          <>
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Verified
+                          </>
+                        ) : (
+                          <>
+                            <ShieldAlert className="h-3.5 w-3.5" />
+                            Pending
+                          </>
+                        )}
                       </span>
                     </div>
-                  )}
+                    </div>
+                  );
+                })()}
+
+                  <div className="mt-5 grid gap-4">
+                    {lab.focusAreas.length > 0 && (
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">Focus</h4>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {lab.focusAreas.slice(0, 3).map(area => (
+                            <span
+                              key={area}
+                              className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
+                            >
+                              {area}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {lab.equipment.length > 0 && (
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">Equipment</h4>
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          {lab.equipment.slice(0, 3).map(item => (
+                            <span
+                              key={item}
+                              className="rounded-full bg-muted/60 px-3 py-1"
+                            >
+                              {item}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {lab.photos.length > 1 && (
+                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1">
+                          <Images className="h-3.5 w-3.5 text-primary" />
+                          {lab.photos.length} photos provided
+                        </span>
+                      </div>
+                    )}
+                  </div>
 
                   <div className="mt-8 flex flex-wrap gap-3">
                     <Link href={`/labs/${lab.id}`}>

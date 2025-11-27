@@ -3,9 +3,8 @@ import { Footer } from "@/components/sections/footer";
 
 const onePagers = [
   {
-    title: "Glass Funding Overview",
-    description:
-      "A concise overview of Glass, including our mission, value proposition, and how the platform accelerates research funding.",
+    title: "GLASS-Connect Overview",
+    description: "A concise overview of GLASS-Connect, our mission, and how the platform helps labs share capabilities and connect with collaborators.",
     file: "/OnePageIntroduction.pdf",
   },
 ];
@@ -29,7 +28,7 @@ export default function OnePagers() {
           transition={{ duration: 0.6, delay: 0.1 }}
           className="max-w-3xl mx-auto text-center text-muted-foreground mb-16"
         >
-          Explore shareable one-pagers that highlight Glass and our approach to transforming research funding.
+          Explore shareable one-pagers that highlight GLASS-Connect and our approach to connecting labs with collaborators.
         </motion.p>
 
         <div className="space-y-12">

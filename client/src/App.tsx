@@ -39,6 +39,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LabRoute from "@/components/LabRoute";
 import AdminRoute from "@/components/AdminRoute";
+import StripeCheckout from "@/pages/StripeCheckout";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -85,6 +86,7 @@ function Router() {
       <ProtectedRoute path="/account/edit" component={ProfilePortal} />
       <LabRoute path="/lab/manage" component={MyLab} />
       <Route path="/payments" component={PaymentFlow} />
+      <Route path="/stripe" component={StripeCheckout} />
       <Route path="/logout" component={Logout} />
 
       {/* Auth Pages */}

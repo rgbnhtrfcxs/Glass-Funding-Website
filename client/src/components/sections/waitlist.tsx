@@ -74,7 +74,7 @@ export function Waitlist({ embedded = false }: WaitlistProps) {
     <>
       <h2 className="text-3xl font-bold mb-4">Join the Waitlist</h2>
       <p className="text-muted-foreground mb-8">
-        Be the first to know when Glass launches and get early access to our platform.
+        Be the first to know when GLASS-Connect ships new features for listing, verification, and collaboration routing.
       </p>
 
       {submitted ? (

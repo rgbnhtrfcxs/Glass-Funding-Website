@@ -18,7 +18,7 @@ export function Footer() {
           <div>
             <h3 className="font-bold text-lg mb-4">Glass</h3>
             <p className="text-muted-foreground text-sm">
-              Empowering scientific innovation through funding and collaboration.
+              Connecting labs with collaborators through trusted, verified profiles.
             </p>
           </div>
 

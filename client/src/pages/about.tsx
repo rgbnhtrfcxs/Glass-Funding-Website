@@ -7,57 +7,48 @@ import { WaitlistDialog } from "@/components/waitlist/waitlist-dialog";
 
 const howItWorks = [
   {
-    title: "1. Surface the work that matters",
-    description:
-      "Researchers and grassroots teams share projects that are ready to move. The community helps review every submission so the ideas that resonate—no matter where they come from—make it onto Glass.",
+    title: "1. Publish your lab",
+    description: "Share your capabilities, equipment, and collaboration preferences in a structured profile built for scientists.",
   },
   {
-    title: "2. Fund together with milestones",
-    description:
-      "Anyone can donate to specific milestones. Instead of blind grants, capital is unlocked as supporters see evidence, updates, and lab notes—all open by default.",
+    title: "2. Verify once",
+    description: "We run a light remote/on-site verification so partners know the details are accurate and trusted.",
   },
   {
-    title: "3. Track progress in public view",
-    description:
-      "Every project page shows what has been achieved, what is next, and how each contribution pushes the work forward. Discoveries stay in the sunlight where backers and the public can hold the process accountable.",
+    title: "3. Connect quickly",
+    description: "Inbound requests are routed straight to your team. Share availability, manage intros, and stay visible to the network.",
   },
-];
+] as const;
 
 const audiences = [
   {
-    title: "Funders & Supporters",
-    description:
-      "Give citizens and philanthropists the tools to back frontier science with clarity, control, and updates that prove impact—no gatekeeping required.",
+    title: "Labs & Core Facilities",
+    description: "List your capabilities, surface underused equipment, and make it easy for peers and partners to collaborate.",
   },
   {
-    title: "Universities & Labs",
-    description:
-      "Offer a streamlined path to connect with private funding and collaborators—helping projects move beyond academic pipelines and invite their communities into the journey.",
+    title: "Network Operators",
+    description: "Manage multiple labs with consistent profiles, verification, and routing that respects each site’s preferences.",
   },
   {
-    title: "Innovators & Builders",
-    description:
-      "Be part of the movement that hands the keys back to practitioners and citizen supporters. Glass keeps the process open, fast, and accountable.",
+    title: "Industry & Partners",
+    description: "Find trusted collaborators faster, with clear capabilities, contact paths, and lightweight governance.",
   },
-];
+] as const;
 
-const democratizePoints = [
+const networkBenefits = [
   {
-    title: "Open the lab doors",
-    description:
-      "Glass turns research updates, budgets, and milestone proofs into public knowledge so anyone can understand—and fund—what’s unfolding.",
+    title: "Standardised discovery",
+    description: "Profiles use the same structure across labs, so partners can compare expertise, equipment, and availability quickly.",
   },
   {
-    title: "Lower the buy-in",
-    description:
-      "Whether you can give €50 or lead a syndicate, you get the same visibility and control over how your contribution activates new science.",
+    title: "Trusted details",
+    description: "Verification checks make it clear what’s real, what’s available, and who to reach without endless back-and-forth.",
   },
   {
-    title: "Build a new frontier together",
-    description:
-      "By pooling support from scientists, citizens, and mission-driven donors, we create a funding frontier that reflects the world we want to live in.",
+    title: "Less time chasing",
+    description: "GLASS-Connect routes qualified requests to the right people, helping teams spend more time collaborating.",
   },
-];
+] as const;
 
 export default function About() {
   const [waitlistOpen, setWaitlistOpen] = useState(false);
@@ -67,21 +58,14 @@ export default function About() {
       <section className="border-b border-border bg-muted/30">
         <div className="container mx-auto px-4 py-20 lg:py-24">
           <div className="max-w-3xl">
-            <p className="text-sm uppercase tracking-[0.35em] text-muted-foreground">
-              Why we started Glass
-            </p>
+            <p className="text-sm uppercase tracking-[0.35em] text-muted-foreground">Why we started GLASS-Connect</p>
             <h1 className="mt-4 text-4xl font-semibold leading-tight md:text-5xl">
-              Science deserves funding that rewards ideas, not paperwork.
+              Science deserves collaboration that’s fast, clear, and trusted.
             </h1>
             <p className="mt-6 text-lg text-muted-foreground leading-relaxed">
-              I first fell in love with science in high school. A summer research camp gave me the chance
-              to do real experiments and ask real questions, but it also revealed how painfully slow and
-              bureaucratic the funding process was. Promising projects sat idle, paperwork clogged
-              progress, and ideas lost momentum before they could even be tested. That frustration stayed
-              with me for years. Glass is my answer—a platform that lets everyday supporters stand shoulder
-              to shoulder with labs. We focus on <strong>Quality</strong> (rigorous vetting),{" "}
-              <strong>Simplicity</strong> (a funding flow anyone can understand), and{" "}
-              <strong>Transparency</strong> (live budgets, milestone releases, and public updates).
+              Labs have incredible capabilities, but no simple way to share them or filter serious collaboration requests
+              from noise. GLASS-Connect is a directory and routing layer for labs: structured profiles, light verification,
+              and direct introductions so teams can work together faster—without adding bureaucracy.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
               <Link href="/roadmap">
@@ -103,13 +87,13 @@ export default function About() {
 
       <section className="border-b border-border">
         <div className="container mx-auto px-4 py-16 lg:py-20">
-          <h2 className="text-2xl font-semibold text-center">Democratising science funding</h2>
+          <h2 className="text-2xl font-semibold text-center">Why a lab network matters</h2>
           <p className="mt-3 max-w-3xl mx-auto text-center text-muted-foreground leading-relaxed">
-            Glass is built so that breakthroughs are no longer decided behind closed doors. We hand the
-            power to fund discovery back to the people who believe in a new era of research.
+            We built GLASS-Connect to make it effortless for partners to find, trust, and contact the right lab—without
+            long chains of introductions or hidden spreadsheets.
           </p>
           <div className="mt-12 grid gap-6 md:grid-cols-3">
-            {democratizePoints.map(point => (
+            {networkBenefits.map(point => (
               <div key={point.title} className="h-full rounded-3xl border border-border bg-background p-6 shadow-sm">
                 <h3 className="text-lg font-semibold text-foreground">{point.title}</h3>
                 <p className="mt-3 text-sm text-muted-foreground leading-relaxed">{point.description}</p>
@@ -123,21 +107,18 @@ export default function About() {
         <div className="container mx-auto px-4 py-16 lg:py-20">
           <div className="grid gap-10 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start">
             <article>
-              <h2 className="text-2xl font-semibold">What is Glass?</h2>
+              <h2 className="text-2xl font-semibold">What is GLASS-Connect?</h2>
               <p className="mt-4 text-muted-foreground leading-relaxed">
-                Glass is a next-generation platform that hands the controls of research funding back to
-                people who care. We connect researchers, private labs, and institutions with supporters of
-                every size. Traditional models are slow and gatekept—Glass makes scientific finance faster,
-                more transparent, and open to the crowd.
+                GLASS-Connect is a directory and routing layer for research labs. We standardise how labs present their
+                capabilities, verify key details, and connect inbound collaborations without burying teams in admin.
               </p>
             </article>
             <article>
-              <h2 className="text-2xl font-semibold">Why Glass matters</h2>
+              <h2 className="text-2xl font-semibold">Why GLASS-Connect matters</h2>
               <p className="mt-4 text-muted-foreground leading-relaxed">
-                In today’s world, countless brilliant research projects go unfunded, and communities are left
-                watching from the sidelines. Glass lets supporters donate directly into the lab,
-                creating a public ledger of progress and impact. Our mission is simple: democratise science,
-                not paperwork.
+                Today, capabilities are scattered across PDFs, cold emails, and outdated directories. GLASS-Connect gives
+                every lab a clear presence and makes it simple for serious partners to reach the right people without
+                chasing inboxes.
               </p>
             </article>
           </div>
@@ -148,8 +129,8 @@ export default function About() {
         <div className="container mx-auto px-4 py-16 lg:py-20">
           <h2 className="text-2xl font-semibold text-center">How Glass works</h2>
           <p className="mt-3 max-w-3xl mx-auto text-center text-muted-foreground leading-relaxed">
-            We combine rigorous review with transparent funding rails so everyone involved can see exactly
-            how science moves from idea to impact.
+            We combine structured profiles with light verification and direct routing so collaborators can move from first
+            contact to scoped work quickly.
           </p>
           <div className="mt-12 grid gap-6 md:grid-cols-3">
             {howItWorks.map(step => (
@@ -166,8 +147,7 @@ export default function About() {
         <div className="container mx-auto px-4 py-16 lg:py-20">
           <h2 className="text-2xl font-semibold text-center">Who we build for</h2>
           <p className="mt-3 max-w-3xl mx-auto text-center text-muted-foreground leading-relaxed">
-            Glass lets every stakeholder in research move faster while staying accountable—and invites the
-            public to participate in discoveries that used to be locked behind grant panels.
+            GLASS-Connect gives labs and partners a shared surface to collaborate—without forcing them into new workflows.
           </p>
           <div className="mt-12 grid gap-6 md:grid-cols-3">
             {audiences.map(card => (
@@ -184,10 +164,10 @@ export default function About() {
 
       <section className="border-b border-border">
         <div className="container mx-auto px-4 py-16 lg:py-20">
-          <h2 className="text-2xl font-semibold text-center">Let’s build the future of research funding</h2>
+          <h2 className="text-2xl font-semibold text-center">Let’s connect labs faster</h2>
           <p className="mt-3 max-w-3xl mx-auto text-center text-muted-foreground leading-relaxed">
-            Whether you want to champion transformative ideas or bring your work to life, Glass gives you
-            a clear, responsible path forward.
+            Whether you manage a single lab or a network of facilities, GLASS-Connect gives you a clear, trusted place to
+            showcase your work and meet collaborators.
           </p>
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
             <Link href="/roadmap">

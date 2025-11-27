@@ -62,11 +62,11 @@ export function Contact() {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
-          >
-            <h2 className="text-3xl font-bold mb-4">Contact Us</h2>
-            <p className="text-muted-foreground mb-8">
-              Have questions about Glass? We're here to help.
-            </p>
+        >
+          <h2 className="text-3xl font-bold mb-4">Contact Us</h2>
+          <p className="text-muted-foreground mb-8">
+            Have questions about GLASS-Connect? We're here to help labs list, verify, and handle inbound requests.
+          </p>
 
             <div className="space-y-6">
               <div className="flex items-center gap-4">

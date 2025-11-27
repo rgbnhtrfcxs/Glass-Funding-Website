@@ -464,10 +464,8 @@ export default function AdminLabs() {
                       <span>{lab.minimumStay || "—"}</span>
                     </div>
                     <div className="flex flex-col gap-1">
-                      <span className="font-medium text-foreground">Pricing & rating</span>
-                      <span>
-                        {lab.pricePrivacy ? "Quotes required" : "Rates published"} · Rating {lab.rating.toFixed(1)}
-                      </span>
+                      <span className="font-medium text-foreground">Pricing</span>
+                      <span>{lab.pricePrivacy ? "Quotes required" : "Rates published"}</span>
                     </div>
                     <div className="flex flex-col gap-1">
                       <span className="font-medium text-foreground">Photos</span>
@@ -746,26 +744,6 @@ export default function AdminLabs() {
                     className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     placeholder="20 lab hours per month"
                   />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-rating">
-                    Rating (0-5)
-                  </label>
-                  <input
-                    id="lab-rating"
-                    type="number"
-                    min={0}
-                    max={5}
-                    step="0.1"
-                    value={formState.rating}
-                    onChange={event => handleChange("rating", event.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    placeholder="4.5"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Optional. Aggregate rating from teams that used the lab.
-                  </p>
                 </div>
 
                 <div className="space-y-2">

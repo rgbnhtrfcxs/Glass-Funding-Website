@@ -4,36 +4,36 @@ import { Link } from "wouter";
 const services = [
   {
     id: "glass-web",
-    name: "Glass Web App",
+    name: "GLASS-Connect Directory",
     status: "Operational",
     uptime: "99.98%",
     lastIncident: "45 days ago",
-    description: "Main fundraising experience for donors and researchers.",
+    description: "Main lab-listing and discovery experience for labs and partners.",
   },
   {
-    id: "payments",
-    name: "Donations API",
+    id: "profiles",
+    name: "Profile Edits",
     status: "Operational",
     uptime: "100%",
     lastIncident: "92 days ago",
-    description: "Processes pledges, recurring donations, and receipts.",
+    description: "Saving and publishing lab profile updates across the network.",
   },
   {
-    id: "updates",
-    name: "Milestone Updates",
+    id: "routing",
+    name: "Request Routing",
     status: "Degraded Performance",
     uptime: "99.2%",
     lastIncident: "Today",
-    description: "Email and in-app follow-up notifications for donors.",
+    description: "Email and in-app handoffs for inbound collaboration requests.",
     note: "Delays of up to 2 hours while we upgrade the messaging queue.",
   },
   {
     id: "workspace",
-    name: "Partner Workspace",
+    name: "Operator Workspace",
     status: "Operational",
     uptime: "99.9%",
     lastIncident: "18 days ago",
-    description: "Grant management dashboards for research partners.",
+    description: "Multi-lab management dashboards for network operators and admins.",
   },
 ];
 
@@ -41,7 +41,7 @@ const history = [
   {
     date: "Today",
     severity: "minor",
-    title: "Milestone updates queue delays",
+    title: "Request routing queue delays",
     description:
       "Messages are sending successfully but slower than usual while we deploy enhanced analytics. We expect normal operation by 18:00 UTC.",
   },
@@ -55,9 +55,9 @@ const history = [
   {
     date: "Apr 17",
     severity: "resolved",
-    title: "Resolved: Donation webhook retries",
+    title: "Resolved: Profile webhook retries",
     description:
-      "Some partners experienced delayed webhook confirmations. The backlog was cleared within 30 minutes and no donations were lost.",
+      "Some partners experienced delayed webhook confirmations. The backlog was cleared within 30 minutes and no updates were lost.",
   },
 ];
 
@@ -88,10 +88,10 @@ export default function Status() {
             {overallOperational ? "All systems are operational." : "Some services are experiencing delays."}
           </h1>
           <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-            This page reports live availability across Glass infrastructure. We refresh these metrics every 60 seconds. For
+            This page reports live availability across GLASS-Connect infrastructure. We refresh these metrics every 60 seconds. For
             urgent issues, reach the team at{" "}
-            <a className="text-primary hover:text-primary/80 transition" href="mailto:support@glass.org">
-              support@glass.org
+            <a className="text-primary hover:text-primary/80 transition" href="mailto:support@glass.demo">
+              support@glass.demo
             </a>
             .
           </p>
@@ -152,8 +152,8 @@ export default function Status() {
               <a className="text-primary hover:text-primary/80 transition">our public roadmap</a>
             </Link>{" "}
             for transparency on upcoming releases, or reach out to{" "}
-            <a className="text-primary hover:text-primary/80 transition" href="mailto:infra@glass.org">
-              infra@glass.org
+            <a className="text-primary hover:text-primary/80 transition" href="mailto:ops@glass.demo">
+              ops@glass.demo
             </a>{" "}
             for enterprise status reports.
           </p>

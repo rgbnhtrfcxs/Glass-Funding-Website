@@ -28,6 +28,7 @@ export const labCoreSchema = z.object({
   pricePrivacy: z.boolean().default(false),
   minimumStay: z.string().optional().default(""),
   rating: z.number().min(0).max(5).default(0),
+  subscriptionTier: z.enum(["base", "verified", "premier", "custom"]).default("base"),
   photos: z.array(mediaAssetSchema).min(1, "At least one lab photo is required"),
 });
 
