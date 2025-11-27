@@ -16,7 +16,7 @@ export default function Privacy() {
       <p>In accordance with the GDPR, you have the right to access, correct, or delete your personal data by contacting us.</p>
 
       <h2 className="text-xl font-semibold mt-6 mb-2">4. Contact</h2>
-      <p>For privacy concerns, contact <a href="mailto:support@glass.demo" className="text-blue-600 underline">support@glass.demo</a>.</p>
+      <p>For privacy concerns, contact <a href="mailto:contact@glass-funding.com" className="text-blue-600 underline">contact@glass-funding.com</a>.</p>
 
       <p className="mt-10 text-sm text-gray-500">Last updated: July 2025</p>
     </main>

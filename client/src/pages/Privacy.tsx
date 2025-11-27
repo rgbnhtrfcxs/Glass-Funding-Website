@@ -4,7 +4,7 @@ export default function Privacy() {
   return (
     <main className="container mx-auto px-4 py-10 pt-24">
       <h1 className="text-3xl font-bold mb-6">Privacy Policy</h1>
-      <p>This Privacy Policy describes how Glass collects and uses information through our website at https://glass-funding.com.</p>
+      <p>This Privacy Policy describes how GLASS-Connect collects and uses information through our website.</p>
 
       <h2 className="text-xl font-semibold mt-6 mb-2">1. Data We Collect</h2>
       <p>We collect information you submit through our contact form (name, email, and message). We do not use cookies or tracking technologies.</p>
