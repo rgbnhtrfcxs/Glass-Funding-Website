@@ -4,7 +4,7 @@ export default function Terms() {
   return (
     <main className="container mx-auto px-4 py-10 pt-24">
       <h1 className="text-3xl font-bold mb-6">Terms of Use</h1>
-      <p>Welcome to Glass. By accessing or using our website (https://glass-funding.com), you agree to the following terms and conditions. Please read them carefully.</p>
+      <p>Welcome to GLASS-Connect. By accessing or using our website, you agree to the following terms and conditions. Please read them carefully.</p>
 
       <h2 className="text-xl font-semibold mt-6 mb-2">1. Acceptance of Terms</h2>
       <p>By using Glass, you agree to comply with and be legally bound by these Terms of Use.</p>
