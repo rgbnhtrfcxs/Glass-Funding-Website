@@ -21,7 +21,7 @@ const tiers = [
     name: "Premier",
     monthlyPrice: 199,
     description: "Flagship placement plus media support.",
-    highlights: ["Featured carousels", "Media refresh", "First look at requests"],
+    highlights: ["Free verification", "Direct collabation managment", "Seminar access"],
     featured: true,
   },
   {
