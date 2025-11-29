@@ -22,6 +22,7 @@ export default function PaymentFlow() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [freeStatus, setFreeStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [freeError, setFreeError] = useState<string | null>(null);
+  const [profileName, setProfileName] = useState<string | null>(null);
   const search = typeof window !== "undefined" ? window.location.search : "";
   const selectedPlan = useMemo(() => {
     try {
@@ -426,4 +427,3 @@ export default function PaymentFlow() {
     </section>
   );
 }
-  const [profileName, setProfileName] = useState<string | null>(null);
