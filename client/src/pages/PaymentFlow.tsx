@@ -277,7 +277,7 @@ export default function PaymentFlow() {
                 <li><span className="font-semibold text-foreground">Reference:</span> {sepaDetails.reference}</li>
               </ul>
               <p className="text-xs text-muted-foreground">
-                Email proof of transfer to finance@glass.demo with your plan and lab name to expedite activation.
+                Email proof of transfer to contact@glass-funding.com with your plan and lab name to expedite activation.
               </p>
             </div>
           </motion.div>
@@ -407,7 +407,7 @@ export default function PaymentFlow() {
         >
           <h3 className="text-lg font-semibold text-foreground">Need a direct line?</h3>
           <p className="text-sm text-muted-foreground">
-            Email <a className="text-primary underline" href="mailto:finance@glass.demo">finance@glass.demo</a> or drop a note in the custom
+            Email <a className="text-primary underline" href="mailto:contact@glass-funding.com">contact@glass-funding.com</a> or drop a note in the custom
             form. We can accommodate purchase orders, wire transfers, and co-branded partnership agreements.
           </p>
           <div className="flex flex-wrap gap-3">

@@ -71,13 +71,16 @@ export default function Pricing() {
           transition={{ duration: 0.5, delay: 0.1 }}
           className="mt-14 grid gap-6 lg:grid-cols-2"
         >
-          {tiers.map(tier => (
-            <article
-              key={tier.name}
-              className={`rounded-[32px] border border-border bg-card/90 p-8 shadow-sm ${
-                tier.featured ? "lg:col-span-2 bg-gradient-to-br from-card to-primary/5" : ""
-              }`}
-            >
+          {tiers.map(tier => {
+            const plan = tier.name.toLowerCase();
+            const paymentHref = tier.name === "Custom" ? `/payments?plan=${plan}#custom` : `/payments?plan=${plan}`;
+            return (
+              <article
+                key={tier.name}
+                className={`rounded-[32px] border border-border bg-card/90 p-8 shadow-sm ${
+                  tier.featured ? "lg:col-span-2 bg-gradient-to-br from-card to-primary/5" : ""
+                }`}
+              >
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">{tier.name}</p>
@@ -105,21 +108,22 @@ export default function Pricing() {
                 ))}
               </ul>
               {tier.name === "Custom" ? (
-                <Link href="/payments#custom">
+                <Link href={paymentHref}>
                   <a className="mt-6 inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary">
                     Talk to partnerships
                     <ArrowUpRight className="ml-2 h-4 w-4" />
                   </a>
                 </Link>
               ) : (
-                <Link href="/payments">
+                <Link href={paymentHref}>
                   <a className="mt-6 inline-flex items-center rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:bg-foreground/90">
                     Get started
                   </a>
                 </Link>
               )}
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </motion.div>
 
         <motion.div
@@ -144,7 +148,7 @@ export default function Pricing() {
               <li>GLASS-Connect activates your listing within one business day and schedules verification if needed.</li>
               <li>Weekly Fridays: we highlight new labs and route qualified requests right to your inbox.</li>
             </ul>
-            <Link href="/payments">
+            <Link href="/payments?plan=base">
               <a className="inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary">
                 View plan details
                 <ArrowUpRight className="ml-2 h-4 w-4" />
@@ -165,7 +169,7 @@ export default function Pricing() {
             </a>
           </Link>
           <a
-            href="mailto:support@glass.demo"
+            href="mailto:contact@glass-funding.com"
             className="inline-flex items-center justify-center rounded-full border border-border px-5 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
           >
             Contact support
