@@ -17,6 +17,16 @@ const LAB_SELECT = `
   location,
   lab_manager,
   contact_email,
+  siret_number,
+  logo_url,
+  address_line1,
+  address_line2,
+  city,
+  state,
+  postal_code,
+  country,
+  website,
+  linkedin,
   is_verified,
   is_visible,
   price_privacy,
@@ -37,6 +47,16 @@ type LabRow = {
   location: string;
   lab_manager: string;
   contact_email: string;
+  siret_number: string | null;
+  logo_url: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  country: string | null;
+  website: string | null;
+  linkedin: string | null;
   is_verified: boolean | string | null;
   is_visible: boolean | string | null;
   price_privacy: boolean;
@@ -68,12 +88,26 @@ function parseRating(value: LabRow["rating"]): number {
 }
 
 function mapLabRow(row: LabRow): LabPartner {
+  const photos = (row.lab_photos ?? []).filter(photo => (photo?.url || "").trim().length > 0).map(photo => ({
+    name: photo.name,
+    url: photo.url,
+  }));
   const mapped = {
     id: Number(row.id),
     name: row.name,
     location: row.location,
     labManager: row.lab_manager,
     contactEmail: row.contact_email,
+    siretNumber: row.siret_number || null,
+    logoUrl: row.logo_url || null,
+    addressLine1: row.address_line1 || null,
+    addressLine2: row.address_line2 || null,
+    city: row.city || null,
+    state: row.state || null,
+    postalCode: row.postal_code || null,
+    country: row.country || null,
+    website: row.website || null,
+    linkedin: row.linkedin || null,
     compliance: (row.lab_compliance_labels ?? []).map(item => item.label),
     complianceDocs: (row.lab_compliance_docs ?? []).map(doc => ({ name: doc.name, url: doc.url })),
     isVerified: parseBoolean(row.is_verified),
@@ -85,7 +119,7 @@ function mapLabRow(row: LabRow): LabPartner {
     minimumStay: row.minimum_stay ?? "",
     rating: parseRating(row.rating),
     subscriptionTier: (row.subscription_tier as LabPartner["subscriptionTier"]) ?? "base",
-    photos: (row.lab_photos ?? []).map(photo => ({ name: photo.name, url: photo.url })),
+    photos,
   };
   return labSchema.parse(mapped);
 }
@@ -181,6 +215,16 @@ export class LabStore {
         location: data.location,
         lab_manager: data.labManager,
         contact_email: data.contactEmail,
+        siret_number: data.siretNumber ?? null,
+        logo_url: data.logoUrl ?? null,
+        address_line1: data.addressLine1 ?? null,
+        address_line2: data.addressLine2 ?? null,
+        city: data.city ?? null,
+        state: data.state ?? null,
+        postal_code: data.postalCode ?? null,
+        country: data.country ?? null,
+        website: data.website ?? null,
+        linkedin: data.linkedin ?? null,
         is_verified: data.isVerified,
         is_visible: data.isVisible,
         price_privacy: data.pricePrivacy,
@@ -213,6 +257,16 @@ export class LabStore {
     if (Object.prototype.hasOwnProperty.call(updates, "location")) baseUpdates.location = parsed.location;
     if (Object.prototype.hasOwnProperty.call(updates, "labManager")) baseUpdates.lab_manager = parsed.labManager;
     if (Object.prototype.hasOwnProperty.call(updates, "contactEmail")) baseUpdates.contact_email = parsed.contactEmail;
+    if (Object.prototype.hasOwnProperty.call(updates, "siretNumber")) baseUpdates.siret_number = parsed.siretNumber ?? null;
+    if (Object.prototype.hasOwnProperty.call(updates, "logoUrl")) baseUpdates.logo_url = parsed.logoUrl ?? null;
+    if (Object.prototype.hasOwnProperty.call(updates, "addressLine1")) baseUpdates.address_line1 = parsed.addressLine1 ?? null;
+    if (Object.prototype.hasOwnProperty.call(updates, "addressLine2")) baseUpdates.address_line2 = parsed.addressLine2 ?? null;
+    if (Object.prototype.hasOwnProperty.call(updates, "city")) baseUpdates.city = parsed.city ?? null;
+    if (Object.prototype.hasOwnProperty.call(updates, "state")) baseUpdates.state = parsed.state ?? null;
+    if (Object.prototype.hasOwnProperty.call(updates, "postalCode")) baseUpdates.postal_code = parsed.postalCode ?? null;
+    if (Object.prototype.hasOwnProperty.call(updates, "country")) baseUpdates.country = parsed.country ?? null;
+    if (Object.prototype.hasOwnProperty.call(updates, "website")) baseUpdates.website = parsed.website ?? null;
+    if (Object.prototype.hasOwnProperty.call(updates, "linkedin")) baseUpdates.linkedin = parsed.linkedin ?? null;
     if (Object.prototype.hasOwnProperty.call(updates, "isVerified")) baseUpdates.is_verified = parsed.isVerified;
     if (Object.prototype.hasOwnProperty.call(updates, "isVisible")) baseUpdates.is_visible = parsed.isVisible;
     if (Object.prototype.hasOwnProperty.call(updates, "pricePrivacy")) baseUpdates.price_privacy = parsed.pricePrivacy;

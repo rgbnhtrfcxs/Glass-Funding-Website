@@ -25,7 +25,8 @@ export default function AdminRoute({ path, component: Component }: { path: strin
         setAllowed(false);
         return;
       }
-      setAllowed((data?.role as string) === "admin");
+      const role = typeof data?.role === "string" ? data.role.toLowerCase().trim() : "";
+      setAllowed(role === "admin");
     }
     if (!loading) check();
     return () => {
@@ -51,4 +52,3 @@ export default function AdminRoute({ path, component: Component }: { path: strin
     />
   );
 }
-

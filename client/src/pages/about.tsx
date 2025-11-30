@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { ArrowRight } from "lucide-react";
 import { PartnerLogos } from "@/components/sections/PartnerLogos";
-import { Footer } from "@/components/sections/footer";
 import { WaitlistDialog } from "@/components/waitlist/waitlist-dialog";
 
 const howItWorks = [
@@ -188,7 +187,6 @@ export default function About() {
 
       <WaitlistDialog open={waitlistOpen} onOpenChange={setWaitlistOpen} />
 
-      <Footer />
     </div>
   );
 }

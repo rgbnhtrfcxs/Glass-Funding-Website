@@ -73,16 +73,23 @@ export default function Account() {
               <p className="text-xs md:text-sm text-muted-foreground">View your account details and status.</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <Link href="/account/edit">
               <a className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:text-primary hover:border-primary">
                 Edit account
               </a>
             </Link>
-            {profile && (profile.role === 'lab' || profile.role === 'admin') && (
+            {profile && (profile.role === "lab" || profile.role === "admin") && (
               <Link href="/lab/manage">
                 <a className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90">
                   Manage lab
+                </a>
+              </Link>
+            )}
+            {profile && profile.role === "admin" && (
+              <Link href="/admin/labs">
+                <a className="inline-flex items-center justify-center rounded-full border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10">
+                  Admin labs
                 </a>
               </Link>
             )}

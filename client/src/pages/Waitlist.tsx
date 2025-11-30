@@ -1,5 +1,4 @@
 import { Waitlist } from "@/components/sections/waitlist";
-import { Footer } from "@/components/sections/footer";
 
 export default function Waitlist1() {
   return (
@@ -9,7 +8,6 @@ export default function Waitlist1() {
         By signing up, you’ll receive early updates and exclusive platform news.
       </p>
       <Waitlist />
-      <Footer />
     </div>
   );
 }

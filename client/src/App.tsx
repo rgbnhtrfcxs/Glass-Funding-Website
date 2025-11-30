@@ -40,6 +40,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import LabRoute from "@/components/LabRoute";
 import AdminRoute from "@/components/AdminRoute";
 import StripeCheckout from "@/pages/StripeCheckout";
+import { Footer } from "@/components/sections/footer";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -123,6 +124,7 @@ function App() {
           <PageTransition>
             <Router />
           </PageTransition>
+          <Footer />
           <Toaster />
         </LabsProvider>
       </AuthProvider>

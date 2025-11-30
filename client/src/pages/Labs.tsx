@@ -8,11 +8,12 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Link } from "wouter";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useLabs } from "@/context/LabsContext";
 
 export default function Labs() {
   const { labs, isLoading, error, refresh } = useLabs();
+  const [searchTerm, setSearchTerm] = useState("");
 
   const labCount = labs.length;
   const verifiedCount = labs.filter(lab => lab.isVerified).length;
@@ -27,6 +28,15 @@ export default function Labs() {
     url.startsWith("data:")
       ? url
       : `${url}${url.includes("?") ? "&" : "?"}auto=format&fit=crop&w=${width}&q=${width >= 1600 ? 80 : 75}`;
+  const filteredLabs = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return labs;
+    return labs.filter(lab => {
+      const haystack = [lab.name, lab.location].filter(Boolean).join(" ").toLowerCase();
+      return haystack.includes(term);
+    });
+  }, [labs, searchTerm]);
+  // Potential future premium search: include labManager, focusAreas, equipment, offers.
 
   return (
     <section className="bg-background min-h-screen">
@@ -80,6 +90,22 @@ export default function Labs() {
           supporting a broad range of wet lab, fabrication, and analytics workflows.
         </p>
 
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-sm text-muted-foreground">
+            Showing {filteredLabs.length} of {labCount} labs
+          </div>
+          <div className="relative w-full sm:w-80">
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={event => setSearchTerm(event.target.value)}
+              placeholder="Search labs by name, city, focus, or equipment"
+              className="w-full rounded-full border border-border bg-card/80 px-4 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            />
+            <MapPin className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          </div>
+        </div>
+
         {error && (
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             <span>{error}</span>
@@ -104,9 +130,13 @@ export default function Labs() {
                 ? "We couldn't load the lab directory. Please retry."
                 : "No partner labs are available yet. Check back soon."}
             </div>
+          ) : filteredLabs.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-border bg-card/70 p-10 text-center text-muted-foreground">
+              No labs match that search. Try a different name, city, or equipment keyword.
+            </div>
           ) : (
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {labs.map((lab, index) => (
+              {filteredLabs.map((lab, index) => (
                 <motion.div
                   key={lab.id}
                   initial={{ opacity: 0, y: 24 }}
@@ -128,39 +158,45 @@ export default function Labs() {
                   const tier = (lab as any).subscriptionTier ?? (lab as any).subscription_tier ?? "base";
                   return (
                     <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h3 className="text-xl font-semibold text-foreground">{lab.name}</h3>
-                        <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                          <MapPin className="h-4 w-4 text-primary" />
-                        <span>{lab.location}</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-2 text-right">
-                      {tier === "premier" && (
-                        <div className="h-12 w-12 overflow-hidden rounded-full border border-dashed border-border bg-muted/30 text-[10px] text-muted-foreground flex items-center justify-center">
-                          Logo
-                        </div>
-                      )}
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
-                          lab.isVerified
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-amber-50 text-amber-700"
-                        }`}
-                      >
-                        {lab.isVerified ? (
-                          <>
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Verified
-                          </>
-                        ) : (
-                          <>
-                            <ShieldAlert className="h-3.5 w-3.5" />
-                            Pending
-                          </>
+                      <div className="flex items-center gap-3">
+                        {(lab.logoUrl || tier === "premier") && (
+                          <div className="h-12 w-12 overflow-hidden rounded-full border border-dashed border-border bg-muted/30 text-[11px] text-muted-foreground flex items-center justify-center flex-shrink-0">
+                            {lab.logoUrl ? (
+                              <img src={lab.logoUrl} alt={`${lab.name} logo`} className="h-full w-full object-cover" />
+                            ) : (
+                              "Logo"
+                            )}
+                          </div>
                         )}
-                      </span>
-                    </div>
+                        <div>
+                          <h3 className="text-xl font-semibold text-foreground">{lab.name}</h3>
+                          <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                            <MapPin className="h-4 w-4 text-primary" />
+                            <span>{lab.location}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-2 text-right">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
+                            lab.isVerified
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-amber-50 text-amber-700"
+                          }`}
+                        >
+                          {lab.isVerified ? (
+                            <>
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              Verified
+                            </>
+                          ) : (
+                            <>
+                              <ShieldAlert className="h-3.5 w-3.5" />
+                              Pending
+                            </>
+                          )}
+                        </span>
+                      </div>
                     </div>
                   );
                 })()}

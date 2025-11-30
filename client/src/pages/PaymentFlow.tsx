@@ -45,12 +45,12 @@ export default function PaymentFlow() {
     user?.user_metadata?.displayName ||
     "";
   const stripeCheckoutUrl = `/api/stripe/checkout?plan=${normalizedPlan || "base"}`;
-  const sepaDetails = {
-    accountName: "Glass Connect Labs Ltd",
-    iban: "DE89 3704 0044 0532 0130 00",
-    bic: "COBADEFFXXX",
-    reference: `GLASS-Connect (${user?.email || "your-email"})`,
-  };
+  // const sepaDetails = {
+  //   accountName: "Glass Connect Labs Ltd",
+  //   iban: "DE89 3704 0044 0532 0130 00",
+  //   bic: "COBADEFFXXX",
+  //   reference: `GLASS-Connect (${user?.email || "your-email"})`,
+  // };
 
   useEffect(() => {
     if (loading) return;
@@ -268,8 +268,9 @@ export default function PaymentFlow() {
             <div className="rounded-3xl border border-border bg-card/80 p-8 shadow-sm space-y-4">
               <h2 className="text-xl font-semibold text-foreground">Prefer bank transfer (SEPA)?</h2>
               <p className="text-sm text-muted-foreground">
-                Use the details below and include the reference. We’ll reconcile and activate your plan as soon as the transfer clears.
+                Bank transfer option coming soon. We&apos;ll share SEPA details once the Glass account is live.
               </p>
+              {/*
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><span className="font-semibold text-foreground">Account name:</span> {sepaDetails.accountName}</li>
                 <li><span className="font-semibold text-foreground">IBAN:</span> {sepaDetails.iban}</li>
@@ -279,6 +280,7 @@ export default function PaymentFlow() {
               <p className="text-xs text-muted-foreground">
                 Email proof of transfer to contact@glass-funding.com with your plan and lab name to expedite activation.
               </p>
+              */}
             </div>
           </motion.div>
         )}

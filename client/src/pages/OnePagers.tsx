@@ -1,5 +1,4 @@
 import { motion } from "framer-motion";
-import { Footer } from "@/components/sections/footer";
 
 const onePagers = [
   {
@@ -84,7 +83,6 @@ export default function OnePagers() {
           ))}
         </div>
       </div>
-      <Footer />
     </div>
   );
 }

@@ -19,6 +19,16 @@ export const labCoreSchema = z.object({
   location: z.string().min(1, "Location is required"),
   labManager: z.string().min(1, "Lab manager name is required"),
   contactEmail: z.string().email("Valid contact email is required"),
+  addressLine1: z.string().min(1).optional().nullable(),
+  addressLine2: z.string().min(1).optional().nullable(),
+  city: z.string().min(1).optional().nullable(),
+  state: z.string().min(1).optional().nullable(),
+  postalCode: z.string().min(1).optional().nullable(),
+  country: z.string().min(1).optional().nullable(),
+  siretNumber: z.string().min(4).optional().nullable(),
+  logoUrl: z.string().url("Logo must be a valid URL").optional().nullable(),
+  website: z.string().url("Website must be a valid URL").optional().nullable(),
+  linkedin: z.string().url("LinkedIn must be a valid URL").optional().nullable(),
   compliance: z.array(z.string().min(1)).default([]),
   complianceDocs: z.array(mediaAssetSchema).default([]),
   isVerified: z.boolean().default(false),
@@ -29,7 +39,7 @@ export const labCoreSchema = z.object({
   minimumStay: z.string().optional().default(""),
   rating: z.number().min(0).max(5).default(0),
   subscriptionTier: z.enum(["base", "verified", "premier", "custom"]).default("base"),
-  photos: z.array(mediaAssetSchema).min(1, "At least one lab photo is required"),
+  photos: z.array(mediaAssetSchema).min(0),
 });
 
 export const labSchema = labCoreSchema.extend({

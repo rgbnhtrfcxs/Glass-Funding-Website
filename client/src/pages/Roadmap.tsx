@@ -1,4 +1,3 @@
-import { Footer } from "@/components/sections/footer";
 
 const phases = [
   {
@@ -86,7 +85,6 @@ export default function Roadmap() {
         </div>
         <div className="h-24" />
       </div>
-      <Footer />
     </div>
   );
 }

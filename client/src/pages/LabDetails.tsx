@@ -4,9 +4,10 @@ import {
   Beaker,
   CalendarClock,
   CheckCircle2,
+  Globe2,
   Images,
+  Linkedin,
   Lock,
-  Mail,
   MapPin,
   ShieldAlert,
   ShieldCheck,
@@ -59,6 +60,10 @@ export default function LabDetails({ params }: LabDetailsProps) {
     url.startsWith("data:")
       ? url
       : `${url}${url.includes("?") ? "&" : "?"}auto=format&fit=crop&w=${width}&q=80`;
+  const tier = lab.subscriptionTier ?? "base";
+  const logoUrl = lab.logoUrl || null;
+  const website = lab.website || null;
+  const linkedin = lab.linkedin || null;
 
   if (isLoading && labs.length === 0) {
     return (
@@ -143,7 +148,18 @@ export default function LabDetails({ params }: LabDetailsProps) {
                 )}
               </span>
             </div>
-            <h1 className="text-4xl font-semibold text-foreground">{lab.name}</h1>
+            <div className="flex items-center gap-3">
+              {(logoUrl || tier === "premier") && (
+                <div className="h-12 w-12 overflow-hidden rounded-full border border-dashed border-border bg-muted/30 text-[11px] text-muted-foreground flex items-center justify-center flex-shrink-0">
+                  {logoUrl ? (
+                    <img src={logoUrl} alt={`${lab.name} logo`} className="h-full w-full object-cover" />
+                  ) : (
+                    "Logo"
+                  )}
+                </div>
+              )}
+              <h1 className="text-4xl font-semibold text-foreground">{lab.name}</h1>
+            </div>
             <p className="text-muted-foreground text-base leading-relaxed">
               Review compliance, offers, and baseline expectations before requesting space. Minimum commitment:
               <span className="font-medium text-foreground"> {lab.minimumStay}</span>.
@@ -151,30 +167,22 @@ export default function LabDetails({ params }: LabDetailsProps) {
           </header>
 
           {lab.photos.length > 0 && (
-            <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
-              <div className="overflow-hidden rounded-3xl border border-border/80 bg-background/40">
-                <img
-                  src={getImageUrl(lab.photos[0].url)}
-                  alt={`${lab.name} main lab photo - ${lab.photos[0].name}`}
-                  className="h-full max-h-[420px] w-full object-cover"
-                />
+            <div className="mt-2 overflow-x-auto pb-2">
+              <div className="flex gap-4 min-w-full">
+                {lab.photos.map((photo, index) => (
+                  <div
+                    key={photo.url}
+                    className="min-w-[320px] max-w-[420px] h-64 overflow-hidden rounded-3xl border border-border/80 bg-background/40 flex-shrink-0"
+                  >
+                    <img
+                      src={getImageUrl(photo.url, 1200)}
+                      alt={`${lab.name} photo ${index + 1} - ${photo.name}`}
+                      className="h-full w-full object-cover"
+                      loading={index === 0 ? "eager" : "lazy"}
+                    />
+                  </div>
+                ))}
               </div>
-              {lab.photos.length > 1 && (
-                <div className="grid gap-4">
-                  {lab.photos.slice(1, 4).map((photo, photoIndex) => (
-                    <div
-                      key={photo.url}
-                      className="overflow-hidden rounded-2xl border border-border/70 bg-background/40"
-                    >
-                      <img
-                        src={getImageUrl(photo.url, 900)}
-                        alt={`${lab.name} gallery ${photoIndex + 2} - ${photo.name}`}
-                        className="h-32 w-full object-cover"
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           )}
 
@@ -187,10 +195,36 @@ export default function LabDetails({ params }: LabDetailsProps) {
                 <Users className="h-4 w-4 text-primary" />
                 {lab.labManager}
               </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground break-all">
-                <Mail className="h-4 w-4 text-primary" />
-                {lab.contactEmail}
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Star className="h-4 w-4 text-primary" />
+                {website || linkedin ? "Connect with the team" : "Social links not provided yet"}
               </div>
+              {(website || linkedin) && (
+                <div className="flex flex-wrap gap-2">
+                  {website && (
+                    <a
+                      href={website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:border-primary hover:text-primary"
+                    >
+                      <Globe2 className="h-3.5 w-3.5 text-primary" />
+                      Website
+                    </a>
+                  )}
+                  {linkedin && (
+                    <a
+                      href={linkedin}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:border-primary hover:text-primary"
+                    >
+                      <Linkedin className="h-3.5 w-3.5 text-primary" />
+                      LinkedIn
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="rounded-2xl border border-border/80 bg-background/50 p-6 space-y-3 md:col-span-2">

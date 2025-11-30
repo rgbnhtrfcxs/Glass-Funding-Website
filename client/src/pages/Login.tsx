@@ -1,22 +1,31 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLocation, Link } from "wouter";
-import { supabase } from "../lib/supabaseClient"; 
+import { supabase } from "../lib/supabaseClient";
+import { useAuth } from "@/context/AuthContext";
 
 export default function Login() {
+  const { user, loading: authLoading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [, navigate] = useLocation();
   const [loading, setLoading] = useState(false);
   // Destination after successful login: honor ?next=... or default to /account
-  const next = (() => {
+  const next = useMemo(() => {
     try {
       const params = new URLSearchParams(window.location.search);
       return params.get("next") || "/account";
     } catch {
       return "/account";
     }
-  })();
+  }, []);
+
+  // If already authenticated, send the user to their profile immediately
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate(next, { replace: true });
+    }
+  }, [authLoading, user, navigate, next]);
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

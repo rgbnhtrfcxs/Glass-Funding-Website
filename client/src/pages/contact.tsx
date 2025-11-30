@@ -1,7 +1,6 @@
 import { motion } from "framer-motion";
 import { Mail, X as XIcon, Linkedin, Instagram } from "lucide-react";
 import { Waitlist } from "@/components/sections/waitlist";
-import { Footer } from "@/components/sections/footer";
 import {
   Accordion,
   AccordionContent,
@@ -144,7 +143,6 @@ export default function Contact() {
         </div>
       </div>
       <Waitlist />
-      <Footer />
     </div>
   );
 }
