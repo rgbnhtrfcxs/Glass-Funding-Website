@@ -62,6 +62,21 @@ export default function LabDetails({ params }: LabDetailsProps) {
       : `${url}${url.includes("?") ? "&" : "?"}auto=format&fit=crop&w=${width}&q=80`;
   const tier = lab.subscriptionTier ?? "base";
   const logoUrl = lab.logoUrl || null;
+  const tierLower = (tier as string).toLowerCase?.() ?? (typeof tier === "string" ? tier.toLowerCase() : "base");
+  const status = lab.isVerified ? "verified" : tierLower === "base" ? "unverified" : "pending";
+  const offersLabSpace =
+    lab.offersLabSpace === true ||
+    lab.offersLabSpace === "true" ||
+    lab.offersLabSpace === 1 ||
+    lab.offersLabSpace === "1";
+  const badgeClass =
+    status === "verified"
+      ? "bg-emerald-50 text-emerald-700"
+      : status === "pending"
+        ? "bg-amber-50 text-amber-700"
+        : "bg-slate-100 text-slate-700";
+  const badgeLabel = status === "verified" ? "Verified by Glass" : status === "pending" ? "Verification pending" : "Unverified";
+  const partnerLogos = lab.partnerLogos ?? [];
   const website = lab.website || null;
   const linkedin = lab.linkedin || null;
 
@@ -115,38 +130,25 @@ export default function LabDetails({ params }: LabDetailsProps) {
                 <MapPin className="h-3.5 w-3.5" />
                 {lab.location}
               </span>
-              <span
-                className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
-                  lab.isVerified
-                    ? "bg-emerald-50 text-emerald-700"
-                    : "bg-amber-50 text-amber-700"
-                }`}
-              >
-                {lab.isVerified ? (
+              <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${badgeClass}`}>
+                {status === "verified" ? (
                   <>
                     <CheckCircle2 className="h-3.5 w-3.5" />
-                    Verified by Glass
+                    {badgeLabel}
                   </>
                 ) : (
                   <>
                     <ShieldAlert className="h-3.5 w-3.5" />
-                    Verification pending
+                    {badgeLabel}
                   </>
                 )}
               </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground">
-                {lab.pricePrivacy ? (
-                  <>
-                    <Lock className="h-3.5 w-3.5 text-primary" />
-                    Pricing shared privately
-                  </>
-                ) : (
-                  <>
-                    <Unlock className="h-3.5 w-3.5 text-primary" />
-                    Pricing published
-                  </>
-                )}
-              </span>
+              {offersLabSpace && (
+                <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground">
+                  <Unlock className="h-3.5 w-3.5 text-primary" />
+                  Offers lab space
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-3">
               {(logoUrl || tier === "premier") && (
@@ -160,10 +162,14 @@ export default function LabDetails({ params }: LabDetailsProps) {
               )}
               <h1 className="text-4xl font-semibold text-foreground">{lab.name}</h1>
             </div>
-            <p className="text-muted-foreground text-base leading-relaxed">
-              Review compliance, offers, and baseline expectations before requesting space. Minimum commitment:
-              <span className="font-medium text-foreground"> {lab.minimumStay}</span>.
-            </p>
+            {lab.description ? (
+              <p className="text-muted-foreground text-base leading-relaxed">{lab.description}</p>
+            ) : (
+              <p className="text-muted-foreground text-base leading-relaxed">
+                Review compliance, offers, and baseline expectations before requesting space. Minimum commitment:
+                <span className="font-medium text-foreground"> {lab.minimumStay}</span>.
+              </p>
+            )}
           </header>
 
           {lab.photos.length > 0 && (
@@ -267,30 +273,32 @@ export default function LabDetails({ params }: LabDetailsProps) {
             </div>
           </div>
 
-          <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
-            <h2 className="text-lg font-semibold text-foreground">Pricing & availability offers</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Labs may extend multiple engagement models; choose the approach that best matches your run plan.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {lab.offers.map(offer => (
-                <span
-                  key={offer}
-                  className="rounded-full bg-muted/60 px-3 py-1 text-xs font-medium text-muted-foreground"
-                >
-                  {offer}
-                </span>
-              ))}
-            </div>
-            <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-muted-foreground">
-              <CalendarClock className="h-4 w-4 text-primary" />
-              Minimum stay expectation: <span className="font-medium text-foreground">{lab.minimumStay}</span>
-            </div>
-            <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-muted-foreground">
-              <Images className="h-4 w-4 text-primary" />
-              {lab.photos.length} photo{lab.photos.length === 1 ? "" : "s"} included
-            </div>
-          </section>
+          {offersLabSpace && (
+            <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
+              <h2 className="text-lg font-semibold text-foreground">Pricing & availability offers</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Labs may extend multiple engagement models; choose the approach that best matches your run plan.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {lab.offers.map(offer => (
+                  <span
+                    key={offer}
+                    className="rounded-full bg-muted/60 px-3 py-1 text-xs font-medium text-muted-foreground"
+                  >
+                    {offer}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-muted-foreground">
+                <CalendarClock className="h-4 w-4 text-primary" />
+                Minimum stay expectation: <span className="font-medium text-foreground">{lab.minimumStay}</span>
+              </div>
+              <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-muted-foreground">
+                <Images className="h-4 w-4 text-primary" />
+                {lab.photos.length} photo{lab.photos.length === 1 ? "" : "s"} included
+              </div>
+            </section>
+          )}
 
           <section className="grid gap-6 lg:grid-cols-2">
             <div className="rounded-2xl border border-border/80 bg-background/50 p-6">
@@ -326,7 +334,24 @@ export default function LabDetails({ params }: LabDetailsProps) {
             </div>
           </section>
 
-          <footer className="flex flex-wrap gap-3">
+          {tierLower === "premier" && partnerLogos.length > 0 && (
+            <div className="mt-8 rounded-2xl border border-primary/40 bg-primary/5 p-4">
+              <h3 className="text-sm font-semibold text-foreground mb-3">Featured partners</h3>
+              <div className="flex gap-3 overflow-x-auto pb-2">
+                {partnerLogos.map((logo, idx) => (
+                  <div
+                    key={`${logo.url}-${idx}`}
+                    className="h-16 w-24 overflow-hidden rounded-xl border border-primary/40 bg-background flex-shrink-0"
+                    title={logo.name}
+                  >
+                    <img src={logo.url} alt={logo.name} className="h-full w-full object-cover" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <footer className="flex flex-wrap gap-3 mt-6">
             <Link
               href={`/labs/${lab.id}/request`}
               className="inline-flex items-center justify-center rounded-full border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"

@@ -11,6 +11,8 @@ type Form = {
   contactEmail: string;
   logoUrl: string;
   siretNumber: string;
+  offersLabSpace: boolean;
+  description: string;
   addressLine1: string;
   addressLine2: string;
   city: string;
@@ -19,6 +21,7 @@ type Form = {
   country: string;
   website: string;
   linkedin: string;
+  partnerLogos: { name: string; url: string }[];
   compliance: string;
   equipment: string;
   focusAreas: string;
@@ -41,6 +44,8 @@ export default function MyLab() {
     contactEmail: "",
     logoUrl: "",
     siretNumber: "",
+    offersLabSpace: false,
+    description: "",
     addressLine1: "",
     addressLine2: "",
     city: "",
@@ -49,6 +54,7 @@ export default function MyLab() {
     country: "",
     website: "",
     linkedin: "",
+    partnerLogos: [],
     compliance: "",
     equipment: "",
     focusAreas: "",
@@ -58,6 +64,7 @@ export default function MyLab() {
   });
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
+  const [partnerLogos, setPartnerLogos] = useState<{ name: string; url: string }[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -91,6 +98,8 @@ export default function MyLab() {
           contactEmail: lab.contactEmail || user?.email || "",
           logoUrl: lab.logoUrl || "",
           siretNumber: lab.siretNumber || "",
+          offersLabSpace: lab.offersLabSpace ?? true,
+          description: lab.description || "",
           addressLine1: lab.addressLine1 || "",
           addressLine2: lab.addressLine2 || "",
           city: lab.city || "",
@@ -99,6 +108,7 @@ export default function MyLab() {
           country: lab.country || "",
           website: lab.website || "",
           linkedin: lab.linkedin || "",
+          partnerLogos: lab.partnerLogos || [],
           compliance: (lab.compliance || []).join(", "),
           equipment: (lab.equipment || []).join(", "),
           focusAreas: (lab.focusAreas || []).join(", "),
@@ -106,6 +116,7 @@ export default function MyLab() {
           minimumStay: lab.minimumStay || "",
           pricePrivacy: !!lab.pricePrivacy,
         });
+        setPartnerLogos(lab.partnerLogos || []);
       } catch (err: any) {
         setError(err.message || "Unable to load your lab");
       } finally {
@@ -146,6 +157,35 @@ export default function MyLab() {
     }
   }
 
+  async function handlePartnerLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setMessage(null);
+    try {
+      const ext = file.name.split(".").pop() || "png";
+      const filename =
+        (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`) + `.${ext}`;
+      const folder = labId ? `labs/${labId}/partners` : "partners";
+      const filePath = `${folder}/${filename}`;
+      const { error: uploadError } = await supabase.storage
+        .from("lab-logos")
+        .upload(filePath, file, { upsert: true, contentType: file.type });
+      if (uploadError) throw uploadError;
+      const { data } = supabase.storage.from("lab-logos").getPublicUrl(filePath);
+      const publicUrl = data.publicUrl;
+      setPartnerLogos(prev => [...prev, { name: file.name, url: publicUrl }]);
+      setForm(prev => ({ ...prev, partnerLogos: [...prev.partnerLogos, { name: file.name, url: publicUrl }] }));
+      setMessage("Partner logo uploaded");
+    } catch (err: any) {
+      setMessage(err?.message || "Unable to upload partner logo");
+    }
+  }
+
+  const removePartnerLogo = (url: string) => {
+    setPartnerLogos(prev => prev.filter(item => item.url !== url));
+    setForm(prev => ({ ...prev, partnerLogos: prev.partnerLogos.filter(item => item.url !== url) }));
+  };
+
   async function save() {
     setSaving(true);
     setError(null);
@@ -166,6 +206,8 @@ export default function MyLab() {
           contactEmail: form.contactEmail,
           logoUrl: form.logoUrl || null,
           siretNumber: form.siretNumber || null,
+          offersLabSpace: form.offersLabSpace,
+          description: form.description || null,
           addressLine1: form.addressLine1 || null,
           addressLine2: form.addressLine2 || null,
           city: form.city || null,
@@ -229,6 +271,23 @@ export default function MyLab() {
             <Field label="Contact email">
               <input className="input" value={form.contactEmail} onChange={e => setForm({ ...form, contactEmail: e.target.value })} />
             </Field>
+            <Field label="Lab description">
+              <textarea
+                className="input"
+                rows={4}
+                value={form.description}
+                onChange={e => setForm({ ...form, description: e.target.value })}
+                placeholder="Short intro to your lab (shown on Lab Details)"
+              />
+            </Field>
+            <label className="flex items-center gap-3 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={form.offersLabSpace}
+                onChange={e => setForm({ ...form, offersLabSpace: e.target.checked })}
+              />
+              Offers lab space (enables pricing/offers on your page)
+            </label>
             <Field label="Logo (stored in Supabase)">
               <div className="flex items-center gap-3">
                 <input type="file" accept="image/*" onChange={handleLogoUpload} className="input" />
@@ -251,6 +310,28 @@ export default function MyLab() {
                 </div>
               )}
               <p className="text-xs text-muted-foreground">Uploads go to the `lab-logos` bucket.</p>
+            </Field>
+            <Field label="Partner logos (premier feature)">
+              <div className="flex flex-col gap-2">
+                <input type="file" accept="image/*" onChange={handlePartnerLogoUpload} className="input" />
+                {partnerLogos.length > 0 && (
+                  <div className="flex gap-3 overflow-x-auto pb-2">
+                    {partnerLogos.map(logo => (
+                      <div key={logo.url} className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 flex-shrink-0">
+                        <img src={logo.url} alt={logo.name} className="h-10 w-10 rounded object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => removePartnerLogo(logo.url)}
+                          className="text-xs text-muted-foreground hover:text-destructive"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">Stored in `lab-logos` under partners/ folders. Shown for premier labs.</p>
+              </div>
             </Field>
             <Field label="Address line 1 (internal)">
               <input className="input" value={form.addressLine1} onChange={e => setForm({ ...form, addressLine1: e.target.value })} />

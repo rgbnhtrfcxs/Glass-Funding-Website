@@ -6,6 +6,7 @@ import { storage } from "./storage";
 import { labStore } from "./labs-store";
 import { labRequestStore } from "./lab-requests-store";
 import { labCollaborationStore } from "./collaboration-store";
+import { sendMail } from "./mailer";
 import jwt from "jsonwebtoken";
 import { supabasePublic } from "./supabasePublicClient.js";
 
@@ -160,6 +161,20 @@ export function registerRoutes(app: Express) {
         ...payload,
         labName: lab.name,
       });
+      // Notify internal inbox
+      await sendMail({
+        to: process.env.ADMIN_INBOX ?? "contact@glass-funding.com",
+        subject: `New collaboration inquiry for ${lab.name}`,
+        text: [
+          `Lab: ${lab.name} (id: ${payload.labId})`,
+          `Contact: ${payload.contactName} <${payload.contactEmail}>`,
+          `Targets: ${payload.targetLabs ?? "N/A"}`,
+          `Focus: ${payload.collaborationFocus ?? "N/A"}`,
+          `Resources offered: ${payload.resourcesOffered ?? "N/A"}`,
+          `Timeline: ${payload.desiredTimeline ?? "N/A"}`,
+          `Notes: ${payload.additionalNotes ?? "N/A"}`,
+        ].join("\n"),
+      });
       res.status(201).json(created);
     } catch (error) {
       if (error instanceof ZodError) {
@@ -187,6 +202,28 @@ export function registerRoutes(app: Express) {
       const created = await labRequestStore.create({
         ...payload,
         labName: lab.name,
+      });
+      await sendMail({
+        to: process.env.ADMIN_INBOX ?? "contact@glass-funding.com",
+        subject: `New lab request for ${lab.name}`,
+        text: [
+          `Lab: ${lab.name} (id: ${payload.labId})`,
+          `Requester: ${payload.requesterName} <${payload.requesterEmail}>`,
+          `Org/Role: ${payload.organization} / ${payload.roleTitle}`,
+          `Project: ${payload.projectSummary}`,
+          `Timeline: ${payload.workTimeline}`,
+          `Weekly hours: ${payload.weeklyHoursNeeded}`,
+          `Team size: ${payload.teamSize}`,
+          `Equipment: ${payload.equipmentNeeds}`,
+          `Compliance notes: ${payload.complianceNotes}`,
+          `Requirements: ${payload.specialRequirements}`,
+          `Links: ${payload.referencesOrLinks}`,
+          `Verification: ${payload.verification}`,
+          `Verification proof: ${payload.verificationProof}`,
+          `Preferred contact: ${payload.preferredContactMethod}`,
+          `Delivery window: ${payload.preferredDeliveryWindow}`,
+          `Agree to review: ${payload.agreeToReview}`,
+        ].join("\n"),
       });
       res.status(201).json(created);
     } catch (error) {

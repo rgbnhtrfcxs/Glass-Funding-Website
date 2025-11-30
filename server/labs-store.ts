@@ -19,6 +19,8 @@ const LAB_SELECT = `
   contact_email,
   siret_number,
   logo_url,
+  description,
+  offers_lab_space,
   address_line1,
   address_line2,
   city,
@@ -27,6 +29,7 @@ const LAB_SELECT = `
   country,
   website,
   linkedin,
+  lab_partner_logos (name, url),
   is_verified,
   is_visible,
   price_privacy,
@@ -49,6 +52,8 @@ type LabRow = {
   contact_email: string;
   siret_number: string | null;
   logo_url: string | null;
+  description: string | null;
+  offers_lab_space: boolean | string | null;
   address_line1: string | null;
   address_line2: string | null;
   city: string | null;
@@ -57,6 +62,7 @@ type LabRow = {
   country: string | null;
   website: string | null;
   linkedin: string | null;
+  lab_partner_logos: Array<{ name: string; url: string }> | null;
   is_verified: boolean | string | null;
   is_visible: boolean | string | null;
   price_privacy: boolean;
@@ -92,6 +98,9 @@ function mapLabRow(row: LabRow): LabPartner {
     name: photo.name,
     url: photo.url,
   }));
+  const partnerLogos = (row.lab_partner_logos ?? [])
+    .filter(logo => (logo?.url || "").trim().length > 0)
+    .map(logo => ({ name: logo.name, url: logo.url }));
   const mapped = {
     id: Number(row.id),
     name: row.name,
@@ -100,6 +109,8 @@ function mapLabRow(row: LabRow): LabPartner {
     contactEmail: row.contact_email,
     siretNumber: row.siret_number || null,
     logoUrl: row.logo_url || null,
+    description: row.description || null,
+    offersLabSpace: parseBoolean(row.offers_lab_space, false),
     addressLine1: row.address_line1 || null,
     addressLine2: row.address_line2 || null,
     city: row.city || null,
@@ -108,6 +119,7 @@ function mapLabRow(row: LabRow): LabPartner {
     country: row.country || null,
     website: row.website || null,
     linkedin: row.linkedin || null,
+    partnerLogos,
     compliance: (row.lab_compliance_labels ?? []).map(item => item.label),
     complianceDocs: (row.lab_compliance_docs ?? []).map(doc => ({ name: doc.name, url: doc.url })),
     isVerified: parseBoolean(row.is_verified),
@@ -182,8 +194,19 @@ async function replaceLabOffers(labId: number, offers: OfferOption[]) {
   if (ins.error) throw ins.error;
 }
 
+async function replaceLabPartnerLogos(labId: number, logos: MediaAsset[]) {
+  const del = await supabase.from("lab_partner_logos").delete().eq("lab_id", labId);
+  if (del.error) throw del.error;
+  if (!logos.length) return;
+  const ins = await supabase
+    .from("lab_partner_logos")
+    .insert(logos.map(logo => ({ lab_id: labId, name: logo.name, url: logo.url })));
+  if (ins.error) throw ins.error;
+}
+
 async function writeLabRelations(labId: number, lab: InsertLab | LabPartner) {
   await replaceLabPhotos(labId, lab.photos);
+  await replaceLabPartnerLogos(labId, (lab as any).partnerLogos ?? []);
   await replaceLabComplianceLabels(labId, lab.compliance);
   await replaceLabComplianceDocs(labId, lab.complianceDocs);
   await replaceLabEquipment(labId, lab.equipment);
@@ -217,6 +240,8 @@ export class LabStore {
         contact_email: data.contactEmail,
         siret_number: data.siretNumber ?? null,
         logo_url: data.logoUrl ?? null,
+        description: data.description ?? null,
+        offers_lab_space: data.offersLabSpace ?? true,
         address_line1: data.addressLine1 ?? null,
         address_line2: data.addressLine2 ?? null,
         city: data.city ?? null,
@@ -259,6 +284,9 @@ export class LabStore {
     if (Object.prototype.hasOwnProperty.call(updates, "contactEmail")) baseUpdates.contact_email = parsed.contactEmail;
     if (Object.prototype.hasOwnProperty.call(updates, "siretNumber")) baseUpdates.siret_number = parsed.siretNumber ?? null;
     if (Object.prototype.hasOwnProperty.call(updates, "logoUrl")) baseUpdates.logo_url = parsed.logoUrl ?? null;
+    if (Object.prototype.hasOwnProperty.call(updates, "description")) baseUpdates.description = parsed.description ?? null;
+    if (Object.prototype.hasOwnProperty.call(updates, "offersLabSpace"))
+      baseUpdates.offers_lab_space = parsed.offersLabSpace ?? true;
     if (Object.prototype.hasOwnProperty.call(updates, "addressLine1")) baseUpdates.address_line1 = parsed.addressLine1 ?? null;
     if (Object.prototype.hasOwnProperty.call(updates, "addressLine2")) baseUpdates.address_line2 = parsed.addressLine2 ?? null;
     if (Object.prototype.hasOwnProperty.call(updates, "city")) baseUpdates.city = parsed.city ?? null;
@@ -285,6 +313,8 @@ export class LabStore {
     if (Object.prototype.hasOwnProperty.call(updates, "equipment")) await replaceLabEquipment(id, parsed.equipment ?? []);
     if (Object.prototype.hasOwnProperty.call(updates, "focusAreas")) await replaceLabFocusAreas(id, parsed.focusAreas ?? []);
     if (Object.prototype.hasOwnProperty.call(updates, "offers")) await replaceLabOffers(id, parsed.offers ?? []);
+    if (Object.prototype.hasOwnProperty.call(updates, "partnerLogos"))
+      await replaceLabPartnerLogos(id, (parsed as any).partnerLogos ?? []);
 
     const updated = await this.findById(id);
     if (!updated) throw new Error("Lab not found after update");

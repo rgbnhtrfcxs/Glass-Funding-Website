@@ -34,6 +34,8 @@ interface LabFormState {
   labManager: string;
   contactEmail: string;
   logoUrl: string;
+  description: string;
+  offersLabSpace: string;
   siretNumber: string;
   addressLine1: string;
   addressLine2: string;
@@ -43,6 +45,7 @@ interface LabFormState {
   country: string;
   website: string;
   linkedin: string;
+  partnerLogos: MediaAsset[];
   compliance: string;
   verification: VerificationOption;
   pricePrivacy: PricePrivacyOption;
@@ -61,6 +64,8 @@ const emptyForm: LabFormState = {
   labManager: "",
   contactEmail: "",
   logoUrl: "",
+  description: "",
+  offersLabSpace: "no",
   siretNumber: "",
   addressLine1: "",
   addressLine2: "",
@@ -70,6 +75,7 @@ const emptyForm: LabFormState = {
   country: "",
   website: "",
   linkedin: "",
+  partnerLogos: [],
   compliance: "",
   verification: "no",
   pricePrivacy: "no",
@@ -89,6 +95,8 @@ function labToForm(lab: LabPartner): LabFormState {
     labManager: lab.labManager,
     contactEmail: lab.contactEmail,
     logoUrl: lab.logoUrl || "",
+    description: lab.description || "",
+    offersLabSpace: lab.offersLabSpace ? "yes" : "no",
     siretNumber: lab.siretNumber || "",
     addressLine1: lab.addressLine1 || "",
     addressLine2: lab.addressLine2 || "",
@@ -98,6 +106,7 @@ function labToForm(lab: LabPartner): LabFormState {
     country: lab.country || "",
     website: lab.website || "",
     linkedin: lab.linkedin || "",
+    partnerLogos: lab.partnerLogos || [],
     compliance: lab.compliance.join(", "),
     verification: lab.isVerified ? "yes" : "no",
     pricePrivacy: lab.pricePrivacy ? "yes" : "no",
@@ -148,6 +157,7 @@ function formToPayload(
   form: LabFormState,
   photos: MediaAsset[],
   complianceDocs: MediaAsset[],
+  partnerLogos: MediaAsset[],
 ) {
   const ratingValue = form.rating.trim() === "" ? 0 : Number(form.rating);
   if (form.rating.trim() !== "" && (Number.isNaN(ratingValue) || ratingValue < 0 || ratingValue > 5)) {
@@ -160,6 +170,8 @@ function formToPayload(
     labManager: form.labManager.trim(),
     contactEmail: form.contactEmail.trim(),
     logoUrl: form.logoUrl.trim() || null,
+    description: form.description.trim() || null,
+    offersLabSpace: form.offersLabSpace === "yes",
     siretNumber: form.siretNumber.trim() || null,
     addressLine1: form.addressLine1.trim() || null,
     addressLine2: form.addressLine2.trim() || null,
@@ -169,6 +181,7 @@ function formToPayload(
     country: form.country.trim() || null,
     website: form.website.trim() || null,
     linkedin: form.linkedin.trim() || null,
+    partnerLogos,
     compliance: parseList(form.compliance),
     isVerified: form.verification === "yes",
     equipment: parseList(form.equipment),
@@ -200,6 +213,7 @@ export default function AdminLabs() {
   const [statusMessage, setStatusMessage] = useState<StatusMessage>(null);
   const [photoAssets, setPhotoAssets] = useState<MediaAsset[]>([]);
   const [complianceAssets, setComplianceAssets] = useState<MediaAsset[]>([]);
+  const [partnerLogos, setPartnerLogos] = useState<MediaAsset[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
@@ -211,6 +225,7 @@ export default function AdminLabs() {
     setStatusMessage(null);
     setPhotoAssets([]);
     setComplianceAssets([]);
+    setPartnerLogos([]);
     setLogoError(null);
   };
 
@@ -220,6 +235,7 @@ export default function AdminLabs() {
     setStatusMessage(null);
     setPhotoAssets(lab.photos);
     setComplianceAssets(lab.complianceDocs);
+    setPartnerLogos(lab.partnerLogos || []);
     setLogoError(null);
   };
 
@@ -228,6 +244,7 @@ export default function AdminLabs() {
     setFormState(emptyForm);
     setPhotoAssets([]);
     setComplianceAssets([]);
+    setPartnerLogos([]);
   };
 
   const handleChange = (field: keyof LabFormState, value: string) => {
@@ -265,6 +282,29 @@ export default function AdminLabs() {
       setLogoError(err?.message || "Unable to upload logo");
     } finally {
       setLogoUploading(false);
+    }
+  };
+
+  const handlePartnerLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setStatusMessage(null);
+    try {
+      const ext = file.name.split(".").pop() || "png";
+      const filename =
+        (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`) + `.${ext}`;
+      const folder = typeof editing === "number" ? `labs/${editing}/partners` : "partners";
+      const filePath = `${folder}/${filename}`;
+      const { error: uploadError } = await supabase.storage
+        .from("lab-logos")
+        .upload(filePath, file, { upsert: true, contentType: file.type });
+      if (uploadError) throw uploadError;
+      const { data } = supabase.storage.from("lab-logos").getPublicUrl(filePath);
+      const publicUrl = data.publicUrl;
+      setPartnerLogos(prev => [...prev, { name: file.name, url: publicUrl }]);
+      setStatusMessage({ type: "success", text: "Partner logo uploaded" });
+    } catch (err: any) {
+      setStatusMessage({ type: "error", text: err?.message || "Unable to upload partner logo" });
     }
   };
 
@@ -314,14 +354,29 @@ export default function AdminLabs() {
   const handleComplianceUpload: React.ChangeEventHandler<HTMLInputElement> = async event => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
+    const labFolder = typeof editing === "number" ? `labs/${editing}/docs` : "docs";
+    const uploaded: MediaAsset[] = [];
     try {
-      const uploaded = await readFilesAsAssets(files);
-      setComplianceAssets(prev => [...prev, ...uploaded]);
-      setStatusMessage(null);
+      for (const file of Array.from(files)) {
+        const ext = file.name.split(".").pop() || "pdf";
+        const filename =
+          (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`) + `.${ext}`;
+        const path = `${labFolder}/${filename}`;
+        const { error: uploadError } = await supabase.storage
+          .from("lab-pdfs")
+          .upload(path, file, { upsert: true, contentType: file.type });
+        if (uploadError) throw uploadError;
+        const { data } = supabase.storage.from("lab-pdfs").getPublicUrl(path);
+        uploaded.push({ name: file.name, url: data.publicUrl });
+      }
+      if (uploaded.length) {
+        setComplianceAssets(prev => [...prev, ...uploaded]);
+        setStatusMessage({ type: "success", text: "Documents uploaded" });
+      }
     } catch (error) {
       setStatusMessage({
         type: "error",
-        text: error instanceof Error ? error.message : "Unable to process document uploads",
+        text: error instanceof Error ? error.message : "Unable to upload documents",
       });
     } finally {
       event.target.value = "";
@@ -334,6 +389,10 @@ export default function AdminLabs() {
 
   const removeComplianceDoc = (asset: MediaAsset) => {
     setComplianceAssets(prev => prev.filter(item => item.url !== asset.url));
+  };
+
+  const removePartnerLogo = (asset: MediaAsset) => {
+    setPartnerLogos(prev => prev.filter(item => item.url !== asset.url));
   };
 
   const validateRequiredFields = () => {
@@ -356,7 +415,7 @@ export default function AdminLabs() {
     try {
       setIsSaving(true);
       validateRequiredFields();
-      const payload = formToPayload(formState, photoAssets, complianceAssets);
+      const payload = formToPayload(formState, photoAssets, complianceAssets, partnerLogos);
 
       if (editing === "new") {
         const created = await addLab(payload);
@@ -701,6 +760,71 @@ export default function AdminLabs() {
                   </div>
                 </div>
 
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">
+                    Partner logos (premier feature)
+                  </label>
+                  <div className="flex flex-col gap-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePartnerLogoUpload}
+                      className="w-full rounded-xl border border-dashed border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    />
+                    <p className="text-xs text-muted-foreground">Stored in `lab-logos` under partners/ folders.</p>
+                    {partnerLogos.length > 0 && (
+                      <div className="flex gap-3 overflow-x-auto pb-2">
+                        {partnerLogos.map(logo => (
+                          <div
+                            key={logo.url}
+                            className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 flex-shrink-0"
+                          >
+                            <img src={logo.url} alt={logo.name} className="h-10 w-10 rounded object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => removePartnerLogo(logo)}
+                              className="text-xs text-muted-foreground hover:text-destructive"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground" htmlFor="lab-description">
+                    Lab description
+                  </label>
+                  <textarea
+                    id="lab-description"
+                    value={formState.description}
+                    onChange={event => handleChange("description", event.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    placeholder="Short intro to the lab (shown on Lab Details)"
+                    rows={4}
+                  />
+                  <p className="text-xs text-muted-foreground">Optional intro that appears on the lab detail page.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground" htmlFor="lab-offers-space">
+                    Offers lab space?
+                  </label>
+                  <select
+                    id="lab-offers-space"
+                    value={formState.offersLabSpace}
+                    onChange={event => handleChange("offersLabSpace", event.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <option value="yes">Yes, accepting bench/space requests</option>
+                    <option value="no">No, visibility only</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">Controls whether pricing/offers show on the lab page.</p>
+                </div>
+
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground" htmlFor="lab-address1">
@@ -892,6 +1016,7 @@ export default function AdminLabs() {
                     onChange={handleComplianceUpload}
                     className="w-full rounded-xl border border-dashed border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   />
+                  <p className="text-xs text-muted-foreground">Uploads are stored in the Supabase bucket `lab-pdfs`.</p>
                   <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                     {complianceAssets.map(asset => (
                       <button
