@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { useLabs } from "@/context/LabsContext";
+import { supabase } from "@/lib/supabaseClient";
 import {
   offerOptions,
   type LabPartner,
@@ -32,6 +33,16 @@ interface LabFormState {
   location: string;
   labManager: string;
   contactEmail: string;
+  logoUrl: string;
+  siretNumber: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  website: string;
+  linkedin: string;
   compliance: string;
   verification: VerificationOption;
   pricePrivacy: PricePrivacyOption;
@@ -49,6 +60,16 @@ const emptyForm: LabFormState = {
   location: "",
   labManager: "",
   contactEmail: "",
+  logoUrl: "",
+  siretNumber: "",
+  addressLine1: "",
+  addressLine2: "",
+  city: "",
+  state: "",
+  postalCode: "",
+  country: "",
+  website: "",
+  linkedin: "",
   compliance: "",
   verification: "no",
   pricePrivacy: "no",
@@ -67,6 +88,16 @@ function labToForm(lab: LabPartner): LabFormState {
     location: lab.location,
     labManager: lab.labManager,
     contactEmail: lab.contactEmail,
+    logoUrl: lab.logoUrl || "",
+    siretNumber: lab.siretNumber || "",
+    addressLine1: lab.addressLine1 || "",
+    addressLine2: lab.addressLine2 || "",
+    city: lab.city || "",
+    state: lab.state || "",
+    postalCode: lab.postalCode || "",
+    country: lab.country || "",
+    website: lab.website || "",
+    linkedin: lab.linkedin || "",
     compliance: lab.compliance.join(", "),
     verification: lab.isVerified ? "yes" : "no",
     pricePrivacy: lab.pricePrivacy ? "yes" : "no",
@@ -128,6 +159,16 @@ function formToPayload(
     location: form.location.trim(),
     labManager: form.labManager.trim(),
     contactEmail: form.contactEmail.trim(),
+    logoUrl: form.logoUrl.trim() || null,
+    siretNumber: form.siretNumber.trim() || null,
+    addressLine1: form.addressLine1.trim() || null,
+    addressLine2: form.addressLine2.trim() || null,
+    city: form.city.trim() || null,
+    state: form.state.trim() || null,
+    postalCode: form.postalCode.trim() || null,
+    country: form.country.trim() || null,
+    website: form.website.trim() || null,
+    linkedin: form.linkedin.trim() || null,
     compliance: parseList(form.compliance),
     isVerified: form.verification === "yes",
     equipment: parseList(form.equipment),
@@ -161,6 +202,8 @@ export default function AdminLabs() {
   const [complianceAssets, setComplianceAssets] = useState<MediaAsset[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
 
   const startCreate = () => {
     setEditing("new");
@@ -168,6 +211,7 @@ export default function AdminLabs() {
     setStatusMessage(null);
     setPhotoAssets([]);
     setComplianceAssets([]);
+    setLogoError(null);
   };
 
   const startEdit = (lab: LabPartner) => {
@@ -176,6 +220,7 @@ export default function AdminLabs() {
     setStatusMessage(null);
     setPhotoAssets(lab.photos);
     setComplianceAssets(lab.complianceDocs);
+    setLogoError(null);
   };
 
   const cancelEdit = () => {
@@ -196,6 +241,31 @@ export default function AdminLabs() {
         : [...prev.offers, offer];
       return { ...prev, offers };
     });
+  };
+
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setLogoError(null);
+    setLogoUploading(true);
+    try {
+      const ext = file.name.split(".").pop() || "png";
+      const filename =
+        (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`) + `.${ext}`;
+      const filePath = `logos/${filename}`;
+      const { error: uploadError } = await supabase.storage
+        .from("lab-logos")
+        .upload(filePath, file, { upsert: true, contentType: file.type });
+      if (uploadError) throw uploadError;
+      const { data } = supabase.storage.from("lab-logos").getPublicUrl(filePath);
+      const publicUrl = data.publicUrl;
+      setFormState(prev => ({ ...prev, logoUrl: publicUrl }));
+      setStatusMessage({ type: "success", text: "Logo uploaded" });
+    } catch (err: any) {
+      setLogoError(err?.message || "Unable to upload logo");
+    } finally {
+      setLogoUploading(false);
+    }
   };
 
   const addPhotoFromUrl = () => {
@@ -586,6 +656,180 @@ export default function AdminLabs() {
                       placeholder="labs+atlas@glass.demo"
                       required
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground" htmlFor="lab-logo">
+                      Logo (stored in Supabase)
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        id="lab-logo"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLogoUpload}
+                        className="w-full rounded-xl border border-dashed border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      />
+                      {formState.logoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setFormState(prev => ({ ...prev, logoUrl: "" }))}
+                          className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:border-destructive hover:text-destructive"
+                        >
+                          <X className="h-3 w-3" />
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    {logoUploading && <p className="text-xs text-muted-foreground">Uploading logo…</p>}
+                    {logoError && <p className="text-xs text-destructive">{logoError}</p>}
+                    {formState.logoUrl && (
+                      <div className="mt-2 inline-flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
+                        <img
+                          src={formState.logoUrl}
+                          alt={`${formState.name || "Lab"} logo`}
+                          className="h-10 w-10 rounded-full object-cover"
+                        />
+                        <span className="text-xs text-muted-foreground break-all max-w-[200px] truncate">
+                          {formState.logoUrl}
+                        </span>
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Upload saves to the `lab-logos` bucket. Keep files small (e.g., 300x300).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground" htmlFor="lab-address1">
+                      Address line 1 (internal)
+                    </label>
+                    <input
+                      id="lab-address1"
+                      type="text"
+                      value={formState.addressLine1}
+                      onChange={event => handleChange("addressLine1", event.target.value)}
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      placeholder="123 Bio Ave"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground" htmlFor="lab-address2">
+                      Address line 2 (internal)
+                    </label>
+                    <input
+                      id="lab-address2"
+                      type="text"
+                      value={formState.addressLine2}
+                      onChange={event => handleChange("addressLine2", event.target.value)}
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      placeholder="Suite, floor, etc."
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground" htmlFor="lab-city">
+                      City (internal)
+                    </label>
+                    <input
+                      id="lab-city"
+                      type="text"
+                      value={formState.city}
+                      onChange={event => handleChange("city", event.target.value)}
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      placeholder="Boston"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground" htmlFor="lab-state">
+                      State/Region (internal)
+                    </label>
+                    <input
+                      id="lab-state"
+                      type="text"
+                      value={formState.state}
+                      onChange={event => handleChange("state", event.target.value)}
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      placeholder="MA"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground" htmlFor="lab-postal">
+                      Postal code (internal)
+                    </label>
+                    <input
+                      id="lab-postal"
+                      type="text"
+                      value={formState.postalCode}
+                      onChange={event => handleChange("postalCode", event.target.value)}
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      placeholder="02118"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground" htmlFor="lab-country">
+                    Country (internal)
+                  </label>
+                  <input
+                    id="lab-country"
+                    type="text"
+                    value={formState.country}
+                    onChange={event => handleChange("country", event.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    placeholder="United States"
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground" htmlFor="lab-website">
+                      Website (optional)
+                    </label>
+                    <input
+                      id="lab-website"
+                      type="url"
+                      value={formState.website}
+                      onChange={event => handleChange("website", event.target.value)}
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      placeholder="https://labs.example.com"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground" htmlFor="lab-linkedin">
+                      LinkedIn (optional)
+                    </label>
+                    <input
+                      id="lab-linkedin"
+                      type="url"
+                      value={formState.linkedin}
+                      onChange={event => handleChange("linkedin", event.target.value)}
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      placeholder="https://www.linkedin.com/company/example"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground" htmlFor="lab-siret">
+                      SIRET (internal)
+                    </label>
+                    <input
+                      id="lab-siret"
+                      type="text"
+                      value={formState.siretNumber}
+                      onChange={event => handleChange("siretNumber", event.target.value)}
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      placeholder="14-digit SIRET"
+                    />
+                    <p className="text-xs text-muted-foreground">Internal use only; not shown publicly.</p>
                   </div>
                 </div>
 
