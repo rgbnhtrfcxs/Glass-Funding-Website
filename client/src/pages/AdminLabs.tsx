@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import {
@@ -56,6 +56,7 @@ interface LabFormState {
   rating: string;
   photoUrlInput: string;
   complianceDocUrlInput: string;
+  isVisible: "yes" | "no";
 }
 
 const emptyForm: LabFormState = {
@@ -86,6 +87,7 @@ const emptyForm: LabFormState = {
   rating: "",
   photoUrlInput: "",
   complianceDocUrlInput: "",
+  isVisible: "yes",
 };
 
 function labToForm(lab: LabPartner): LabFormState {
@@ -117,6 +119,7 @@ function labToForm(lab: LabPartner): LabFormState {
     rating: lab.rating.toString(),
     photoUrlInput: "",
     complianceDocUrlInput: "",
+    isVisible: lab.isVisible === false ? "no" : "yes",
   };
 }
 
@@ -192,6 +195,7 @@ function formToPayload(
     rating: form.rating.trim() === "" ? 0 : ratingValue,
     photos,
     complianceDocs,
+    isVisible: form.isVisible === "yes",
   };
 }
 
@@ -218,6 +222,21 @@ export default function AdminLabs() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    // Ensure admins can see hidden labs as well
+    refresh(true).catch(() => {});
+  }, [refresh]);
+
+  const filteredLabs = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return labs;
+    return labs.filter(lab => {
+      const haystack = [lab.name, lab.location, lab.labManager, lab.contactEmail].filter(Boolean).join(" ").toLowerCase();
+      return haystack.includes(term);
+    });
+  }, [labs, searchTerm]);
 
   const startCreate = () => {
     setEditing("new");
@@ -249,6 +268,23 @@ export default function AdminLabs() {
 
   const handleChange = (field: keyof LabFormState, value: string) => {
     setFormState(prev => ({ ...prev, [field]: value }));
+  };
+
+  const toggleVisibilityQuick = async (lab: LabPartner) => {
+    try {
+      setStatusMessage(null);
+      await updateLab(lab.id, { isVisible: !(lab.isVisible ?? true) });
+      await refresh(true);
+      setStatusMessage({
+        type: "success",
+        text: `Marked ${lab.name} as ${lab.isVisible === false ? "visible" : "hidden"}`,
+      });
+    } catch (error) {
+      setStatusMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Unable to update visibility",
+      });
+    }
   };
 
   const toggleOffer = (offer: OfferOption) => {
@@ -426,6 +462,7 @@ export default function AdminLabs() {
       }
 
       cancelEdit();
+      await refresh(true);
     } catch (error) {
       setStatusMessage({
         type: "error",
@@ -470,7 +507,17 @@ export default function AdminLabs() {
               details. Edits go live instantly for the lab browsing experience.
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative w-full sm:w-64">
+              <input
+                type="search"
+                value={searchTerm}
+                onChange={event => setSearchTerm(event.target.value)}
+                placeholder="Search labs"
+                className="w-full rounded-full border border-border bg-card/80 px-4 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              />
+              <MapPin className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            </div>
             <Link href="/lab-profile">
               <a className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary">
                 Lab profile guide
@@ -529,8 +576,12 @@ export default function AdminLabs() {
                     ? "Unable to load the lab directory right now."
                     : "No labs in the directory yet. Use “Add lab” to create your first listing."}
               </div>
+            ) : filteredLabs.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-border bg-card/50 p-10 text-center text-muted-foreground">
+                No labs match that search.
+              </div>
             ) : (
-              labs.map(lab => (
+              filteredLabs.map(lab => (
                 <div
                   key={lab.id}
                   className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm"
@@ -543,25 +594,39 @@ export default function AdminLabs() {
                         {lab.location}
                       </div>
                     </div>
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
-                        lab.isVerified
-                          ? "bg-emerald-50 text-emerald-700"
-                          : "bg-amber-50 text-amber-700"
-                      }`}
-                    >
-                      {lab.isVerified ? (
-                        <>
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          Verified
-                        </>
-                      ) : (
-                        <>
-                          <ShieldAlert className="h-3.5 w-3.5" />
-                          Pending
-                        </>
-                      )}
-                    </span>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
+                          lab.isVerified
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-amber-50 text-amber-700"
+                        }`}
+                      >
+                        {lab.isVerified ? (
+                          <>
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Verified
+                          </>
+                        ) : (
+                          <>
+                            <ShieldAlert className="h-3.5 w-3.5" />
+                            Pending
+                          </>
+                        )}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => toggleVisibilityQuick(lab)}
+                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition ${
+                          lab.isVisible === false
+                            ? "bg-slate-200 text-slate-800 hover:bg-slate-300"
+                            : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                        }`}
+                        title={lab.isVisible === false ? "Currently hidden. Click to show." : "Currently visible. Click to hide."}
+                      >
+                        {lab.isVisible === false ? "Hidden — click to show" : "Visible — click to hide"}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-4 grid gap-3 text-sm text-muted-foreground">
@@ -762,7 +827,7 @@ export default function AdminLabs() {
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">
-                    Partner logos (premier feature)
+                    Partner logos (premier/custom feature)
                   </label>
                   <div className="flex flex-col gap-2">
                     <input
@@ -969,6 +1034,21 @@ export default function AdminLabs() {
                   >
                     <option value="yes">Verified</option>
                     <option value="no">Pending verification</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground" htmlFor="lab-visibility">
+                    Visibility
+                  </label>
+                  <select
+                    id="lab-visibility"
+                    value={formState.isVisible}
+                    onChange={event => handleChange("isVisible", event.target.value as "yes" | "no")}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <option value="yes">Visible in directory</option>
+                    <option value="no">Hidden (admin only)</option>
                   </select>
                 </div>
 

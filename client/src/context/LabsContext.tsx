@@ -16,7 +16,7 @@ interface LabsContextValue {
   labs: LabPartner[];
   isLoading: boolean;
   error: string | null;
-  refresh: () => Promise<void>;
+  refresh: (includeHidden?: boolean) => Promise<void>;
   addLab: (lab: LabInput) => Promise<LabPartner>;
   updateLab: (id: number, updates: LabUpdate) => Promise<LabPartner>;
   removeLab: (id: number) => Promise<void>;
@@ -58,12 +58,15 @@ export function LabsProvider({ children }: { children: ReactNode }) {
   const [labs, setLabs] = useState<LabPartner[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [includeHidden, setIncludeHidden] = useState(false);
 
-  const fetchLabs = useCallback(async () => {
+  const fetchLabs = useCallback(async (withHidden = false) => {
     setIsLoading(true);
     try {
-      const data = await request<LabPartner[]>("/api/labs");
-      setLabs(data);
+      setIncludeHidden(withHidden);
+      const data = await request<LabPartner[]>(withHidden ? "/api/labs?includeHidden=true" : "/api/labs");
+      const filtered = withHidden ? data : data.filter(lab => lab.isVisible !== false);
+      setLabs(filtered);
       setError(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to load labs";
@@ -74,26 +77,32 @@ export function LabsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    fetchLabs();
-  }, [fetchLabs]);
+    fetchLabs(includeHidden);
+  }, [fetchLabs, includeHidden]);
 
   const addLab = useCallback(async (lab: LabInput) => {
     const created = await request<LabPartner>("/api/labs", {
       method: "POST",
       body: JSON.stringify(lab),
     });
-    setLabs(current => [...current, created]);
+    setLabs(current => {
+      const next = [...current, created];
+      return includeHidden ? next : next.filter(item => item.isVisible !== false);
+    });
     return created;
-  }, []);
+  }, [includeHidden]);
 
   const updateLab = useCallback(async (id: number, updates: LabUpdate) => {
     const updated = await request<LabPartner>(`/api/labs/${id}`, {
       method: "PUT",
       body: JSON.stringify(updates),
     });
-    setLabs(current => current.map(lab => (lab.id === id ? updated : lab)));
+    setLabs(current => {
+      const next = current.map(lab => (lab.id === id ? updated : lab));
+      return includeHidden ? next : next.filter(item => item.isVisible !== false);
+    });
     return updated;
-  }, []);
+  }, [includeHidden]);
 
   const removeLab = useCallback(async (id: number) => {
     await request<undefined>(`/api/labs/${id}`, {
@@ -102,9 +111,12 @@ export function LabsProvider({ children }: { children: ReactNode }) {
     setLabs(current => current.filter(lab => lab.id !== id));
   }, []);
 
-  const refresh = useCallback(async () => {
-    await fetchLabs();
-  }, [fetchLabs]);
+  const refresh = useCallback(
+    async (withHidden = includeHidden) => {
+      await fetchLabs(withHidden);
+    },
+    [fetchLabs, includeHidden],
+  );
 
   const value = useMemo(
     () => ({

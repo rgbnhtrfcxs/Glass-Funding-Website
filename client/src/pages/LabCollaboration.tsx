@@ -17,6 +17,7 @@ export default function LabCollaboration({ params }: Props) {
   const [resourcesOffered, setResourcesOffered] = useState("");
   const [desiredTimeline, setDesiredTimeline] = useState("");
   const [additionalNotes, setAdditionalNotes] = useState("");
+  const [preferredContact, setPreferredContact] = useState<"email" | "video_call" | "in_person">("email");
   const [status, setStatus] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -44,6 +45,7 @@ export default function LabCollaboration({ params }: Props) {
           resourcesOffered,
           desiredTimeline,
           additionalNotes,
+          preferredContact,
         }),
       });
       if (!res.ok) {
@@ -58,6 +60,7 @@ export default function LabCollaboration({ params }: Props) {
       setResourcesOffered("");
       setDesiredTimeline("");
       setAdditionalNotes("");
+      setPreferredContact("email");
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Submission failed");
     } finally {
@@ -101,6 +104,18 @@ export default function LabCollaboration({ params }: Props) {
           <div>
             <label className="text-sm font-medium text-foreground">Desired timeline (optional)</label>
             <input className="mt-2 w-full rounded-full border border-border bg-background px-4 py-2 text-sm" value={desiredTimeline} onChange={e => setDesiredTimeline(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-foreground">Preferred contact method</label>
+            <select
+              className="mt-2 w-full rounded-full border border-border bg-background px-4 py-2 text-sm"
+              value={preferredContact}
+              onChange={e => setPreferredContact(e.target.value as any)}
+            >
+              <option value="email">Email</option>
+              <option value="video_call">Video call</option>
+              <option value="in_person">In person</option>
+            </select>
           </div>
           <div>
             <label className="text-sm font-medium text-foreground">Additional notes (optional)</label>

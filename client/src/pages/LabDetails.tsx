@@ -20,6 +20,7 @@ import { useLabs } from "@/context/LabsContext";
 import { useAuth } from "@/context/AuthContext";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { nanoid } from "nanoid";
 
 interface LabDetailsProps {
   params: {
@@ -60,7 +61,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
     url.startsWith("data:")
       ? url
       : `${url}${url.includes("?") ? "&" : "?"}auto=format&fit=crop&w=${width}&q=80`;
-  const tier = lab.subscriptionTier ?? "base";
+  const tier = (lab as any)?.subscriptionTier ?? (lab as any)?.subscription_tier ?? "base";
   const logoUrl = lab.logoUrl || null;
   const tierLower = (tier as string).toLowerCase?.() ?? (typeof tier === "string" ? tier.toLowerCase() : "base");
   const status = lab.isVerified ? "verified" : tierLower === "base" ? "unverified" : "pending";
@@ -79,6 +80,108 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const partnerLogos = lab.partnerLogos ?? [];
   const website = lab.website || null;
   const linkedin = lab.linkedin || null;
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const [favoriteError, setFavoriteError] = useState<string | null>(null);
+  const [viewRecorded, setViewRecorded] = useState(false);
+
+  const toggleFavorite = async () => {
+    if (!user) {
+      setFavoriteError("Sign in to favorite labs.");
+      return;
+    }
+    setFavoriteLoading(true);
+    setFavoriteError(null);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const token = session.session?.access_token;
+      if (!token) {
+        setFavoriteError("Please sign in again.");
+        return;
+      }
+      const method = isFavorite ? "DELETE" : "POST";
+      const res = await fetch(`/api/labs/${lab.id}/favorite`, {
+        method,
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload?.message || "Unable to update favorite");
+      }
+      const payload = await res.json();
+      setIsFavorite(Boolean(payload?.favorited));
+    } catch (error) {
+      setFavoriteError(error instanceof Error ? error.message : "Unable to update favorite");
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    async function loadFavorite() {
+      if (!user) {
+        setIsFavorite(false);
+        return;
+      }
+      try {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+        if (!token) return;
+        const res = await fetch(`/api/labs/${lab.id}/favorite`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const payload = await res.json();
+        if (active) setIsFavorite(Boolean(payload?.favorited));
+      } catch {
+        // ignore
+      }
+    }
+    loadFavorite();
+    return () => {
+      active = false;
+    };
+  }, [lab.id, user?.id]);
+
+  useEffect(() => {
+    if (viewRecorded) return;
+    const sessionKey = "glass-view-session";
+    let sessionId = localStorage.getItem(sessionKey);
+    if (!sessionId) {
+      sessionId = nanoid();
+      localStorage.setItem(sessionKey, sessionId);
+    }
+    const lastKey = `glass-view-${lab.id}`;
+    const lastTs = localStorage.getItem(lastKey);
+    const now = Date.now();
+    if (lastTs && now - Number(lastTs) < 60 * 60 * 1000) {
+      setViewRecorded(true);
+      return;
+    }
+    (async () => {
+      try {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+        await fetch(`/api/labs/${lab.id}/view`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            labId: lab.id,
+            sessionId,
+            referrer: document.referrer || null,
+          }),
+        });
+        localStorage.setItem(lastKey, String(now));
+        setViewRecorded(true);
+      } catch {
+        // ignore
+      }
+    })();
+  }, [lab.id, viewRecorded]);
 
   if (isLoading && labs.length === 0) {
     return (
@@ -149,9 +252,33 @@ export default function LabDetails({ params }: LabDetailsProps) {
                   Offers lab space
                 </span>
               )}
+              <button
+                type="button"
+                onClick={toggleFavorite}
+                disabled={favoriteLoading}
+                className={`ml-auto inline-flex h-8 w-8 items-center justify-center rounded-full border transition disabled:opacity-60 disabled:cursor-not-allowed ${
+                  isFavorite ? "border-red-500 bg-red-50 text-red-500" : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+                }`}
+                aria-label={isFavorite ? "Unfavorite lab" : "Favorite lab"}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill={isFavorite ? "currentColor" : "none"}
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="h-4 w-4"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 21s-6.5-4.35-9-8.5C1 7.5 3.5 4 7 4c1.9 0 3.2 1.2 4 2.4C11.8 5.2 13.1 4 15 4c3.5 0 6 3.5 4 8.5-2.5 4.15-9 8.5-9 8.5Z"
+                  />
+                </svg>
+              </button>
             </div>
             <div className="flex items-center gap-3">
-              {(logoUrl || tier === "premier") && (
+        {(logoUrl || ["premier", "custom"].includes(tierLower)) && (
                 <div className="h-12 w-12 overflow-hidden rounded-full border border-dashed border-border bg-muted/30 text-[11px] text-muted-foreground flex items-center justify-center flex-shrink-0">
                   {logoUrl ? (
                     <img src={logoUrl} alt={`${lab.name} logo`} className="h-full w-full object-cover" />
@@ -170,6 +297,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
                 <span className="font-medium text-foreground"> {lab.minimumStay}</span>.
               </p>
             )}
+            {favoriteError && <span className="text-xs text-destructive">{favoriteError}</span>}
           </header>
 
           {lab.photos.length > 0 && (
@@ -334,7 +462,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
             </div>
           </section>
 
-          {tierLower === "premier" && partnerLogos.length > 0 && (
+        {["premier", "custom"].includes(tierLower) && partnerLogos.length > 0 && (
             <div className="mt-8 rounded-2xl border border-primary/40 bg-primary/5 p-4">
               <h3 className="text-sm font-semibold text-foreground mb-3">Featured partners</h3>
               <div className="flex gap-3 overflow-x-auto pb-2">

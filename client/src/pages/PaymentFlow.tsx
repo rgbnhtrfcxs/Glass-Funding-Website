@@ -35,7 +35,7 @@ export default function PaymentFlow() {
 
   const normalizedPlan = (selectedPlan ?? "").toLowerCase();
   const isFreePlan = normalizedPlan === "base" || normalizedPlan === "free";
-  const isPaidStandard = normalizedPlan === "verified" || normalizedPlan === "premier";
+  const isPaidStandard = normalizedPlan === "verified" || normalizedPlan === "premier" || normalizedPlan === "custom";
   const isEnterprise = normalizedPlan === "custom" || normalizedPlan === "enterprise";
   const metadataName =
     user?.user_metadata?.full_name ||

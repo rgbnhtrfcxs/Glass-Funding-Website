@@ -7,6 +7,7 @@ export const insertLabCollaborationSchema = z.object({
   labId: z.number().int().positive(), // used only to look up lab_name
   contactName: z.string().min(1, "Your name is required"),
   contactEmail: z.string().email("Valid email is required"),
+  preferredContact: z.enum(["email", "video_call", "in_person"]).default("email"),
   targetLabs: z.string().optional().default(""),
   collaborationFocus: z.string().min(1, "Please describe the focus"),
   resourcesOffered: z.string().optional().default(""),

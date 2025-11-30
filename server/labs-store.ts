@@ -17,6 +17,7 @@ const LAB_SELECT = `
   location,
   lab_manager,
   contact_email,
+  owner_user_id,
   siret_number,
   logo_url,
   description,
@@ -50,6 +51,7 @@ type LabRow = {
   location: string;
   lab_manager: string;
   contact_email: string;
+  owner_user_id: string | null;
   siret_number: string | null;
   logo_url: string | null;
   description: string | null;
@@ -93,7 +95,54 @@ function parseRating(value: LabRow["rating"]): number {
   return 0;
 }
 
-function mapLabRow(row: LabRow): LabPartner {
+async function fetchProfileTier(userId?: string | null): Promise<LabPartner["subscriptionTier"]> {
+  if (!userId) return "base";
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("subscription_tier, subscription_status")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    // Don't break lab creation if profile lookup fails; fall back to base.
+    return "base";
+  }
+  const tier = (data?.subscription_tier as LabPartner["subscriptionTier"] | undefined)?.toLowerCase?.();
+  if (tier === "premier" || tier === "verified" || tier === "custom") return tier;
+  return "base";
+}
+
+async function resolveOwnerUserId(contactEmail: string | null | undefined, explicit?: string | null): Promise<string | null> {
+  if (explicit) return explicit;
+  if (!contactEmail) return null;
+  const email = contactEmail.trim().toLowerCase();
+  if (!email) return null;
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("user_id")
+    .ilike("email", email)
+    .maybeSingle();
+  if (error) return null;
+  return data?.user_id ?? null;
+}
+
+async function fetchProfileTierMap(userIds: Array<string | null | undefined>): Promise<Record<string, LabPartner["subscriptionTier"]>> {
+  const ids = Array.from(new Set(userIds.filter((id): id is string => !!id)));
+  if (!ids.length) return {};
+  const { data, error } = await supabase.from("profiles").select("user_id, subscription_tier").in("user_id", ids);
+  if (error || !data) return {};
+  const map: Record<string, LabPartner["subscriptionTier"]> = {};
+  data.forEach(row => {
+    const tier = (row.subscription_tier as string)?.toLowerCase?.();
+    if (tier === "premier" || tier === "verified" || tier === "custom") {
+      map[row.user_id as string] = tier;
+    } else {
+      map[row.user_id as string] = "base";
+    }
+  });
+  return map;
+}
+
+function mapLabRow(row: LabRow, overrideTier?: LabPartner["subscriptionTier"]): LabPartner {
   const photos = (row.lab_photos ?? []).filter(photo => (photo?.url || "").trim().length > 0).map(photo => ({
     name: photo.name,
     url: photo.url,
@@ -107,6 +156,7 @@ function mapLabRow(row: LabRow): LabPartner {
     location: row.location,
     labManager: row.lab_manager,
     contactEmail: row.contact_email,
+    ownerUserId: row.owner_user_id || null,
     siretNumber: row.siret_number || null,
     logoUrl: row.logo_url || null,
     description: row.description || null,
@@ -130,7 +180,7 @@ function mapLabRow(row: LabRow): LabPartner {
     pricePrivacy: Boolean(row.price_privacy),
     minimumStay: row.minimum_stay ?? "",
     rating: parseRating(row.rating),
-    subscriptionTier: (row.subscription_tier as LabPartner["subscriptionTier"]) ?? "base",
+    subscriptionTier: overrideTier ?? ((row.subscription_tier as LabPartner["subscriptionTier"]) ?? "base"),
     photos,
   };
   return labSchema.parse(mapped);
@@ -219,18 +269,35 @@ export class LabStore {
     const { data, error } = await supabase.from("labs").select(LAB_SELECT).order("id", { ascending: true });
     if (error) throw error;
     const labs = (data as LabRow[] | null) ?? [];
-    return labListSchema.parse(labs.map(mapLabRow));
+    const tierMap = await fetchProfileTierMap(labs.map(l => l.owner_user_id));
+    return labListSchema.parse(labs.map(row => mapLabRow(row, row.owner_user_id ? tierMap[row.owner_user_id] : undefined)));
+  }
+
+  async listVisible(): Promise<LabPartner[]> {
+    const { data, error } = await supabase
+      .from("labs")
+      .select(LAB_SELECT)
+      .eq("is_visible", true)
+      .order("id", { ascending: true });
+    if (error) throw error;
+    const labs = (data as LabRow[] | null) ?? [];
+    const tierMap = await fetchProfileTierMap(labs.map(l => l.owner_user_id));
+    return labListSchema.parse(labs.map(row => mapLabRow(row, row.owner_user_id ? tierMap[row.owner_user_id] : undefined)));
   }
 
   async findById(id: number): Promise<LabPartner | undefined> {
     const { data, error } = await supabase.from("labs").select(LAB_SELECT).eq("id", id).maybeSingle();
     if (error) throw error;
     if (!data) return undefined;
-    return mapLabRow(data as LabRow);
+    const row = data as LabRow;
+    const profileTier = row.owner_user_id ? await fetchProfileTier(row.owner_user_id) : undefined;
+    return mapLabRow(row, profileTier);
   }
 
   async create(payload: InsertLab): Promise<LabPartner> {
     const data = insertLabSchema.parse(payload);
+    const ownerUserId = await resolveOwnerUserId(data.contactEmail, data.ownerUserId ?? null);
+    const subscriptionTier = await fetchProfileTier(ownerUserId);
     const { data: inserted, error } = await supabase
       .from("labs")
       .insert({
@@ -238,6 +305,7 @@ export class LabStore {
         location: data.location,
         lab_manager: data.labManager,
         contact_email: data.contactEmail,
+        owner_user_id: ownerUserId,
         siret_number: data.siretNumber ?? null,
         logo_url: data.logoUrl ?? null,
         description: data.description ?? null,
@@ -255,7 +323,7 @@ export class LabStore {
         price_privacy: data.pricePrivacy,
         minimum_stay: data.minimumStay ?? "",
         rating: data.rating ?? 0,
-        subscription_tier: data.subscriptionTier,
+        subscription_tier: subscriptionTier,
       })
       .select("id")
       .single();
@@ -276,12 +344,21 @@ export class LabStore {
     if (!existing) throw new Error("Lab not found");
 
     const parsed = updateLabSchema.parse(updates);
+    const nextContactEmail = Object.prototype.hasOwnProperty.call(updates, "contactEmail")
+      ? parsed.contactEmail ?? existing.contactEmail
+      : existing.contactEmail;
+    const requestedOwner = Object.prototype.hasOwnProperty.call(updates, "ownerUserId")
+      ? parsed.ownerUserId ?? null
+      : existing.ownerUserId ?? null;
+    const ownerUserId = await resolveOwnerUserId(nextContactEmail, requestedOwner ?? existing.ownerUserId ?? null);
+    const subscriptionTier = await fetchProfileTier(ownerUserId);
     const baseUpdates: Record<string, unknown> = {};
 
     if (Object.prototype.hasOwnProperty.call(updates, "name")) baseUpdates.name = parsed.name;
     if (Object.prototype.hasOwnProperty.call(updates, "location")) baseUpdates.location = parsed.location;
     if (Object.prototype.hasOwnProperty.call(updates, "labManager")) baseUpdates.lab_manager = parsed.labManager;
     if (Object.prototype.hasOwnProperty.call(updates, "contactEmail")) baseUpdates.contact_email = parsed.contactEmail;
+    baseUpdates.owner_user_id = ownerUserId ?? null;
     if (Object.prototype.hasOwnProperty.call(updates, "siretNumber")) baseUpdates.siret_number = parsed.siretNumber ?? null;
     if (Object.prototype.hasOwnProperty.call(updates, "logoUrl")) baseUpdates.logo_url = parsed.logoUrl ?? null;
     if (Object.prototype.hasOwnProperty.call(updates, "description")) baseUpdates.description = parsed.description ?? null;
@@ -300,7 +377,8 @@ export class LabStore {
     if (Object.prototype.hasOwnProperty.call(updates, "pricePrivacy")) baseUpdates.price_privacy = parsed.pricePrivacy;
     if (Object.prototype.hasOwnProperty.call(updates, "minimumStay")) baseUpdates.minimum_stay = parsed.minimumStay ?? "";
     if (Object.prototype.hasOwnProperty.call(updates, "rating")) baseUpdates.rating = parsed.rating ?? 0;
-    if (Object.prototype.hasOwnProperty.call(updates, "subscriptionTier")) baseUpdates.subscription_tier = parsed.subscriptionTier;
+    // Always sync tier from the profile so lab rows mirror profile subscription
+    baseUpdates.subscription_tier = subscriptionTier;
 
     if (Object.keys(baseUpdates).length) {
       const upd = await supabase.from("labs").update(baseUpdates).eq("id", id).select("id").single();
