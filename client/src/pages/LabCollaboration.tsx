@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { useLabs } from "@/context/LabsContext";
+import { useAuth } from "@/context/AuthContext";
 
 interface Props {
   params: { id: string };
@@ -10,6 +11,7 @@ export default function LabCollaboration({ params }: Props) {
   const labId = Number(params.id);
   const { labs } = useLabs();
   const lab = labs.find(l => l.id === labId);
+  const { user } = useAuth();
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [targetLabs, setTargetLabs] = useState("");
@@ -28,25 +30,41 @@ export default function LabCollaboration({ params }: Props) {
     }
   }, [lab]);
 
+  // Prefill with logged-in user info if available
+  useEffect(() => {
+    if (user?.email && !contactEmail) {
+      setContactEmail(user.email);
+    }
+    const nameFromProfile =
+      user?.user_metadata?.display_name ||
+      user?.user_metadata?.full_name ||
+      user?.user_metadata?.name ||
+      "";
+    if (nameFromProfile && !contactName) {
+      setContactName(nameFromProfile);
+    }
+  }, [user?.email, user?.user_metadata, contactEmail, contactName]);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setStatus(null);
     try {
+      const payload = {
+        labId,
+        contactName: contactName.trim(),
+        contactEmail: contactEmail.trim(),
+        targetLabs: targetLabs.trim(),
+        collaborationFocus: collaborationFocus.trim(),
+        resourcesOffered: resourcesOffered.trim(),
+        desiredTimeline: desiredTimeline.trim(),
+        additionalNotes: additionalNotes.trim(),
+        preferredContact,
+      };
       const res = await fetch("/api/lab-collaborations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          labId,
-          contactName,
-          contactEmail,
-          targetLabs,
-          collaborationFocus,
-          resourcesOffered,
-          desiredTimeline,
-          additionalNotes,
-          preferredContact,
-        }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const msg = (await res.json().catch(() => ({})))?.message || "Submission failed";

@@ -1,0 +1,676 @@
+import { useState } from "react";
+import { motion } from "framer-motion";
+import { useLocation } from "wouter";
+import { useLabs } from "@/context/LabsContext";
+import { useAuth } from "@/context/AuthContext";
+import { offerOptions, type OfferOption } from "@shared/labs";
+import type { MediaAsset } from "@shared/labs";
+import { supabase } from "@/lib/supabaseClient";
+import { Link } from "wouter";
+
+export default function NewLab() {
+  const { addLab } = useLabs();
+  const { user } = useAuth();
+  const [, setLocation] = useLocation();
+  const [form, setForm] = useState({
+    name: "",
+    location: "",
+    labManager: "",
+    contactEmail: user?.email ?? "",
+    description: "",
+    offersLabSpace: true,
+    addressLine1: "",
+    addressLine2: "",
+    city: "",
+    state: "",
+    postalCode: "",
+    country: "",
+    website: "",
+    linkedin: "",
+    siretNumber: "",
+    minimumStay: "",
+    pricePrivacy: false,
+    equipmentTags: [] as string[],
+    focusTags: [] as string[],
+    complianceTags: [] as string[],
+    offers: [] as OfferOption[],
+    logoUrl: "",
+  });
+  const [photos, setPhotos] = useState<MediaAsset[]>([]);
+  const [partnerLogos, setPartnerLogos] = useState<MediaAsset[]>([]);
+  const [photoUrlInput, setPhotoUrlInput] = useState("");
+  const [partnerUrlInput, setPartnerUrlInput] = useState("");
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [partnerUploading, setPartnerUploading] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [partnerError, setPartnerError] = useState<string | null>(null);
+  const [complianceDocs, setComplianceDocs] = useState<MediaAsset[]>([]);
+  const [complianceUploading, setComplianceUploading] = useState(false);
+  const [complianceError, setComplianceError] = useState<string | null>(null);
+  const [tagInput, setTagInput] = useState<{ field: "equipmentTags" | "focusTags" | "complianceTags"; value: string }>({
+    field: "equipmentTags",
+    value: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleChange = (field: keyof typeof form, value: string | boolean | OfferOption[] | string[]) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const addTag = (field: "equipmentTags" | "focusTags" | "complianceTags", raw: string) => {
+    const value = raw.trim();
+    if (!value) return;
+    setForm(prev => {
+      const next = new Set(prev[field]);
+      next.add(value);
+      return { ...prev, [field]: Array.from(next) };
+    });
+    setTagInput({ field, value: "" });
+  };
+
+  const removeTag = (field: "equipmentTags" | "focusTags" | "complianceTags", value: string) => {
+    setForm(prev => ({ ...prev, [field]: prev[field].filter(item => item !== value) }));
+  };
+
+  const handleTagKey = (field: "equipmentTags" | "focusTags" | "complianceTags") => (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addTag(field, tagInput.value);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const created = await addLab({
+        name: form.name.trim(),
+        location: form.location.trim(),
+        labManager: form.labManager.trim(),
+        contactEmail: form.contactEmail.trim(),
+        ownerUserId: user?.id ?? null,
+        description: form.description.trim() || null,
+        offersLabSpace: form.offersLabSpace,
+        addressLine1: form.addressLine1.trim() || null,
+        addressLine2: form.addressLine2.trim() || null,
+        city: form.city.trim() || null,
+        state: form.state.trim() || null,
+        postalCode: form.postalCode.trim() || null,
+        country: form.country.trim() || null,
+        website: form.website.trim() || null,
+        linkedin: form.linkedin.trim() || null,
+        compliance: form.complianceTags,
+        complianceDocs,
+        isVerified: false,
+        isVisible: true,
+        equipment: form.equipmentTags,
+        focusAreas: form.focusTags,
+        offers: form.offers,
+        pricePrivacy: form.pricePrivacy,
+        minimumStay: form.minimumStay.trim(),
+        rating: 0,
+        photos,
+        logoUrl: form.logoUrl.trim() || null,
+        siretNumber: form.siretNumber.trim() || null,
+        partnerLogos,
+      });
+      setLocation(`/lab/manage/${created.id}`);
+    } catch (err: any) {
+      setError(err?.message || "Unable to create lab");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="bg-background min-h-screen">
+      <div className="container mx-auto px-4 py-20 lg:py-24 max-w-3xl">
+        <Link href="/lab/manage" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-4">
+          ← Back to manage labs
+        </Link>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="rounded-3xl border border-border bg-card/80 p-8 shadow-sm"
+        >
+          <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Create</p>
+          <h1 className="text-3xl font-semibold text-foreground mt-1">Add a new lab</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Start with the basics. You can add photos, equipment, and pricing later.</p>
+
+          <form className="mt-8 space-y-8" onSubmit={handleSubmit}>
+            <div className="space-y-4">
+              <Field label="Lab name" required>
+                <input
+                  className="w-full rounded-xl border-2 border-primary/30 bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={form.name}
+                  onChange={e => handleChange("name", e.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="SIRET (optional)">
+                <input
+                  className="w-full rounded-xl border-2 border-primary/30 bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={form.siretNumber}
+                  onChange={e => handleChange("siretNumber", e.target.value)}
+                />
+              </Field>
+              <Field label="Location" required>
+                <input
+                  className="w-full rounded-xl border-2 border-primary/30 bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={form.location}
+                  onChange={e => handleChange("location", e.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="Lab manager" required>
+                <input
+                  className="w-full rounded-xl border-2 border-primary/30 bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={form.labManager}
+                  onChange={e => handleChange("labManager", e.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="Contact email" required>
+                <input
+                  type="email"
+                  className="w-full rounded-xl border-2 border-primary/30 bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={form.contactEmail}
+                  onChange={e => handleChange("contactEmail", e.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="Description">
+                <textarea
+                  className="w-full rounded-xl border-2 border-primary/30 bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary min-h-[96px]"
+                  value={form.description}
+                  onChange={e => handleChange("description", e.target.value)}
+                  placeholder="Brief overview of your lab"
+                />
+              </Field>
+              <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  className="rounded border-border text-primary"
+                  checked={form.offersLabSpace}
+                  onChange={e => handleChange("offersLabSpace", e.target.checked)}
+                />
+                Offers lab space
+              </label>
+            </div>
+
+            <div className="space-y-2">
+              <Field label="Logo (premier/custom only)">
+                <input
+                  className="input"
+                  value={form.logoUrl}
+                  onChange={e => handleChange("logoUrl", e.target.value)}
+                  placeholder="Available for premier/custom tiers"
+                />
+              </Field>
+              <label className="inline-flex items-center gap-3">
+                <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
+                  Choose file
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setLogoError(null);
+                      setLogoUploading(true);
+                      await uploadToBucket(
+                        "lab-logos",
+                        file,
+                        "new/logos",
+                        (url, name) => setForm(prev => ({ ...prev, logoUrl: url || prev.logoUrl || "", })),
+                        msg => setLogoError(msg),
+                      );
+                      setLogoUploading(false);
+                      if (e.target) e.target.value = "";
+                    }}
+                  />
+                </span>
+                {logoUploading && <p className="text-xs text-muted-foreground">Uploading…</p>}
+                {logoError && <p className="text-xs text-destructive">{logoError}</p>}
+              </label>
+              <p className="text-xs text-muted-foreground">Logo avatars display for premier/custom labs.</p>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-foreground">Photos (base: up to 2)</p>
+              <div className="flex flex-wrap gap-2">
+                {photos.map(asset => (
+                  <div key={asset.url} className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
+                    <span className="text-xs text-foreground break-all max-w-[200px] truncate">{asset.name || asset.url}</span>
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground hover:text-destructive"
+                      onClick={() => setPhotos(prev => prev.filter(p => p.url !== asset.url))}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  className="input flex-1"
+                  value={photoUrlInput}
+                  onChange={e => setPhotoUrlInput(e.target.value)}
+                  placeholder="https://example.com/photo.jpg"
+                />
+                <button
+                  type="button"
+                  className="inline-flex items-center rounded-full border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:border-primary"
+                  onClick={() => {
+                    const url = photoUrlInput.trim();
+                    if (!url || photos.length >= 2) return;
+                    const name = url.split("/").pop() || `Photo ${photos.length + 1}`;
+                    setPhotos(prev => [...prev, { name, url }]);
+                    setPhotoUrlInput("");
+                  }}
+                  disabled={photos.length >= 2}
+                >
+                  Add photo
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="inline-flex items-center gap-3">
+                  <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
+                    Choose file
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={photos.length >= 2}
+                      onChange={async e => {
+                        const file = e.target.files?.[0];
+                        if (!file || photos.length >= 2) return;
+                        setPhotoError(null);
+                        setPhotoUploading(true);
+                        await uploadToBucket(
+                          "lab-photos",
+                          file,
+                          "new/photos",
+                          (url, name) => setPhotos(prev => [...prev, { name, url }]),
+                          msg => setPhotoError(msg),
+                        );
+                        setPhotoUploading(false);
+                        if (e.target) e.target.value = "";
+                      }}
+                    />
+                  </span>
+                </label>
+                {photoUploading && <p className="text-xs text-muted-foreground">Uploading…</p>}
+                {photoError && <p className="text-xs text-destructive">{photoError}</p>}
+              </div>
+              <p className="text-xs text-muted-foreground">Base labs can add 2 photos here; you can add more later in manage.</p>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-foreground">Partner logos (premier/custom)</p>
+              <div className="flex flex-wrap gap-2">
+                {partnerLogos.map(asset => (
+                  <div key={asset.url} className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
+                    <span className="text-xs text-foreground break-all max-w-[200px] truncate">{asset.name || asset.url}</span>
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground hover:text-destructive"
+                      onClick={() => setPartnerLogos(prev => prev.filter(p => p.url !== asset.url))}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  className="input flex-1"
+                  value={partnerUrlInput}
+                  onChange={e => setPartnerUrlInput(e.target.value)}
+                  placeholder="https://example.com/logo.png"
+                />
+                <button
+                  type="button"
+                  className="inline-flex items-center rounded-full border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:border-primary"
+                  onClick={() => {
+                    const url = partnerUrlInput.trim();
+                    if (!url) return;
+                    const name = url.split("/").pop() || `Logo ${partnerLogos.length + 1}`;
+                    setPartnerLogos(prev => [...prev, { name, url }]);
+                    setPartnerUrlInput("");
+                  }}
+                >
+                  Add logo
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="inline-flex items-center gap-3">
+                  <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
+                    Choose file
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setPartnerError(null);
+                        setPartnerUploading(true);
+                        await uploadToBucket(
+                          "lab-logos",
+                          file,
+                          "new/partners",
+                          (url, name) => setPartnerLogos(prev => [...prev, { name, url }]),
+                          msg => setPartnerError(msg),
+                        );
+                        setPartnerUploading(false);
+                        if (e.target) e.target.value = "";
+                      }}
+                    />
+                  </span>
+                </label>
+                {partnerUploading && <p className="text-xs text-muted-foreground">Uploading…</p>}
+                {partnerError && <p className="text-xs text-destructive">{partnerError}</p>}
+              </div>
+              <p className="text-xs text-muted-foreground">Partner logos are shown for premier/custom labs.</p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Address line 1">
+                <input
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={form.addressLine1}
+                  onChange={e => handleChange("addressLine1", e.target.value)}
+                />
+              </Field>
+              <Field label="Address line 2">
+                <input
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={form.addressLine2}
+                  onChange={e => handleChange("addressLine2", e.target.value)}
+                />
+              </Field>
+              <Field label="City">
+                <input
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={form.city}
+                  onChange={e => handleChange("city", e.target.value)}
+                />
+              </Field>
+              <Field label="State/Region">
+                <input
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={form.state}
+                  onChange={e => handleChange("state", e.target.value)}
+                />
+              </Field>
+              <Field label="Postal code">
+                <input
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={form.postalCode}
+                  onChange={e => handleChange("postalCode", e.target.value)}
+                />
+              </Field>
+              <Field label="Country">
+                <input
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={form.country}
+                  onChange={e => handleChange("country", e.target.value)}
+                />
+              </Field>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Website">
+                <input
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={form.website}
+                  onChange={e => handleChange("website", e.target.value)}
+                />
+              </Field>
+              <Field label="LinkedIn">
+                <input
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={form.linkedin}
+                  onChange={e => handleChange("linkedin", e.target.value)}
+                />
+              </Field>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Minimum stay">
+                <input
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={form.minimumStay}
+                  onChange={e => handleChange("minimumStay", e.target.value)}
+                />
+              </Field>
+              <label className="grid gap-1 text-sm font-medium text-foreground">
+                Price privacy
+                <select
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={form.pricePrivacy ? "yes" : "no"}
+                  onChange={e => handleChange("pricePrivacy", e.target.value === "yes")}
+                >
+                  <option value="no">Rates published</option>
+                  <option value="yes">Quotes required</option>
+                </select>
+              </label>
+            </div>
+
+            <Field label="Equipment">
+              <div className="space-y-2">
+                <input
+                  className="w-full rounded-xl border-2 border-primary/30 bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  placeholder="Add equipment and press Enter"
+                  value={tagInput.field === "equipmentTags" ? tagInput.value : ""}
+                  onChange={e => setTagInput({ field: "equipmentTags", value: e.target.value })}
+                  onKeyDown={handleTagKey("equipmentTags")}
+                />
+                <div className="flex flex-wrap gap-2">
+                  {form.equipmentTags.map(tag => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground"
+                    >
+                      {tag}
+                      <button
+                        type="button"
+                        onClick={() => removeTag("equipmentTags", tag)}
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </Field>
+            <Field label="Focus areas">
+              <div className="space-y-2">
+                <input
+                  className="w-full rounded-xl border-2 border-primary/30 bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  placeholder="Add focus area and press Enter"
+                  value={tagInput.field === "focusTags" ? tagInput.value : ""}
+                  onChange={e => setTagInput({ field: "focusTags", value: e.target.value })}
+                  onKeyDown={handleTagKey("focusTags")}
+                />
+                <div className="flex flex-wrap gap-2">
+                  {form.focusTags.map(tag => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground"
+                    >
+                      {tag}
+                      <button
+                        type="button"
+                        onClick={() => removeTag("focusTags", tag)}
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </Field>
+            <Field label="Compliance">
+              <div className="space-y-2">
+                <input
+                  className="w-full rounded-xl border-2 border-primary/30 bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  placeholder="Add compliance and press Enter"
+                  value={tagInput.field === "complianceTags" ? tagInput.value : ""}
+                  onChange={e => setTagInput({ field: "complianceTags", value: e.target.value })}
+                  onKeyDown={handleTagKey("complianceTags")}
+                />
+                <div className="flex flex-wrap gap-2">
+                  {form.complianceTags.map(tag => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground"
+                    >
+                      {tag}
+                      <button
+                        type="button"
+                        onClick={() => removeTag("complianceTags", tag)}
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </Field>
+
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-foreground">Compliance documents (PDF)</p>
+              <div className="flex flex-wrap gap-2">
+                {complianceDocs.map(asset => (
+                  <div key={asset.url} className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
+                    <span className="text-xs text-foreground break-all max-w-[200px] truncate">{asset.name || asset.url}</span>
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground hover:text-destructive"
+                      onClick={() => setComplianceDocs(prev => prev.filter(doc => doc.url !== asset.url))}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <label className="inline-flex items-center gap-3">
+                <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
+                  Choose file
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    className="hidden"
+                    onChange={async e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setComplianceError(null);
+                      setComplianceUploading(true);
+                      await uploadToBucket(
+                        "lab-pdfs",
+                        file,
+                        "new/compliance",
+                        (url, name) => setComplianceDocs(prev => [...prev, { name, url }]),
+                        msg => setComplianceError(msg),
+                      );
+                      setComplianceUploading(false);
+                      if (e.target) e.target.value = "";
+                    }}
+                  />
+                </span>
+              </label>
+              {complianceUploading && <p className="text-xs text-muted-foreground">Uploading…</p>}
+              {complianceError && <p className="text-xs text-destructive">{complianceError}</p>}
+              <p className="text-xs text-muted-foreground">Upload PDF compliance certificates; you can add more later.</p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-foreground">Offers</p>
+              <div className="flex flex-wrap gap-2">
+                {offerOptions.map(opt => (
+                  <label key={opt} className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      className="rounded border-border text-primary"
+                      checked={form.offers.includes(opt)}
+                      onChange={e => {
+                        const next = e.target.checked
+                          ? [...form.offers, opt]
+                          : form.offers.filter(item => item !== opt);
+                        handleChange("offers", next);
+                      }}
+                    />
+                    {opt}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="SIRET (optional)">
+                <input
+                  className="w-full rounded-xl border-2 border-primary/30 bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={form.siretNumber}
+                  onChange={e => handleChange("siretNumber", e.target.value)}
+                />
+              </Field>
+            </div>
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <button
+              type="submit"
+              disabled={saving}
+              className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
+            >
+              {saving ? "Creating…" : "Create lab"}
+            </button>
+          </form>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+function Field({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) {
+  return (
+    <label className="grid gap-1 text-sm font-medium text-foreground">
+      {label} {required ? <span className="text-destructive">*</span> : null}
+      <div className="text-foreground font-normal">{children}</div>
+    </label>
+  );
+}
+  const randomName = (original: string) => {
+    const ext = original.split(".").pop() || "jpg";
+    if (typeof crypto !== "undefined" && crypto.randomUUID) return `${crypto.randomUUID()}.${ext}`;
+    return `${Date.now()}.${ext}`;
+  };
+
+  const uploadToBucket = async (
+    bucket: string,
+    file: File,
+    prefix: string,
+    onSuccess: (url: string, name: string) => void,
+    onError: (msg: string) => void,
+  ) => {
+    try {
+      const filename = `${prefix}/${randomName(file.name)}`;
+      const { error: uploadError } = await supabase.storage.from(bucket).upload(filename, file, { upsert: true, contentType: file.type });
+      if (uploadError) throw uploadError;
+      const { data } = supabase.storage.from(bucket).getPublicUrl(filename);
+      onSuccess(data.publicUrl, file.name);
+    } catch (err: any) {
+      onError(err?.message || "Upload failed");
+    }
+  };

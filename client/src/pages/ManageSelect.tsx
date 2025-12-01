@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
-import { MapPin, ShieldCheck, ShieldAlert } from "lucide-react";
+import { MapPin, ShieldCheck, ShieldAlert, Plus } from "lucide-react";
 
 type LabSummary = {
   id: number;
@@ -84,6 +84,9 @@ export default function ManageSelect() {
   return (
     <section className="bg-background min-h-screen">
       <div className="container mx-auto px-4 py-20 lg:py-24 max-w-6xl">
+        <Link href="/account" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-4">
+          ← Back to profile
+        </Link>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
             <h1 className="text-3xl font-semibold text-foreground">Manage your labs</h1>
@@ -110,7 +113,27 @@ export default function ManageSelect() {
             No labs match that search. {labs.length === 0 ? "No lab is linked to your account yet." : ""}
           </p>
         ) : (
-          <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            <motion.div
+              key="add-lab"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="flex h-full flex-col rounded-3xl border border-dashed border-border bg-card/60 shadow-sm overflow-hidden"
+            >
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Plus className="h-6 w-6" />
+                </div>
+                <h3 className="text-lg font-semibold text-foreground">Add a new lab</h3>
+                <p className="text-sm text-muted-foreground">Create another lab profile and manage its details.</p>
+              </div>
+              <div className="p-4">
+                <Link href="/lab/manage/new" className="inline-flex w-full items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90">
+                  Add lab
+                </Link>
+              </div>
+            </motion.div>
             {filtered.map(lab => (
               <motion.div
                 key={lab.id}

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
+import { Link } from "wouter";
 
 type RequestRecord = {
   id?: number | string;
@@ -199,6 +200,9 @@ export default function Requests() {
   return (
     <section className="bg-background min-h-screen">
       <div className="container mx-auto px-4 py-20 lg:py-24 max-w-5xl">
+        <Link href="/account" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-4">
+          ← Back to profile
+        </Link>
         <div>
           <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Requests</p>
           <h1 className="text-3xl font-semibold text-foreground">Inbox</h1>

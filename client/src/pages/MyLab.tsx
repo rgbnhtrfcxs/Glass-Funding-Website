@@ -362,6 +362,9 @@ export default function MyLab({ params }: { params: { id: string } }) {
   return (
     <section className="bg-background min-h-screen">
       <div className="container mx-auto px-4 py-20 lg:py-24 max-w-3xl">
+        <Link href="/lab/manage" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-4">
+          ← Back to manage labs
+        </Link>
         <h1 className="text-3xl font-semibold text-foreground">Manage my lab</h1>
         <p className="text-sm text-muted-foreground mt-2">Update basic details for your lab.</p>
         {labId && isVisible === false && (

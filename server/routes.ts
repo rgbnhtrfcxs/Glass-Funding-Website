@@ -26,6 +26,9 @@ import { insertLabViewSchema } from "@shared/views";
 
 import { insertDonationSchema } from "@shared/donations";
 
+// Avoid duplicate "viewed" notifications during a single server runtime
+const viewedNotifyCache = new Set<string>();
+
 export function registerRoutes(app: Express) {
   // Middleware
   app.use(express.json());
@@ -166,6 +169,7 @@ export function registerRoutes(app: Express) {
       // Notify internal inbox
       await sendMail({
         to: process.env.ADMIN_INBOX ?? "contact@glass-funding.com",
+        from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
         subject: `New collaboration inquiry for ${lab.name}`,
         text: [
           `Lab: ${lab.name} (id: ${payload.labId})`,
@@ -177,7 +181,55 @@ export function registerRoutes(app: Express) {
           `Timeline: ${payload.desiredTimeline ?? "N/A"}`,
           `Notes: ${payload.additionalNotes ?? "N/A"}`,
         ].join("\n"),
+        templateId: process.env.BREVO_TEMPLATE_COLLAB_ADMIN
+          ? Number(process.env.BREVO_TEMPLATE_COLLAB_ADMIN)
+          : undefined,
+        params: {
+          labName: lab.name,
+          contactName: payload.contactName,
+          contactEmail: payload.contactEmail,
+          preferredContact: payload.preferredContact ?? "email",
+          targets: payload.targetLabs ?? "N/A",
+          focus: payload.collaborationFocus ?? "N/A",
+          resources: payload.resourcesOffered ?? "N/A",
+          timeline: payload.desiredTimeline ?? "N/A",
+          notes: payload.additionalNotes ?? "N/A",
+          logoUrl: process.env.MAIL_LOGO_URL || undefined,
+        },
       });
+      // Notify lab contact if available
+      if (lab.contactEmail) {
+        await sendMail({
+          to: lab.contactEmail,
+          from: process.env.MAIL_FROM_LAB || process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
+          subject: `New collaboration request for ${lab.name}`,
+          text: [
+            `You have a new collaboration request for ${lab.name}.`,
+            `Contact: ${payload.contactName} <${payload.contactEmail}>`,
+            `Preferred contact: ${payload.preferredContact ?? "email"}`,
+            `Focus: ${payload.collaborationFocus ?? "N/A"}`,
+            `Timeline: ${payload.desiredTimeline ?? "N/A"}`,
+            `Targets: ${payload.targetLabs ?? "N/A"}`,
+            `Resources offered: ${payload.resourcesOffered ?? "N/A"}`,
+            `Notes: ${payload.additionalNotes ?? "N/A"}`,
+          ].join("\n"),
+          templateId: process.env.BREVO_TEMPLATE_COLLAB_LAB
+            ? Number(process.env.BREVO_TEMPLATE_COLLAB_LAB)
+            : undefined,
+          params: {
+            labName: lab.name,
+            contactName: payload.contactName,
+            contactEmail: payload.contactEmail,
+            preferredContact: payload.preferredContact ?? "email",
+            targets: payload.targetLabs ?? "N/A",
+            focus: payload.collaborationFocus ?? "N/A",
+            resources: payload.resourcesOffered ?? "N/A",
+            timeline: payload.desiredTimeline ?? "N/A",
+            notes: payload.additionalNotes ?? "N/A",
+            logoUrl: process.env.MAIL_LOGO_URL || undefined,
+          },
+        });
+      }
       res.status(201).json(created);
     } catch (error) {
       if (error instanceof ZodError) {
@@ -216,6 +268,7 @@ export function registerRoutes(app: Express) {
       });
       await sendMail({
         to: process.env.ADMIN_INBOX ?? "contact@glass-funding.com",
+        from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
         subject: `New lab request for ${lab.name}`,
         text: [
           `Lab: ${lab.name} (id: ${payload.labId})`,
@@ -235,7 +288,72 @@ export function registerRoutes(app: Express) {
           `Delivery window: ${payload.preferredDeliveryWindow}`,
           `Agree to review: ${payload.agreeToReview}`,
         ].join("\n"),
+        templateId: process.env.BREVO_TEMPLATE_LABREQ_ADMIN
+          ? Number(process.env.BREVO_TEMPLATE_LABREQ_ADMIN)
+          : undefined,
+        params: {
+          labName: lab.name,
+          requesterName: payload.requesterName,
+          requesterEmail: payload.requesterEmail,
+          organization: payload.organization,
+          roleTitle: payload.roleTitle,
+          projectSummary: payload.projectSummary,
+          workTimeline: payload.workTimeline,
+          weeklyHoursNeeded: payload.weeklyHoursNeeded,
+          teamSize: payload.teamSize,
+          equipmentNeeds: payload.equipmentNeeds,
+          complianceNotes: payload.complianceNotes,
+          specialRequirements: payload.specialRequirements,
+          referencesOrLinks: payload.referencesOrLinks,
+          preferredContact: payload.preferredContactMethod,
+          deliveryWindow: payload.preferredDeliveryWindow,
+          logoUrl: process.env.MAIL_LOGO_URL || undefined,
+        },
       });
+      // Notify lab contact if available
+      if (lab.contactEmail) {
+        await sendMail({
+          to: lab.contactEmail,
+          from: process.env.MAIL_FROM_LAB || process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
+          subject: `New lab request for ${lab.name}`,
+          text: [
+            `You have a new request for ${lab.name}.`,
+            `Requester: ${payload.requesterName} <${payload.requesterEmail}>`,
+            `Org/Role: ${payload.organization} / ${payload.roleTitle}`,
+            `Project: ${payload.projectSummary}`,
+            `Timeline: ${payload.workTimeline}`,
+            `Weekly hours: ${payload.weeklyHoursNeeded}`,
+            `Team size: ${payload.teamSize}`,
+            `Equipment: ${payload.equipmentNeeds}`,
+            `Compliance notes: ${payload.complianceNotes}`,
+            `Requirements: ${payload.specialRequirements}`,
+            `Links: ${payload.referencesOrLinks}`,
+            `Preferred contact: ${payload.preferredContactMethod}`,
+            `Delivery window: ${payload.preferredDeliveryWindow}`,
+          ].join("\n"),
+          templateId: process.env.BREVO_TEMPLATE_LABREQ_LAB
+            ? Number(process.env.BREVO_TEMPLATE_LABREQ_LAB)
+            : undefined,
+          params: {
+            labName: lab.name,
+            requesterName: payload.requesterName,
+            requesterEmail: payload.requesterEmail,
+            organization: payload.organization,
+            roleTitle: payload.roleTitle,
+            projectSummary: payload.projectSummary,
+            workTimeline: payload.workTimeline,
+            weeklyHoursNeeded: payload.weeklyHoursNeeded,
+            teamSize: payload.teamSize,
+            equipmentNeeds: payload.equipmentNeeds,
+            complianceNotes: payload.complianceNotes,
+            specialRequirements: payload.specialRequirements,
+            referencesOrLinks: payload.referencesOrLinks,
+            preferredContact: payload.preferredContactMethod,
+            deliveryWindow: payload.preferredDeliveryWindow,
+            logoUrl: process.env.MAIL_LOGO_URL || undefined,
+          },
+        });
+      }
       res.status(201).json(created);
     } catch (error) {
       if (error instanceof ZodError) {
@@ -760,12 +878,26 @@ app.get("/api/profile", authenticate, async (req, res) => {
       const { contactEmail, labName, type } = req.body || {};
       if (!contactEmail) return res.status(400).json({ message: "Missing contact email" });
 
+      // One notification per (email + labName + type) per runtime
+      const cacheKey = `${(contactEmail || "").toLowerCase()}|${(labName || "").toLowerCase()}|${type || "request"}`;
+      if (viewedNotifyCache.has(cacheKey)) {
+        return res.json({ ok: true, skipped: "already_notified" });
+      }
+
       try {
         await sendMail({
           to: contactEmail,
+          from: process.env.MAIL_FROM_USER || process.env.MAIL_FROM,
           subject: `Your request to ${labName ?? "the lab"} is being reviewed`,
           text: `Thanks for reaching out about ${labName ?? "our lab"}. Our team is viewing your ${type ?? "request"} now and will respond soon.`,
+          templateId: process.env.BREVO_TEMPLATE_REQUEST_VIEWED ? Number(process.env.BREVO_TEMPLATE_REQUEST_VIEWED) : undefined,
+          params: {
+            labName: labName ?? "our lab",
+            requestType: type ?? "request",
+            logoUrl: process.env.MAIL_LOGO_URL || undefined,
+          },
         });
+        viewedNotifyCache.add(cacheKey);
       } catch (mailErr) {
         // Swallow email errors to avoid blocking the UI
         console.error("Failed to send viewed notification", mailErr);

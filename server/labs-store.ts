@@ -155,7 +155,7 @@ function mapLabRow(row: LabRow, overrideTier?: LabPartner["subscriptionTier"]): 
     name: row.name,
     location: row.location,
     labManager: row.lab_manager,
-    contactEmail: row.contact_email,
+    contactEmail: (row.contact_email ?? "").trim(),
     ownerUserId: row.owner_user_id || null,
     siretNumber: row.siret_number || null,
     logoUrl: row.logo_url || null,
@@ -270,7 +270,15 @@ export class LabStore {
     if (error) throw error;
     const labs = (data as LabRow[] | null) ?? [];
     const tierMap = await fetchProfileTierMap(labs.map(l => l.owner_user_id));
-    return labListSchema.parse(labs.map(row => mapLabRow(row, row.owner_user_id ? tierMap[row.owner_user_id] : undefined)));
+    const mapped: LabPartner[] = [];
+    for (const row of labs) {
+      try {
+        mapped.push(mapLabRow(row, row.owner_user_id ? tierMap[row.owner_user_id] : undefined));
+      } catch (err) {
+        console.warn("[labs-store] Skipping lab with invalid data", { id: row.id, name: row.name, error: err });
+      }
+    }
+    return labListSchema.parse(mapped);
   }
 
   async listVisible(): Promise<LabPartner[]> {
@@ -282,7 +290,15 @@ export class LabStore {
     if (error) throw error;
     const labs = (data as LabRow[] | null) ?? [];
     const tierMap = await fetchProfileTierMap(labs.map(l => l.owner_user_id));
-    return labListSchema.parse(labs.map(row => mapLabRow(row, row.owner_user_id ? tierMap[row.owner_user_id] : undefined)));
+    const mapped: LabPartner[] = [];
+    for (const row of labs) {
+      try {
+        mapped.push(mapLabRow(row, row.owner_user_id ? tierMap[row.owner_user_id] : undefined));
+      } catch (err) {
+        console.warn("[labs-store] Skipping lab with invalid data", { id: row.id, name: row.name, error: err });
+      }
+    }
+    return labListSchema.parse(mapped);
   }
 
   async findById(id: number): Promise<LabPartner | undefined> {
