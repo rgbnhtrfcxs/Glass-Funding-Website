@@ -37,6 +37,7 @@ import Logout from "@/pages/Logout";
 import PaymentFlow from "@/pages/PaymentFlow";
 import ManageSelect from "@/pages/ManageSelect";
 import NewLab from "@/pages/NewLab";
+import Favorites from "@/pages/Favorites";
 import { LabsProvider } from "@/context/LabsContext";
 import { AuthProvider } from "@/context/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -89,6 +90,7 @@ function Router() {
       <ProtectedRoute path="/account" component={Account} />
       <ProtectedRoute path="/account/edit" component={ProfilePortal} />
       <ProtectedRoute path="/requests" component={Requests} />
+      <ProtectedRoute path="/favorites" component={Favorites} />
       <LabRoute path="/lab/manage" component={ManageSelect} />
       <LabRoute path="/lab/manage/new" component={NewLab} />
       <LabRoute path="/lab/manage/:id" component={MyLab} />

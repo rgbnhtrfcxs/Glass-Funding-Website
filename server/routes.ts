@@ -10,7 +10,7 @@ import { sendMail } from "./mailer";
 import jwt from "jsonwebtoken";
 import { supabasePublic } from "./supabasePublicClient.js";
 
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 
 import {
   insertWaitlistSchema,
@@ -28,6 +28,34 @@ import { insertDonationSchema } from "@shared/donations";
 
 // Avoid duplicate "viewed" notifications during a single server runtime
 const viewedNotifyCache = new Set<string>();
+
+const insertNewsSchema = z.object({
+  labId: z.number(),
+  title: z.string().min(1, "Title is required"),
+  summary: z.string().min(1, "Summary is required"),
+  category: z.string().default("update"),
+  images: z
+    .array(
+      z.object({
+        url: z.string().url("Image URL must be valid"),
+        name: z.string().min(1),
+      }),
+    )
+    .max(4)
+    .optional()
+    .default([]),
+  authorId: z.string().uuid().nullable().optional(),
+});
+
+const insertVerificationRequestSchema = z.object({
+  labId: z.number(),
+  addressLine1: z.string().optional(),
+  addressLine2: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  postalCode: z.string().optional(),
+  country: z.string().optional(),
+});
 
 export function registerRoutes(app: Express) {
   // Middleware
@@ -539,6 +567,192 @@ app.get("/api/profile", authenticate, async (req, res) => {
       res.json({ labIds });
     } catch (error) {
       res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load favorites" });
+    }
+  });
+
+  // --------- Lab News (premier/custom) ----------
+  app.post("/api/news", authenticate, async (req, res) => {
+    try {
+      const payload = insertNewsSchema.parse(req.body);
+      const lab = await labStore.findById(payload.labId);
+      if (!lab) return res.status(404).json({ message: "Lab not found" });
+      const tier = (lab as any).subscriptionTier || (lab as any).subscription_tier || "base";
+      const premium = ["premier", "custom"].includes(String(tier).toLowerCase());
+      if (!premium) return res.status(403).json({ message: "Only premier/custom labs can post news" });
+      const ownerUserId = (lab as any).ownerUserId || (lab as any).owner_user_id || null;
+      if (ownerUserId && payload.authorId && ownerUserId !== payload.authorId) {
+        return res.status(403).json({ message: "Not allowed to post for this lab" });
+      }
+
+      const { data, error } = await supabase
+        .from("lab_news")
+        .insert({
+          lab_id: payload.labId,
+          title: payload.title,
+          summary: payload.summary,
+          category: payload.category ?? "update",
+          images: payload.images ?? [],
+          created_by: payload.authorId ?? req.user.id ?? null,
+          status: "pending",
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      res.status(201).json(data);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const issue = error.issues[0];
+        return res.status(400).json({ message: issue?.message ?? "Invalid news payload" });
+      }
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to post news" });
+    }
+  });
+
+  app.get("/api/news/mine", authenticate, async (req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from("lab_news")
+        .select("id, lab_id, title, summary, category, images, status, created_at, labs!inner(name, subscription_tier, owner_user_id)")
+        .eq("labs.owner_user_id", req.user.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      res.json({ news: data ?? [] });
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load news" });
+    }
+  });
+
+  app.get("/api/news/public", async (_req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from("lab_news")
+        .select("id, lab_id, title, summary, category, images, status, created_at, labs:lab_id (name, subscription_tier)")
+        .eq("status", "approved")
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      res.json({ news: data ?? [] });
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load news" });
+    }
+  });
+
+  // --------- Verification Requests ----------
+  app.post("/api/verification-requests", authenticate, async (req, res) => {
+    try {
+      const payload = insertVerificationRequestSchema.parse(req.body);
+      const lab = await labStore.findById(payload.labId);
+      if (!lab) return res.status(404).json({ message: "Lab not found" });
+      const ownerId = (lab as any).ownerUserId || (lab as any).owner_user_id;
+      if (ownerId && ownerId !== req.user.id) {
+        return res.status(403).json({ message: "You cannot request verification for this lab" });
+      }
+
+      // Update address if provided
+      const addressUpdate = {
+        address_line1: payload.addressLine1 || null,
+        address_line2: payload.addressLine2 || null,
+        city: payload.city || null,
+        state: payload.state || null,
+        postal_code: payload.postalCode || null,
+        country: payload.country || null,
+      };
+      const hasAddress = Object.values(addressUpdate).some(v => v && String(v).trim().length > 0);
+      if (hasAddress) {
+        await supabase.from("labs").update(addressUpdate).eq("id", payload.labId);
+      }
+
+      // Store request (requires table to exist)
+      await supabase.from("lab_verification_requests").insert({
+        lab_id: payload.labId,
+        requested_by: req.user.id,
+        address_line1: payload.addressLine1 || null,
+        address_line2: payload.addressLine2 || null,
+        city: payload.city || null,
+        state: payload.state || null,
+        postal_code: payload.postalCode || null,
+        country: payload.country || null,
+        status: "received",
+      });
+
+      const adminInbox = process.env.ADMIN_INBOX ?? "contact@glass-funding.com";
+      const userEmail = req.user.email || (lab as any).contactEmail || (lab as any).contact_email;
+
+      // Notify admin
+      await sendMail({
+        to: adminInbox,
+        from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
+        subject: `Verification request for ${lab.name}`,
+        text: [
+          `Lab: ${lab.name} (id: ${payload.labId})`,
+          `Requested by user: ${req.user.id}`,
+          `Address line1: ${payload.addressLine1 || (lab as any).addressLine1 || (lab as any).address_line1 || "N/A"}`,
+          `Address line2: ${payload.addressLine2 || (lab as any).addressLine2 || (lab as any).address_line2 || "N/A"}`,
+          `City: ${payload.city || (lab as any).city || "N/A"}`,
+          `State: ${payload.state || (lab as any).state || "N/A"}`,
+          `Postal code: ${payload.postalCode || (lab as any).postalCode || (lab as any).postal_code || "N/A"}`,
+          `Country: ${payload.country || (lab as any).country || "N/A"}`,
+          `Note: On-site verification requested; please follow up for scheduling and costs.`,
+        ].join("\n"),
+        templateId: process.env.BREVO_TEMPLATE_VERIFY_ADMIN
+          ? Number(process.env.BREVO_TEMPLATE_VERIFY_ADMIN)
+          : undefined,
+        params: {
+          labName: lab.name,
+          requester: req.user.id,
+          address: [
+            payload.addressLine1 || (lab as any).addressLine1 || (lab as any).address_line1 || "",
+            payload.addressLine2 || (lab as any).addressLine2 || (lab as any).address_line2 || "",
+            payload.city || (lab as any).city || "",
+            payload.state || (lab as any).state || "",
+            payload.postalCode || (lab as any).postalCode || (lab as any).postal_code || "",
+            payload.country || (lab as any).country || "",
+          ]
+            .filter(Boolean)
+            .join(", "),
+          logoUrl: process.env.MAIL_LOGO_URL || undefined,
+        },
+      });
+
+      // Notify user
+      if (userEmail) {
+        await sendMail({
+          to: userEmail,
+          from: process.env.MAIL_FROM_USER || process.env.MAIL_FROM,
+          subject: `We received your verification request for ${lab.name}`,
+          text: `Thanks! We received your request to verify ${lab.name}. Our team will reach out to schedule an on-site visit (additional cost applies).\nAddress: ${
+            payload.addressLine1 ||
+            (lab as any).addressLine1 ||
+            (lab as any).address_line1 ||
+            ""
+          } ${payload.city || (lab as any).city || ""} ${payload.country || (lab as any).country || ""}`.trim(),
+          templateId: process.env.BREVO_TEMPLATE_VERIFY_USER
+            ? Number(process.env.BREVO_TEMPLATE_VERIFY_USER)
+            : 9,
+          params: {
+            labName: lab.name,
+            address: [
+              payload.addressLine1 || (lab as any).addressLine1 || (lab as any).address_line1 || "",
+              payload.addressLine2 || (lab as any).addressLine2 || (lab as any).address_line2 || "",
+              payload.city || (lab as any).city || "",
+              payload.state || (lab as any).state || "",
+              payload.postalCode || (lab as any).postalCode || (lab as any).postal_code || "",
+              payload.country || (lab as any).country || "",
+            ]
+              .filter(Boolean)
+              .join(", "),
+            logoUrl: process.env.MAIL_LOGO_URL || undefined,
+          },
+        });
+      }
+
+      res.status(201).json({ ok: true });
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const issue = error.issues[0];
+        return res.status(400).json({ message: issue?.message ?? "Invalid verification request" });
+      }
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to submit verification request" });
     }
   });
 
