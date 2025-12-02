@@ -29,6 +29,41 @@ import { insertDonationSchema } from "@shared/donations";
 // Avoid duplicate "viewed" notifications during a single server runtime
 const viewedNotifyCache = new Set<string>();
 
+const defaultPricing = [
+  {
+    name: "Base",
+    monthly_price: 0,
+    description: "Launch on GLASS-Connect with the essentials.",
+    highlights: ["Profile page", "Equipment showcase", "Inbound contact form"],
+    featured: false,
+    sort_order: 1,
+  },
+  {
+    name: "Verified",
+    monthly_price: 99,
+    description: "Add the badge researchers trust.",
+    highlights: ["Remote/on-site verification", "Badge on listing", "Priority placement"],
+    featured: false,
+    sort_order: 2,
+  },
+  {
+    name: "Premier",
+    monthly_price: 199,
+    description: "Flagship placement plus media support.",
+    highlights: ["Free verification", "Direct collaboration management", "Seminar access"],
+    featured: true,
+    sort_order: 3,
+  },
+  {
+    name: "Custom",
+    monthly_price: null,
+    description: "For networks or operators managing multiple labs.",
+    highlights: ["Central billing", "Dedicated partner manager", "API & tooling access"],
+    featured: false,
+    sort_order: 4,
+  },
+] as const;
+
 const insertNewsSchema = z.object({
   labId: z.number(),
   title: z.string().min(1, "Title is required"),
@@ -634,6 +669,51 @@ app.get("/api/profile", authenticate, async (req, res) => {
       res.json({ news: data ?? [] });
     } catch (error) {
       res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load news" });
+    }
+  });
+
+  // --------- Pricing ----------
+  app.get("/api/pricing", async (_req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from("pricing_tiers")
+        .select("name, monthly_price, description, highlights, featured, sort_order")
+        .order("sort_order", { ascending: true });
+      if (error) throw error;
+
+      // Optional: load features from pricing_features table if it exists
+      let featuresByTier: Record<string, string[]> = {};
+      try {
+        const { data: featData } = await supabase
+          .from("pricing_features")
+          .select("tier_name, feature, sort_order")
+          .order("sort_order", { ascending: true });
+        featuresByTier = (featData ?? []).reduce((acc: Record<string, string[]>, row: any) => {
+          const key = row.tier_name;
+          acc[key] = acc[key] || [];
+          if (row.feature) acc[key].push(row.feature);
+          return acc;
+        }, {});
+      } catch {
+        // ignore if table is missing or RLS blocks
+      }
+
+      const list = (data ?? []).map(row => ({
+        name: row.name,
+        monthly_price: row.monthly_price,
+        description: row.description,
+        highlights:
+          featuresByTier[row.name] && featuresByTier[row.name].length
+            ? featuresByTier[row.name]
+            : Array.isArray(row.highlights)
+              ? row.highlights
+              : defaultPricing.find(d => d.name === row.name)?.highlights ?? [],
+        featured: row.featured ?? false,
+        sort_order: row.sort_order ?? 999,
+      }));
+      res.json({ tiers: list.length ? list : defaultPricing });
+    } catch (error) {
+      res.json({ tiers: defaultPricing });
     }
   });
 

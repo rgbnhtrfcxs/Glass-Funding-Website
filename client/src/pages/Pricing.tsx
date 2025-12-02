@@ -1,39 +1,10 @@
 import { motion } from "framer-motion";
 import { ArrowUpRight, Sparkles, ShieldCheck, ClipboardCheck } from "lucide-react";
 import { Link } from "wouter";
-
-const tiers = [
-  {
-    name: "Base",
-    monthlyPrice: 0,
-    description: "Launch on GLASS-Connect with the essentials.",
-    highlights: ["Profile page", "Equipment showcase", "Inbound contact form"],
-    featured: false,
-  },
-  {
-    name: "Verified",
-    monthlyPrice: 99,
-    description: "Add the badge researchers trust.",
-    highlights: ["Remote/on-site verification", "Badge on listing", "Priority placement"],
-    featured: false,
-  },
-  {
-    name: "Premier",
-    monthlyPrice: 199,
-    description: "Flagship placement plus media support.",
-    highlights: ["Free verification", "Direct collaboration management", "Seminar access"],
-    featured: true,
-  },
-  {
-    name: "Custom",
-    monthlyPrice: null,
-    description: "For networks or operators managing multiple labs.",
-    highlights: ["Central billing", "Dedicated partner manager", "API & tooling access"],
-    featured: false,
-  },
-] as const;
+import { usePricing } from "@/hooks/usePricing";
 
 export default function Pricing() {
+  const { tiers } = usePricing();
 
   return (
     <section className="bg-background min-h-screen">
@@ -74,6 +45,10 @@ export default function Pricing() {
           {tiers.map(tier => {
             const plan = tier.name.toLowerCase();
             const paymentHref = tier.name === "Custom" ? `/payments?plan=${plan}#custom` : `/payments?plan=${plan}`;
+            const priceVal: any = (tier as any).monthly_price ?? (tier as any).monthlyPrice;
+            const isFree = priceVal === 0 || priceVal === "0";
+            const hasPrice = priceVal !== null && priceVal !== undefined && !isFree;
+            const priceLabel = isFree ? "Free" : hasPrice ? `€${priceVal}` : "Custom";
             return (
               <article
                 key={tier.name}
@@ -81,46 +56,39 @@ export default function Pricing() {
                   tier.featured ? "lg:col-span-2 bg-gradient-to-br from-card to-primary/5" : ""
                 }`}
               >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">{tier.name}</p>
-                  {(() => {
-                    const isFree = tier.monthlyPrice === 0 || tier.monthlyPrice === "0";
-                    const hasPrice = tier.monthlyPrice !== null && tier.monthlyPrice !== undefined && !isFree;
-                    const priceLabel = isFree ? "Free" : hasPrice ? `€${tier.monthlyPrice}` : "Custom";
-                    return (
-                      <p className="mt-3 text-4xl font-semibold text-foreground">
-                        {priceLabel}
-                        {hasPrice && <span className="text-base text-muted-foreground"> / month</span>}
-                      </p>
-                    );
-                  })()}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">{tier.name}</p>
+                    <p className="mt-3 text-4xl font-semibold text-foreground">
+                      {priceLabel}
+                      {hasPrice && <span className="text-base text-muted-foreground"> / month</span>}
+                    </p>
+                  </div>
+                  {tier.featured && <Sparkles className="h-6 w-6 text-primary" />}
                 </div>
-                {tier.featured && <Sparkles className="h-6 w-6 text-primary" />}
-              </div>
-              <p className="mt-4 text-sm text-muted-foreground">{tier.description}</p>
-              <ul className="mt-6 space-y-3 text-sm text-muted-foreground">
-                {tier.highlights.map(item => (
-                  <li key={item} className="flex items-center gap-3">
-                    <ClipboardCheck className="h-4 w-4 text-primary" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-              {tier.name === "Custom" ? (
-                <Link href={paymentHref}>
-                  <a className="mt-6 inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary">
-                    Talk to partnerships
-                    <ArrowUpRight className="ml-2 h-4 w-4" />
-                  </a>
-                </Link>
-              ) : (
-                <Link href={paymentHref}>
-                  <a className="mt-6 inline-flex items-center rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:bg-foreground/90">
-                    Get started
-                  </a>
-                </Link>
-              )}
+                <p className="mt-4 text-sm text-muted-foreground">{tier.description}</p>
+                <ul className="mt-6 space-y-3 text-sm text-muted-foreground">
+                  {tier.highlights.map(item => (
+                    <li key={item} className="flex items-center gap-3">
+                      <ClipboardCheck className="h-4 w-4 text-primary" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+                {tier.name === "Custom" ? (
+                  <Link href={paymentHref}>
+                    <a className="mt-6 inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary">
+                      Talk to partnerships
+                      <ArrowUpRight className="ml-2 h-4 w-4" />
+                    </a>
+                  </Link>
+                ) : (
+                  <Link href={paymentHref}>
+                    <a className="mt-6 inline-flex items-center rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:bg-foreground/90">
+                      Get started
+                    </a>
+                  </Link>
+                )}
               </article>
             );
           })}

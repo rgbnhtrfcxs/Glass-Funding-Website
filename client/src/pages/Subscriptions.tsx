@@ -1,40 +1,11 @@
 import { motion } from "framer-motion";
 import { CheckCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { Link } from "wouter";
-
-const tiers = [
-  {
-    name: "Base",
-    price: "Free",
-    value: "Stay listed with essentials",
-    features: ["Profile page", "Equipment showcase", "Inbound contact form"],
-    plan: "base",
-  },
-  {
-    name: "Verified",
-    price: "€99/mo",
-    value: "Badge and higher trust",
-    features: ["Verification badge", "Priority placement", "Faster support"],
-    plan: "verified",
-  },
-  {
-    name: "Premier",
-    price: "€199/mo",
-    value: "Flagship placement & support",
-    features: ["Top placement", "Media support", "Collaboration tooling"],
-    plan: "premier",
-    featured: true,
-  },
-  {
-    name: "Custom",
-    price: "Talk to us",
-    value: "For operators or multi-lab teams",
-    features: ["Central billing", "Dedicated partner manager", "API/tooling access"],
-    plan: "custom",
-  },
-] as const;
+import { usePricing } from "@/hooks/usePricing";
 
 export default function Subscriptions() {
+  const { tiers } = usePricing();
+
   return (
     <section className="bg-background min-h-screen">
       <div className="container mx-auto max-w-5xl px-4 py-20 lg:py-24 space-y-10">
@@ -65,11 +36,16 @@ export default function Subscriptions() {
           className="grid gap-6 lg:grid-cols-2"
         >
           {tiers.map(tier => {
-            const isFeatured = tier.featured;
-            const paymentHref = tier.plan === "custom" ? "/payments?plan=custom#custom" : `/payments?plan=${tier.plan}`;
+            const isFeatured = (tier as any).featured;
+            const plan = tier.name.toLowerCase();
+            const paymentHref = plan === "custom" ? "/payments?plan=custom#custom" : `/payments?plan=${plan}`;
+            const priceVal: any = (tier as any).monthly_price ?? (tier as any).monthlyPrice;
+            const isFree = priceVal === 0 || priceVal === "0";
+            const hasPrice = priceVal !== null && priceVal !== undefined && !isFree;
+            const priceLabel = isFree ? "Free" : hasPrice ? `€${priceVal}/mo` : "Talk to us";
             return (
               <article
-                key={tier.plan}
+                key={plan}
                 className={`rounded-[32px] border border-border bg-card/90 p-8 shadow-sm ${
                   isFeatured ? "lg:col-span-2 bg-gradient-to-br from-card to-primary/5" : ""
                 }`}
@@ -77,14 +53,14 @@ export default function Subscriptions() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">{tier.name}</p>
-                    <p className="mt-3 text-3xl font-semibold text-foreground">{tier.price}</p>
-                    <p className="text-sm text-muted-foreground">{tier.value}</p>
+                    <p className="mt-3 text-3xl font-semibold text-foreground">{priceLabel}</p>
+                    <p className="text-sm text-muted-foreground">{tier.description ?? "Choose your plan and switch anytime."}</p>
                   </div>
                   {tier.name === "Base" && <ShieldCheck className="h-6 w-6 text-muted-foreground" />}
                   {isFeatured && <Sparkles className="h-6 w-6 text-primary" />}
                 </div>
                 <ul className="mt-5 space-y-3 text-sm text-muted-foreground">
-                  {tier.features.map(item => (
+                  {(tier as any).highlights?.map((item: string) => (
                     <li key={item} className="flex items-center gap-3">
                       <CheckCircle className="h-4 w-4 text-primary" />
                       {item}
@@ -94,12 +70,12 @@ export default function Subscriptions() {
                 <Link href={paymentHref}>
                   <a
                     className={`mt-6 inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition ${
-                      tier.plan === "custom"
+                      plan === "custom"
                         ? "border border-border text-muted-foreground hover:border-primary hover:text-primary"
                         : "bg-primary text-primary-foreground hover:bg-primary/90"
                     }`}
                   >
-                    {tier.plan === "custom" ? "Talk to us" : "Subscribe"}
+                    {plan === "custom" ? "Talk to us" : "Subscribe"}
                   </a>
                 </Link>
               </article>
