@@ -19,6 +19,7 @@ export default function Labs() {
   const [searchTerm, setSearchTerm] = useState("");
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [verifiedOnly, setVerifiedOnly] = useState(true);
   const [favoritesError, setFavoritesError] = useState<string | null>(null);
   const [favoritesLoading, setFavoritesLoading] = useState(false);
 
@@ -112,6 +113,9 @@ export default function Labs() {
           return haystack.includes(term);
         })
       : visibleLabs;
+    if (verifiedOnly) {
+      subset = subset.filter(lab => lab.isVerified === true || lab.isVerified === "true" || lab.isVerified === 1);
+    }
     if (favoritesOnly) {
       subset = subset.filter(lab => favorites.has(lab.id));
     }
@@ -121,7 +125,7 @@ export default function Labs() {
       if (aPremium === bPremium) return 0;
       return aPremium ? -1 : 1;
     });
-  }, [visibleLabs, searchTerm, favoritesOnly, favorites]);
+  }, [visibleLabs, searchTerm, favoritesOnly, favorites, verifiedOnly]);
   // Potential future premium search: include labManager, focusAreas, equipment, offers.
 
   return (
@@ -205,6 +209,18 @@ export default function Labs() {
                 {favoritesOnly ? "Showing favorites" : "Show favorites"}
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setVerifiedOnly(prev => !prev)}
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
+                verifiedOnly
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+              }`}
+            >
+              <ShieldCheck className="h-4 w-4" />
+              {verifiedOnly ? "GLASS verified only" : "Include unverified"}
+            </button>
           </div>
         </div>
         {favoritesError && <p className="mt-2 text-xs text-destructive">{favoritesError}</p>}

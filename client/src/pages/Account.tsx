@@ -445,6 +445,12 @@ export default function Account() {
               <span className="mr-2 flex h-7 w-7 items-center justify-center rounded-full border border-border text-muted-foreground">♥</span>
               Favorites ({favoriteLabs.length})
             </Link>
+            <Link
+              href="/subscriptions"
+              className="inline-flex items-center justify-center rounded-full border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary"
+            >
+              Change plan
+            </Link>
           </div>
         </div>
 

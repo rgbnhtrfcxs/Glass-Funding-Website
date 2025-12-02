@@ -756,6 +756,32 @@ app.get("/api/profile", authenticate, async (req, res) => {
     }
   });
 
+  // --------- Subscription update (after payment confirmation) ----------
+  app.post("/api/subscription/confirm", authenticate, async (req, res) => {
+    const schema = z.object({
+      tier: z.enum(["base", "verified", "premier", "custom"]),
+    });
+    try {
+      const payload = schema.parse(req.body);
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          subscription_tier: payload.tier,
+          subscription_status: payload.tier === "base" ? "none" : "active",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", req.user.id);
+      if (error) throw error;
+      res.json({ ok: true, tier: payload.tier });
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const issue = error.issues[0];
+        return res.status(400).json({ message: issue?.message ?? "Invalid subscription payload" });
+      }
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to update subscription" });
+    }
+  });
+
   // --------- Lab Views ----------
   app.post("/api/labs/:id/view", async (req, res) => {
     const labId = Number(req.params.id);

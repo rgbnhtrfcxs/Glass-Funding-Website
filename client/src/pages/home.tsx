@@ -4,12 +4,17 @@ import { Waitlist } from "@/components/sections/waitlist";
 import { Contact } from "@/components/sections/contact";
 import { PartnerLogos } from "@/components/sections/PartnerLogos";
 import { NewsReel } from "@/components/sections/NewsReel";
+import { FeaturedLabs } from "@/components/sections/FeaturedLabs";
 
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-background pt-16">
       <Hero />
+      <FeaturedLabs
+        title="Featured labs"
+        description="Premier partners highlighted this week"
+      />
       <About />
       <NewsReel
         title="Lab news"
