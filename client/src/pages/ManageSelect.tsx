@@ -23,6 +23,7 @@ export default function ManageSelect() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [profileTier, setProfileTier] = useState<string>("base");
 
   useEffect(() => {
     (async () => {
@@ -39,6 +40,14 @@ export default function ManageSelect() {
         }
         const data = await res.json();
         setLabs(data ?? []);
+
+        const { data: profileRow } = await supabase
+          .from("profiles")
+          .select("subscription_tier")
+          .eq("user_id", user?.id)
+          .maybeSingle();
+        const tier = (profileRow?.subscription_tier || "base").toLowerCase();
+        setProfileTier(tier);
       } catch (err: any) {
         setError(err.message || "Unable to load labs");
       } finally {
@@ -56,6 +65,8 @@ export default function ManageSelect() {
       return haystack.includes(term);
     });
   }, [labs, search]);
+
+  const canAddAnother = profileTier === "custom" || labs.length === 0;
 
   const badge = (lab: LabSummary) => {
     const tierLower = (lab.subscription_tier || "").toLowerCase();
@@ -126,12 +137,28 @@ export default function ManageSelect() {
                   <Plus className="h-6 w-6" />
                 </div>
                 <h3 className="text-lg font-semibold text-foreground">Add a new lab</h3>
-                <p className="text-sm text-muted-foreground">Create another lab profile and manage its details.</p>
+                <p className="text-sm text-muted-foreground">
+                  {canAddAnother
+                    ? "Create another lab profile and manage its details."
+                    : "Multi-lab management is available on Custom tier."}
+                </p>
               </div>
               <div className="p-4">
-                <Link href="/lab/manage/new" className="inline-flex w-full items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90">
-                  Add lab
-                </Link>
+                {canAddAnother ? (
+                  <Link
+                    href="/lab/manage/new"
+                    className="inline-flex w-full items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+                  >
+                    Add lab
+                  </Link>
+                ) : (
+                  <Link
+                    href="/payments?plan=custom#custom"
+                    className="inline-flex w-full items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                  >
+                    Upgrade to Custom
+                  </Link>
+                )}
               </div>
             </motion.div>
             {filtered.map(lab => (

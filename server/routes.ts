@@ -167,6 +167,29 @@ export function registerRoutes(app: Express) {
 
   app.post("/api/labs", async (req, res) => {
     try {
+      const ownerId = req.body?.ownerUserId || req.body?.owner_user_id || null;
+      if (ownerId) {
+        const { data: profileRow, error: profErr } = await supabase
+          .from("profiles")
+          .select("subscription_tier")
+          .eq("user_id", ownerId)
+          .maybeSingle();
+        if (profErr) throw profErr;
+        const tier = (profileRow?.subscription_tier || "base").toLowerCase();
+        const premium = tier === "custom";
+        if (!premium) {
+          const { count, error: countErr } = await supabase
+            .from("labs")
+            .select("id", { count: "exact", head: true })
+            .eq("owner_user_id", ownerId);
+          if (countErr) throw countErr;
+          if ((count ?? 0) >= 1) {
+            return res
+              .status(403)
+              .json({ message: "Only Custom tier can manage more than one lab. Upgrade to add another." });
+          }
+        }
+      }
       const lab = await labStore.create(req.body);
       res.status(201).json(lab);
     } catch (error) {
