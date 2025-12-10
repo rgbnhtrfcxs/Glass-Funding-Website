@@ -21,6 +21,7 @@ const LAB_SELECT = `
   siret_number,
   logo_url,
   description,
+  field,
   offers_lab_space,
   address_line1,
   address_line2,
@@ -77,6 +78,7 @@ type LabRow = {
   lab_equipment: Array<{ item: string }> | null;
   lab_focus_areas: Array<{ focus_area: string }> | null;
   lab_offers: Array<{ offer: OfferOption }> | null;
+  field: string | null;
 };
 
 function parseBoolean(value: boolean | string | null | undefined, fallback = false): boolean {
@@ -181,6 +183,7 @@ function mapLabRow(row: LabRow, overrideTier?: LabPartner["subscriptionTier"]): 
     minimumStay: row.minimum_stay ?? "",
     rating: parseRating(row.rating),
     subscriptionTier: overrideTier ?? ((row.subscription_tier as LabPartner["subscriptionTier"]) ?? "base"),
+    field: row.field || null,
     photos,
   };
   return labSchema.parse(mapped);
@@ -334,6 +337,7 @@ export class LabStore {
         country: data.country ?? null,
         website: data.website ?? null,
         linkedin: data.linkedin ?? null,
+        field: data.field ?? null,
         is_verified: data.isVerified,
         is_visible: data.isVisible,
         price_privacy: data.pricePrivacy,
@@ -388,6 +392,7 @@ export class LabStore {
     if (Object.prototype.hasOwnProperty.call(updates, "country")) baseUpdates.country = parsed.country ?? null;
     if (Object.prototype.hasOwnProperty.call(updates, "website")) baseUpdates.website = parsed.website ?? null;
     if (Object.prototype.hasOwnProperty.call(updates, "linkedin")) baseUpdates.linkedin = parsed.linkedin ?? null;
+    if (Object.prototype.hasOwnProperty.call(updates, "field")) baseUpdates.field = parsed.field ?? null;
     if (Object.prototype.hasOwnProperty.call(updates, "isVerified")) baseUpdates.is_verified = parsed.isVerified;
     if (Object.prototype.hasOwnProperty.call(updates, "isVisible")) baseUpdates.is_visible = parsed.isVisible;
     if (Object.prototype.hasOwnProperty.call(updates, "pricePrivacy")) baseUpdates.price_privacy = parsed.pricePrivacy;

@@ -4,6 +4,14 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { supabase } from "./supabaseClient";
 
+// Catch unexpected promise rejections to avoid crashing dev server
+process.on("unhandledRejection", (reason) => {
+  console.error("[server] unhandledRejection", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[server] uncaughtException", err);
+});
+
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -45,8 +53,9 @@ app.use((req, res, next) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
+    // Surface the error but avoid crashing the dev server with an unhandled rejection
+    console.error("[server] error handler caught", err);
     res.status(status).json({ message });
-    throw err;
   });
 
   // importantly only setup vite in development and after

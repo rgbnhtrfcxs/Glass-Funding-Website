@@ -18,6 +18,7 @@ export default function NewLab() {
     labManager: "",
     contactEmail: user?.email ?? "",
     description: "",
+    field: "",
     offersLabSpace: true,
     addressLine1: "",
     addressLine2: "",
@@ -117,6 +118,7 @@ export default function NewLab() {
         logoUrl: form.logoUrl.trim() || null,
         siretNumber: form.siretNumber.trim() || null,
         partnerLogos,
+        field: form.field.trim() || null,
       });
       setLocation(`/lab/manage/${created.id}`);
     } catch (err: any) {
@@ -190,6 +192,14 @@ export default function NewLab() {
                   value={form.description}
                   onChange={e => handleChange("description", e.target.value)}
                   placeholder="Brief overview of your lab"
+                />
+              </Field>
+              <Field label="Science field (optional)">
+                <input
+                  className="w-full rounded-xl border-2 border-primary/30 bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={form.field}
+                  onChange={e => handleChange("field", e.target.value)}
+                  placeholder="e.g., immunology, materials science, bioengineering"
                 />
               </Field>
               <label className="inline-flex items-center gap-2 text-sm text-foreground">
