@@ -183,7 +183,7 @@ export default function Account() {
 
   const labsVisibleCount = labStats.filter(l => l.isVisible !== false).length;
   const labsHiddenCount = labStats.filter(l => l.isVisible === false).length;
-  const premiumLabs = labStats.filter(l => ["premier", "custom"].includes((l.subscriptionTier || "").toLowerCase()));
+  const premiumLabs = labStats.filter(l => (l.subscriptionTier || "").toLowerCase() === "premier");
   const totalViews7d = labStats.reduce((sum, lab) => sum + (lab.views7d || 0), 0);
   const totalViews30d = labStats.reduce((sum, lab) => sum + (lab.views30d || 0), 0);
   const totalFavorites = labStats.reduce((sum, lab) => sum + (lab.favorites || 0), 0);
@@ -196,6 +196,8 @@ export default function Account() {
     labStats.length ? labStats[0] : null,
   );
   const favoriteLabs = favoriteIds.length ? allLabs.filter(l => favoriteIds.includes(l.id)) : [];
+  const canSeeDashboard = profile && (profile.role === "admin" || profile.role === "multi-lab" || premiumLabs.length > 0);
+  const canPostNews = canSeeDashboard;
   const isLabVerified = (labId: number) => {
     const fromStats = labStats.find(l => l.id === labId);
     if (fromStats && (fromStats as any).isVerified !== undefined) {
@@ -207,7 +209,7 @@ export default function Account() {
     return val === true || val === "true" || val === 1 || val === "1";
   };
   const premierLabs = useMemo(
-    () => labStats.filter(l => ["premier", "custom"].includes((l.subscriptionTier || "").toLowerCase())),
+    () => labStats.filter(l => (l.subscriptionTier || "").toLowerCase() === "premier"),
     [labStats],
   );
   const ownedLabs = useMemo(() => {
@@ -403,13 +405,15 @@ export default function Account() {
             >
               Edit account
             </Link>
-            <Link
-              href="/requests"
-              className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:text-primary hover:border-primary"
-            >
-              Requests
-            </Link>
-            {profile && (profile.role === "lab" || profile.role === "admin") && (
+            {profile && profile.role !== "user" && (
+              <Link
+                href="/requests"
+                className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:text-primary hover:border-primary"
+              >
+                Requests
+              </Link>
+            )}
+            {profile && (profile.role === "lab" || profile.role === "admin" || profile.role === "multi-lab") && (
               <Link
                 href="/lab/manage"
                 className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
@@ -709,6 +713,7 @@ export default function Account() {
           </div>
         )}
 
+        {canPostNews && (
         <div className="mt-10 rounded-3xl border border-border bg-card/80 p-6 shadow-sm">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
@@ -780,6 +785,8 @@ export default function Account() {
             </div>
           )}
         </div>
+        )}
+        {canSeeDashboard && (
         <div className="mt-8 flex flex-col gap-6 lg:flex-row">
           <motion.div
             initial={{ opacity: 0, y: 18 }}
@@ -825,7 +832,7 @@ export default function Account() {
                         subtitle="Most views (30d)"
                         primary={`${bestViewLab.views30d} views`}
                         secondary={bestViewLab.name}
-                        badge={["premier", "custom"].includes((bestViewLab.subscriptionTier || "").toLowerCase()) ? "Premium" : undefined}
+                        badge={(bestViewLab.subscriptionTier || "").toLowerCase() === "premier" ? "Premium" : undefined}
                       />
                     )}
                     {bestFavoriteLab && (
@@ -834,7 +841,7 @@ export default function Account() {
                         subtitle="Total favorites"
                         primary={`${bestFavoriteLab.favorites} favorites`}
                         secondary={bestFavoriteLab.name}
-                        badge={["premier", "custom"].includes((bestFavoriteLab.subscriptionTier || "").toLowerCase()) ? "Premium" : undefined}
+                        badge={(bestFavoriteLab.subscriptionTier || "").toLowerCase() === "premier" ? "Premium" : undefined}
                       />
                     )}
                   </div>
@@ -879,6 +886,7 @@ export default function Account() {
           </motion.div>
 
         </div>
+        )}
       </div>
     </section>
   );

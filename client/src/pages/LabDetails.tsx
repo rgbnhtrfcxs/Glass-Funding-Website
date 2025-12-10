@@ -57,12 +57,32 @@ export default function LabDetails({ params }: LabDetailsProps) {
     };
   }, [user?.id]);
   const lab = labs.find(item => item.id === Number(params.id));
+
+  if (isLoading && !lab) {
+    return (
+      <section className="bg-background min-h-screen">
+        <div className="container mx-auto px-4 py-20">
+          <div className="rounded-3xl border border-border bg-card/80 p-8 text-muted-foreground">Loading lab…</div>
+        </div>
+      </section>
+    );
+  }
+
+  if (!lab) {
+    return (
+      <section className="bg-background min-h-screen">
+        <div className="container mx-auto px-4 py-20">
+          <div className="rounded-3xl border border-border bg-card/80 p-8 text-muted-foreground">Lab not found.</div>
+        </div>
+      </section>
+    );
+  }
   const getImageUrl = (url: string, width = 1600) =>
     url.startsWith("data:")
       ? url
       : `${url}${url.includes("?") ? "&" : "?"}auto=format&fit=crop&w=${width}&q=80`;
   const tier = (lab as any)?.subscriptionTier ?? (lab as any)?.subscription_tier ?? "base";
-  const logoUrl = lab.logoUrl || null;
+  const logoUrl = (lab as any)?.logoUrl ?? (lab as any)?.logo_url ?? null;
   const tierLower = (tier as string).toLowerCase?.() ?? (typeof tier === "string" ? tier.toLowerCase() : "base");
   const status = lab.isVerified ? "verified" : tierLower === "base" ? "unverified" : "pending";
   const offersLabSpace =

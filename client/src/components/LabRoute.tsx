@@ -26,7 +26,7 @@ export default function LabRoute({ path, component: Component }: { path: string;
         return;
       }
       const role = (data?.role as string) || "user";
-      setAllowed(role === "lab" || role === "admin");
+      setAllowed(role === "lab" || role === "admin" || role === "multi-lab");
     }
     if (!loading) check();
     return () => {
@@ -54,4 +54,3 @@ export default function LabRoute({ path, component: Component }: { path: string;
     />
   );
 }
-

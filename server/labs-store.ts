@@ -105,20 +105,6 @@ function parseRating(value: LabRow["rating"]): number {
   return 0;
 }
 
-async function fetchProfileTier(userId?: string | null): Promise<LabPartner["subscriptionTier"]> {
-  if (!userId) return "base";
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("subscription_tier, subscription_status")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) {
-    // Don't break lab creation if profile lookup fails; fall back to base.
-    return "base";
-  }
-  return normalizeTier(data?.subscription_tier as string | null);
-}
-
 async function fetchProfileRole(userId?: string | null): Promise<string | null> {
   if (!userId) return null;
   const { data, error } = await supabase.from("profiles").select("role").eq("user_id", userId).maybeSingle();
@@ -140,19 +126,7 @@ async function resolveOwnerUserId(contactEmail: string | null | undefined, expli
   return data?.user_id ?? null;
 }
 
-async function fetchProfileTierMap(userIds: Array<string | null | undefined>): Promise<Record<string, LabPartner["subscriptionTier"]>> {
-  const ids = Array.from(new Set(userIds.filter((id): id is string => !!id)));
-  if (!ids.length) return {};
-  const { data, error } = await supabase.from("profiles").select("user_id, subscription_tier").in("user_id", ids);
-  if (error || !data) return {};
-  const map: Record<string, LabPartner["subscriptionTier"]> = {};
-  data.forEach(row => {
-    map[row.user_id as string] = normalizeTier(row.subscription_tier as string | null);
-  });
-  return map;
-}
-
-function mapLabRow(row: LabRow, overrideTier?: LabPartner["subscriptionTier"]): LabPartner {
+function mapLabRow(row: LabRow): LabPartner {
   const photos = (row.lab_photos ?? []).filter(photo => (photo?.url || "").trim().length > 0).map(photo => ({
     name: photo.name,
     url: photo.url,
@@ -190,7 +164,7 @@ function mapLabRow(row: LabRow, overrideTier?: LabPartner["subscriptionTier"]): 
     pricePrivacy: Boolean(row.price_privacy),
     minimumStay: row.minimum_stay ?? "",
     rating: parseRating(row.rating),
-    subscriptionTier: normalizeTier(overrideTier ?? (row.subscription_tier as string | null)),
+    subscriptionTier: normalizeTier(row.subscription_tier as string | null),
     field: row.field || null,
     photos,
   };
@@ -280,11 +254,10 @@ export class LabStore {
     const { data, error } = await supabase.from("labs").select(LAB_SELECT).order("id", { ascending: true });
     if (error) throw error;
     const labs = (data as LabRow[] | null) ?? [];
-    const tierMap = await fetchProfileTierMap(labs.map(l => l.owner_user_id));
     const mapped: LabPartner[] = [];
     for (const row of labs) {
       try {
-        mapped.push(mapLabRow(row, row.owner_user_id ? tierMap[row.owner_user_id] : undefined));
+        mapped.push(mapLabRow(row));
       } catch (err) {
         console.warn("[labs-store] Skipping lab with invalid data", { id: row.id, name: row.name, error: err });
       }
@@ -300,11 +273,10 @@ export class LabStore {
       .order("id", { ascending: true });
     if (error) throw error;
     const labs = (data as LabRow[] | null) ?? [];
-    const tierMap = await fetchProfileTierMap(labs.map(l => l.owner_user_id));
     const mapped: LabPartner[] = [];
     for (const row of labs) {
       try {
-        mapped.push(mapLabRow(row, row.owner_user_id ? tierMap[row.owner_user_id] : undefined));
+        mapped.push(mapLabRow(row));
       } catch (err) {
         console.warn("[labs-store] Skipping lab with invalid data", { id: row.id, name: row.name, error: err });
       }
@@ -317,16 +289,16 @@ export class LabStore {
     if (error) throw error;
     if (!data) return undefined;
     const row = data as LabRow;
-    const profileTier = row.owner_user_id ? await fetchProfileTier(row.owner_user_id) : undefined;
-    return mapLabRow(row, profileTier);
+    return mapLabRow(row);
   }
 
   async create(payload: InsertLab): Promise<LabPartner> {
     const data = insertLabSchema.parse(payload);
     const ownerUserId = await resolveOwnerUserId(data.contactEmail, data.ownerUserId ?? null);
     const ownerRole = await fetchProfileRole(ownerUserId);
-    const subscriptionTier =
-      ownerRole === "multi-lab" ? "verified" : normalizeTier(data.subscriptionTier ?? (await fetchProfileTier(ownerUserId)));
+    const subscriptionTier = ownerRole === "multi-lab"
+      ? "verified"
+      : normalizeTier(data.subscriptionTier ?? "base");
     const { data: inserted, error } = await supabase
       .from("labs")
       .insert({
@@ -382,14 +354,13 @@ export class LabStore {
       : existing.ownerUserId ?? null;
     const ownerUserId = await resolveOwnerUserId(nextContactEmail, requestedOwner ?? existing.ownerUserId ?? null);
     const ownerRole = await fetchProfileRole(ownerUserId);
-    const subscriptionTier =
+    const subscriptionTier = normalizeTier(
       ownerRole === "multi-lab"
         ? "verified"
-        : normalizeTier(
-            Object.prototype.hasOwnProperty.call(updates, "subscriptionTier")
-              ? (updates as any).subscriptionTier
-              : await fetchProfileTier(ownerUserId),
-          );
+        : Object.prototype.hasOwnProperty.call(updates, "subscriptionTier")
+          ? (updates as any).subscriptionTier
+          : existing.subscriptionTier,
+    );
     const baseUpdates: Record<string, unknown> = {};
 
     if (Object.prototype.hasOwnProperty.call(updates, "name")) baseUpdates.name = parsed.name;
