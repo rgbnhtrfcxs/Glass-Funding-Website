@@ -267,30 +267,27 @@ export default function MyLab({ params }: { params: { id: string } }) {
       setAnalytics(null);
       setAnalyticsError(null);
 
-      const labTier = (lab.subscriptionTier || "").toLowerCase?.() ?? "base";
-      if (labTier === "premier" || labTier === "custom") {
-        try {
-          const analyticsRes = await fetch("/api/my-lab/analytics", {
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
+      try {
+        const analyticsRes = await fetch("/api/my-lab/analytics", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (analyticsRes.ok) {
+          const data = await analyticsRes.json();
+          setAnalytics({
+            views7d: data.views7d ?? 0,
+            views30d: data.views30d ?? 0,
+            favorites: data.favorites ?? 0,
+            recentFavorites: (data.recentFavorites ?? []).map((f: any) => ({
+              userId: f.userId,
+              createdAt: f.createdAt,
+            })),
           });
-          if (analyticsRes.ok) {
-            const data = await analyticsRes.json();
-            setAnalytics({
-              views7d: data.views7d ?? 0,
-              views30d: data.views30d ?? 0,
-              favorites: data.favorites ?? 0,
-              recentFavorites: (data.recentFavorites ?? []).map((f: any) => ({
-                userId: f.userId,
-                createdAt: f.createdAt,
-              })),
-            });
-          } else if (analyticsRes.status !== 403) {
-            const txt = await analyticsRes.text();
-            setAnalyticsError(txt || "Unable to load analytics");
-          }
-        } catch (err: any) {
-          setAnalyticsError(err.message || "Unable to load analytics");
+        } else if (analyticsRes.status !== 403) {
+          const txt = await analyticsRes.text();
+          setAnalyticsError(txt || "Unable to load analytics");
         }
+      } catch (err: any) {
+        setAnalyticsError(err.message || "Unable to load analytics");
       }
     } catch (err: any) {
       setError(err.message || "Unable to load your lab");
@@ -504,8 +501,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
                 </Field>
               )}
 
-              {subscriptionTier === "premier" || subscriptionTier === "custom" ? (
-                <Field label="Partner logos (premier/custom feature)">
+              {subscriptionTier === "premier" ? (
+                <Field label="Partner logos (premier feature)">
                   <div className="flex flex-col gap-2">
                     <label className="inline-flex items-center gap-3">
                       <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
@@ -534,11 +531,11 @@ export default function MyLab({ params }: { params: { id: string } }) {
                         ))}
                       </div>
                     )}
-                    <p className="text-xs text-muted-foreground">Stored in `lab-logos` under partners/ folders. Shown for premier/custom labs.</p>
+                    <p className="text-xs text-muted-foreground">Stored in `lab-logos` under partners/ folders. Shown for premier labs.</p>
                   </div>
                 </Field>
               ) : (
-                <p className="text-xs text-muted-foreground">Partner logos are available on the premier or custom plan.</p>
+                <p className="text-xs text-muted-foreground">Partner logos are available on the premier plan.</p>
               )}
 
               <Field label="Website (optional)">

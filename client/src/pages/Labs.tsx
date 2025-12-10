@@ -114,14 +114,19 @@ export default function Labs() {
         })
       : visibleLabs;
     if (verifiedOnly) {
-      subset = subset.filter(lab => lab.isVerified === true || lab.isVerified === "true" || lab.isVerified === 1);
+      subset = subset.filter(lab => {
+        const isVerified = lab.isVerified === true || lab.isVerified === "true" || lab.isVerified === 1;
+        const tier = tierValue(lab);
+        const isPending = !isVerified && tier !== "base";
+        return isVerified || isPending;
+      });
     }
     if (favoritesOnly) {
       subset = subset.filter(lab => favorites.has(lab.id));
     }
     return [...subset].sort((a, b) => {
-      const aPremium = ["premier", "custom"].includes(tierValue(a));
-      const bPremium = ["premier", "custom"].includes(tierValue(b));
+      const aPremium = tierValue(a) === "premier";
+      const bPremium = tierValue(b) === "premier";
       if (aPremium === bPremium) return 0;
       return aPremium ? -1 : 1;
     });

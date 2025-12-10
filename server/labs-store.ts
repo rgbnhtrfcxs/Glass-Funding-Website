@@ -81,6 +81,14 @@ type LabRow = {
   field: string | null;
 };
 
+const normalizeTier = (tier?: string | null): LabPartner["subscriptionTier"] => {
+  const raw = (tier || "base").toLowerCase();
+  if (raw === "premier") return "premier";
+  if (raw === "verified") return "verified";
+  if (raw === "custom") return "verified";
+  return "base";
+};
+
 function parseBoolean(value: boolean | string | null | undefined, fallback = false): boolean {
   if (value === null || value === undefined) return fallback;
   if (typeof value === "boolean") return value;
@@ -108,9 +116,14 @@ async function fetchProfileTier(userId?: string | null): Promise<LabPartner["sub
     // Don't break lab creation if profile lookup fails; fall back to base.
     return "base";
   }
-  const tier = (data?.subscription_tier as LabPartner["subscriptionTier"] | undefined)?.toLowerCase?.();
-  if (tier === "premier" || tier === "verified" || tier === "custom") return tier;
-  return "base";
+  return normalizeTier(data?.subscription_tier as string | null);
+}
+
+async function fetchProfileRole(userId?: string | null): Promise<string | null> {
+  if (!userId) return null;
+  const { data, error } = await supabase.from("profiles").select("role").eq("user_id", userId).maybeSingle();
+  if (error) return null;
+  return typeof data?.role === "string" ? data.role.toLowerCase() : null;
 }
 
 async function resolveOwnerUserId(contactEmail: string | null | undefined, explicit?: string | null): Promise<string | null> {
@@ -134,12 +147,7 @@ async function fetchProfileTierMap(userIds: Array<string | null | undefined>): P
   if (error || !data) return {};
   const map: Record<string, LabPartner["subscriptionTier"]> = {};
   data.forEach(row => {
-    const tier = (row.subscription_tier as string)?.toLowerCase?.();
-    if (tier === "premier" || tier === "verified" || tier === "custom") {
-      map[row.user_id as string] = tier;
-    } else {
-      map[row.user_id as string] = "base";
-    }
+    map[row.user_id as string] = normalizeTier(row.subscription_tier as string | null);
   });
   return map;
 }
@@ -182,7 +190,7 @@ function mapLabRow(row: LabRow, overrideTier?: LabPartner["subscriptionTier"]): 
     pricePrivacy: Boolean(row.price_privacy),
     minimumStay: row.minimum_stay ?? "",
     rating: parseRating(row.rating),
-    subscriptionTier: overrideTier ?? ((row.subscription_tier as LabPartner["subscriptionTier"]) ?? "base"),
+    subscriptionTier: normalizeTier(overrideTier ?? (row.subscription_tier as string | null)),
     field: row.field || null,
     photos,
   };
@@ -316,7 +324,9 @@ export class LabStore {
   async create(payload: InsertLab): Promise<LabPartner> {
     const data = insertLabSchema.parse(payload);
     const ownerUserId = await resolveOwnerUserId(data.contactEmail, data.ownerUserId ?? null);
-    const subscriptionTier = await fetchProfileTier(ownerUserId);
+    const ownerRole = await fetchProfileRole(ownerUserId);
+    const subscriptionTier =
+      ownerRole === "multi-lab" ? "verified" : normalizeTier(data.subscriptionTier ?? (await fetchProfileTier(ownerUserId)));
     const { data: inserted, error } = await supabase
       .from("labs")
       .insert({
@@ -371,7 +381,15 @@ export class LabStore {
       ? parsed.ownerUserId ?? null
       : existing.ownerUserId ?? null;
     const ownerUserId = await resolveOwnerUserId(nextContactEmail, requestedOwner ?? existing.ownerUserId ?? null);
-    const subscriptionTier = await fetchProfileTier(ownerUserId);
+    const ownerRole = await fetchProfileRole(ownerUserId);
+    const subscriptionTier =
+      ownerRole === "multi-lab"
+        ? "verified"
+        : normalizeTier(
+            Object.prototype.hasOwnProperty.call(updates, "subscriptionTier")
+              ? (updates as any).subscriptionTier
+              : await fetchProfileTier(ownerUserId),
+          );
     const baseUpdates: Record<string, unknown> = {};
 
     if (Object.prototype.hasOwnProperty.call(updates, "name")) baseUpdates.name = parsed.name;

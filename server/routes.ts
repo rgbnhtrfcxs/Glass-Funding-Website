@@ -171,13 +171,14 @@ export function registerRoutes(app: Express) {
       if (ownerId) {
         const { data: profileRow, error: profErr } = await supabase
           .from("profiles")
-          .select("subscription_tier")
+          .select("subscription_tier, role")
           .eq("user_id", ownerId)
           .maybeSingle();
         if (profErr) throw profErr;
         const tier = (profileRow?.subscription_tier || "base").toLowerCase();
-        const premium = tier === "custom";
-        if (!premium) {
+        const role = (profileRow?.role || "").toLowerCase();
+        const multiLab = role === "multi-lab" || role === "admin";
+        if (!multiLab) {
           const { count, error: countErr } = await supabase
             .from("labs")
             .select("id", { count: "exact", head: true })
@@ -186,7 +187,7 @@ export function registerRoutes(app: Express) {
           if ((count ?? 0) >= 1) {
             return res
               .status(403)
-              .json({ message: "Only Custom tier can manage more than one lab. Upgrade to add another." });
+              .json({ message: "Only multi-lab accounts can manage more than one lab. Upgrade to add another." });
           }
         }
       }
@@ -634,9 +635,18 @@ app.get("/api/profile", authenticate, async (req, res) => {
       const payload = insertNewsSchema.parse(req.body);
       const lab = await labStore.findById(payload.labId);
       if (!lab) return res.status(404).json({ message: "Lab not found" });
-      const tier = (lab as any).subscriptionTier || (lab as any).subscription_tier || "base";
-      const premium = ["premier", "custom"].includes(String(tier).toLowerCase());
-      if (!premium) return res.status(403).json({ message: "Only premier/custom labs can post news" });
+      const tier = ((lab as any).subscriptionTier || (lab as any).subscription_tier || "base").toLowerCase();
+      let ownerRole: string | null = null;
+      if (lab.ownerUserId) {
+        const { data: roleRow } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("user_id", lab.ownerUserId)
+          .maybeSingle();
+        ownerRole = (roleRow?.role as string | null)?.toLowerCase?.() ?? null;
+      }
+      const premium = tier === "premier" || ownerRole === "multi-lab";
+      if (!premium) return res.status(403).json({ message: "Only premier labs or multi-lab accounts can post news" });
       const ownerUserId = (lab as any).ownerUserId || (lab as any).owner_user_id || null;
       if (ownerUserId && payload.authorId && ownerUserId !== payload.authorId) {
         return res.status(403).json({ message: "Not allowed to post for this lab" });
@@ -1064,8 +1074,13 @@ app.get("/api/profile", authenticate, async (req, res) => {
 
       const labId = Number(labRow.id);
       const tier = ((labRow.subscription_tier as string) || "base").toLowerCase();
-      if (!["premier", "custom"].includes(tier)) {
-        return res.status(403).json({ message: "Analytics available for premier or custom labs only" });
+      let role: string | null = null;
+      if (userId) {
+        const { data: roleRow } = await supabase.from("profiles").select("role").eq("user_id", userId).maybeSingle();
+        role = (roleRow?.role as string | null)?.toLowerCase?.() ?? null;
+      }
+      if (!(tier === "premier" || role === "multi-lab" || role === "admin")) {
+        return res.status(403).json({ message: "Analytics available for premier labs or multi-lab accounts only" });
       }
 
       const now = new Date();
