@@ -92,6 +92,23 @@ const insertVerificationRequestSchema = z.object({
   country: z.string().optional(),
 });
 
+const insertInvestorRequestSchema = z.object({
+  labId: z.number(),
+  name: z.string().min(2, "Name is required"),
+  email: z.string().email("Valid email is required"),
+  company: z.string().optional().nullable(),
+  website: z.string().url("Website must be a valid URL").optional().nullable(),
+  message: z.string().min(10, "Please provide a short message"),
+});
+
+const insertLegalAssistSchema = z.object({
+  labId: z.number().optional(),
+  name: z.string().min(2, "Name is required"),
+  email: z.string().email("Valid email is required"),
+  topic: z.string().min(3, "Topic is required"),
+  details: z.string().min(10, "Please add a short description"),
+});
+
 export function registerRoutes(app: Express) {
   // Middleware
   app.use(express.json());
@@ -702,6 +719,108 @@ app.get("/api/profile", authenticate, async (req, res) => {
       res.json({ news: data ?? [] });
     } catch (error) {
       res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load news" });
+    }
+  });
+
+  // --------- Investor contact (premier labs) ----------
+  app.post("/api/labs/:id/investor", async (req, res) => {
+    const labId = Number(req.params.id);
+    if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
+    try {
+      const payload = insertInvestorRequestSchema.parse({ ...req.body, labId });
+      const lab = await labStore.findById(labId);
+      if (!lab) return res.status(404).json({ message: "Lab not found" });
+      const tier = ((lab as any).subscriptionTier || (lab as any).subscription_tier || "base").toLowerCase();
+      if (tier !== "premier") {
+        return res.status(403).json({ message: "Investor contact is available for premier labs only" });
+      }
+
+      await supabase.from("lab_contact_requests").insert({
+        lab_id: labId,
+        lab_name: lab.name,
+        contact_name: payload.name,
+        contact_email: payload.email,
+        message: payload.message,
+        company: payload.company ?? null,
+        website: payload.website ?? null,
+        type: "investor",
+      });
+
+      const adminEmail = process.env.ADMIN_INBOX ?? "contact@glass-funding.com";
+      const labEmail = lab.contactEmail || adminEmail;
+      const lines = [
+        `Lab: ${lab.name} (id: ${labId})`,
+        `From: ${payload.name} <${payload.email}>`,
+        payload.company ? `Company: ${payload.company}` : null,
+        payload.website ? `Website: ${payload.website}` : null,
+        "",
+        payload.message,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      await Promise.all([
+        sendMail({
+          to: labEmail,
+          from: process.env.MAIL_FROM_LAB || process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
+          subject: `Investor inquiry for ${lab.name}`,
+          text: lines,
+        }),
+        sendMail({
+          to: adminEmail,
+          from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
+          subject: `Investor inquiry for ${lab.name}`,
+          text: lines,
+        }),
+      ]);
+
+      res.status(201).json({ ok: true });
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const issue = error.issues[0];
+        return res.status(400).json({ message: issue?.message ?? "Invalid investor request" });
+      }
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to send investor request" });
+    }
+  });
+
+  // --------- Legal assistance contact ----------
+  app.post("/api/legal-assist", async (req, res) => {
+    try {
+      const payload = insertLegalAssistSchema.parse(req.body);
+      const lab = payload.labId ? await labStore.findById(payload.labId) : null;
+      const adminEmail = process.env.ADMIN_INBOX ?? "contact@glass-funding.com";
+      const legalEmail = process.env.LEGAL_INBOX ?? adminEmail;
+      const lines = [
+        `From: ${payload.name} <${payload.email}>`,
+        payload.topic ? `Topic: ${payload.topic}` : null,
+        lab ? `Lab: ${lab.name} (id: ${lab.id})` : null,
+        "",
+        payload.details,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      await Promise.all([
+        sendMail({
+          to: legalEmail,
+          from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
+          subject: lab ? `Legal assistance request for ${lab.name}` : "Legal assistance request",
+          text: lines,
+        }),
+        sendMail({
+          to: adminEmail,
+          from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
+          subject: lab ? `Legal assistance request for ${lab.name}` : "Legal assistance request",
+          text: lines,
+        }),
+      ]);
+      res.status(201).json({ ok: true });
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const issue = error.issues[0];
+        return res.status(400).json({ message: issue?.message ?? "Invalid legal assistance payload" });
+      }
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to send legal request" });
     }
   });
 

@@ -3,6 +3,7 @@ import { useState, useMemo, type ReactNode } from "react";
 import { Link } from "wouter";
 import { CheckCircle2, Loader2, ShieldCheck, AlertTriangle } from "lucide-react";
 import { useLabs } from "@/context/LabsContext";
+// Note: this standalone page is currently unused in routing; kept for reference/future reuse.
 
 interface RouteProps {
   params: {

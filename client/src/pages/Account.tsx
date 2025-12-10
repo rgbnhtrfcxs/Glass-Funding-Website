@@ -80,6 +80,13 @@ export default function Account() {
     postalCode: "",
     country: "",
   });
+  const [showLegal, setShowLegal] = useState(false);
+  const [legalTopic, setLegalTopic] = useState("");
+  const [legalDetails, setLegalDetails] = useState("");
+  const [legalLabId, setLegalLabId] = useState<number | null>(null);
+  const [legalError, setLegalError] = useState<string | null>(null);
+  const [legalSuccess, setLegalSuccess] = useState<string | null>(null);
+  const [legalSubmitting, setLegalSubmitting] = useState(false);
 
   const displayLabel = useMemo(() => {
     return profile?.display_name || profile?.name || user?.email || "Your Account";
@@ -455,6 +462,20 @@ export default function Account() {
             >
               Change plan
             </Link>
+            {profile && (profile.role === "lab" || profile.role === "multi-lab" || profile.role === "admin") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLegal(true);
+                  setLegalError(null);
+                  setLegalSuccess(null);
+                  setLegalLabId(labStats[0]?.id ?? null);
+                }}
+                className="inline-flex items-center justify-center rounded-full border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary"
+              >
+                Legal assistance
+              </button>
+            )}
           </div>
         </div>
 
@@ -706,6 +727,113 @@ export default function Account() {
                     className="rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-70"
                   >
                     {verifySubmitting ? "Sending…" : "Submit request"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showLegal && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4 py-10">
+            <div className="relative w-full max-w-2xl rounded-3xl border border-border bg-card p-6 shadow-2xl">
+              <button
+                type="button"
+                className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"
+                onClick={() => setShowLegal(false)}
+              >
+                ✕
+              </button>
+              <h3 className="text-lg font-semibold text-foreground">Connect with legal support</h3>
+              <p className="text-sm text-muted-foreground">We’ll connect you with our legal expert for contract help.</p>
+
+              <div className="mt-4 grid gap-3">
+                <div className="grid gap-1">
+                  <label className="text-sm font-medium text-foreground">Topic</label>
+                  <input
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                    value={legalTopic}
+                    onChange={e => setLegalTopic(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-1">
+                  <label className="text-sm font-medium text-foreground">Details</label>
+                  <textarea
+                    className="min-h-[120px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                    value={legalDetails}
+                    onChange={e => setLegalDetails(e.target.value)}
+                    placeholder="Share context and any timelines."
+                  />
+                </div>
+                {labStats.length > 0 && (
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">Related lab</label>
+                    <select
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      value={legalLabId ?? ""}
+                      onChange={e => setLegalLabId(Number(e.target.value))}
+                    >
+                      <option value="">Select lab (optional)</option>
+                      {labStats.map(l => (
+                        <option key={l.id} value={l.id}>
+                          {l.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {legalError && <p className="text-sm text-destructive">{legalError}</p>}
+                {legalSuccess && <p className="text-sm text-emerald-600">{legalSuccess}</p>}
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    className="rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary"
+                    onClick={() => setShowLegal(false)}
+                    disabled={legalSubmitting}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!legalTopic.trim() || !legalDetails.trim()) {
+                        setLegalError("Topic and details are required.");
+                        return;
+                      }
+                      setLegalSubmitting(true);
+                      setLegalError(null);
+                      setLegalSuccess(null);
+                      try {
+                        const res = await fetch("/api/legal-assist", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            topic: legalTopic.trim(),
+                            details: legalDetails.trim(),
+                            labId: legalLabId || undefined,
+                            name: displayLabel,
+                            email: profile?.email || user?.email || "",
+                          }),
+                        });
+                        if (!res.ok) {
+                          const txt = await res.text();
+                          throw new Error(txt || "Unable to send request");
+                        }
+                        setLegalSuccess("Sent! We’ll connect you with our legal contact shortly.");
+                        setLegalTopic("");
+                        setLegalDetails("");
+                        setLegalLabId(labStats[0]?.id ?? null);
+                        setShowLegal(false);
+                      } catch (err: any) {
+                        setLegalError(err?.message || "Unable to send request");
+                      } finally {
+                        setLegalSubmitting(false);
+                      }
+                    }}
+                    className="rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-70"
+                    disabled={legalSubmitting}
+                  >
+                    {legalSubmitting ? "Sending…" : "Send"}
                   </button>
                 </div>
               </div>

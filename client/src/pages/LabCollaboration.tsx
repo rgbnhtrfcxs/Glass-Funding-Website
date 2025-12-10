@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { useLabs } from "@/context/LabsContext";
 import { useAuth } from "@/context/AuthContext";
+// Note: this standalone page is currently unused in routing; kept for reference/future reuse.
 
 interface Props {
   params: { id: string };

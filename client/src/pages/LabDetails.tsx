@@ -49,7 +49,8 @@ export default function LabDetails({ params }: LabDetailsProps) {
         setCanCollaborate(false);
         return;
       }
-      setCanCollaborate((data?.role as string) === "lab" || (data?.role as string) === "admin");
+      const role = (data?.role as string)?.toLowerCase?.() || "";
+      setCanCollaborate(role === "lab" || role === "admin" || role === "multi-lab");
     }
     checkRole();
     return () => {
@@ -104,6 +105,52 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [favoriteError, setFavoriteError] = useState<string | null>(null);
   const [viewRecorded, setViewRecorded] = useState(false);
+  const [showInvestor, setShowInvestor] = useState(false);
+  const [investorName, setInvestorName] = useState("");
+  const [investorEmail, setInvestorEmail] = useState(user?.email || "");
+  const [investorCompany, setInvestorCompany] = useState("");
+  const [investorWebsite, setInvestorWebsite] = useState("");
+  const [investorMessage, setInvestorMessage] = useState("");
+  const [investorSubmitting, setInvestorSubmitting] = useState(false);
+  const [investorError, setInvestorError] = useState<string | null>(null);
+  const [investorSuccess, setInvestorSuccess] = useState<string | null>(null);
+  const [showRequest, setShowRequest] = useState(false);
+  const [requestSubmitting, setRequestSubmitting] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [requestSuccess, setRequestSuccess] = useState<string | null>(null);
+  const [requestForm, setRequestForm] = useState({
+    requesterName: "",
+    requesterEmail: user?.email || "",
+    organization: "",
+    roleTitle: "",
+    projectSummary: "",
+    workTimeline: "",
+    weeklyHoursNeeded: "",
+    teamSize: "",
+    equipmentNeeds: "",
+    complianceNotes: "",
+    specialRequirements: "",
+    referencesOrLinks: "",
+    verification: "glass_verified",
+    verificationProof: "",
+    preferredContactMethod: "email",
+    preferredDeliveryWindow: "weekly_digest",
+    agreeToReview: false,
+  });
+  const [showCollab, setShowCollab] = useState(false);
+  const [collabSubmitting, setCollabSubmitting] = useState(false);
+  const [collabError, setCollabError] = useState<string | null>(null);
+  const [collabSuccess, setCollabSuccess] = useState<string | null>(null);
+  const [collabForm, setCollabForm] = useState({
+    contactName: "",
+    contactEmail: user?.email || "",
+    targetLabs: lab.name,
+    collaborationFocus: "",
+    resourcesOffered: "",
+    desiredTimeline: "",
+    additionalNotes: "",
+    preferredContact: "email" as "email" | "video_call" | "in_person",
+  });
 
   const toggleFavorite = async () => {
     if (!user) {
@@ -203,6 +250,135 @@ export default function LabDetails({ params }: LabDetailsProps) {
     })();
   }, [lab.id, viewRecorded]);
 
+  const submitRequest = async () => {
+    if (!requestForm.requesterName.trim() || !requestForm.requesterEmail.trim() || !requestForm.projectSummary.trim()) {
+      setRequestError("Name, email, and project summary are required.");
+      return;
+    }
+    setRequestSubmitting(true);
+    setRequestError(null);
+    setRequestSuccess(null);
+    try {
+      const res = await fetch("/api/lab-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...requestForm,
+          labId: lab.id,
+          labName: lab.name,
+        }),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || "Unable to submit request");
+      }
+      setRequestSuccess("Sent! The lab and our team have been notified.");
+      setRequestForm(prev => ({
+        ...prev,
+        requesterName: "",
+        requesterEmail: user?.email || "",
+        organization: "",
+        roleTitle: "",
+        projectSummary: "",
+        workTimeline: "",
+        weeklyHoursNeeded: "",
+        teamSize: "",
+        equipmentNeeds: "",
+        complianceNotes: "",
+        specialRequirements: "",
+        referencesOrLinks: "",
+        verification: "glass_verified",
+        verificationProof: "",
+        preferredContactMethod: "email",
+        preferredDeliveryWindow: "weekly_digest",
+        agreeToReview: false,
+      }));
+      setShowRequest(false);
+    } catch (err: any) {
+      setRequestError(err?.message || "Unable to submit request");
+    } finally {
+      setRequestSubmitting(false);
+    }
+  };
+
+  const submitCollab = async () => {
+    if (!collabForm.contactName.trim() || !collabForm.contactEmail.trim() || !collabForm.collaborationFocus.trim()) {
+      setCollabError("Name, email, and collaboration focus are required.");
+      return;
+    }
+    setCollabSubmitting(true);
+    setCollabError(null);
+    setCollabSuccess(null);
+    try {
+      const res = await fetch("/api/lab-collaborations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...collabForm,
+          labId: lab.id,
+          targetLabs: collabForm.targetLabs || lab.name,
+        }),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || "Unable to submit collaboration");
+      }
+      setCollabSuccess("Sent! We'll notify the lab team.");
+      setCollabForm({
+        contactName: "",
+        contactEmail: user?.email || "",
+        targetLabs: lab.name,
+        collaborationFocus: "",
+        resourcesOffered: "",
+        desiredTimeline: "",
+        additionalNotes: "",
+        preferredContact: "email",
+      });
+      setShowCollab(false);
+    } catch (err: any) {
+      setCollabError(err?.message || "Unable to submit collaboration");
+    } finally {
+      setCollabSubmitting(false);
+    }
+  };
+  const submitInvestor = async () => {
+    if (!investorName.trim() || !investorEmail.trim() || !investorMessage.trim()) {
+      setInvestorError("Please add your name, email, and a brief message.");
+      return;
+    }
+    setInvestorSubmitting(true);
+    setInvestorError(null);
+    setInvestorSuccess(null);
+    try {
+      const res = await fetch(`/api/labs/${lab.id}/investor`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: investorName.trim(),
+          email: investorEmail.trim(),
+          company: investorCompany.trim() || null,
+          website: investorWebsite.trim() || null,
+          message: investorMessage.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || "Unable to send inquiry");
+      }
+      setInvestorSuccess("Sent! The lab has been notified.");
+      setInvestorName("");
+      setInvestorEmail(user?.email || "");
+      setInvestorCompany("");
+      setInvestorWebsite("");
+      setInvestorMessage("");
+      setShowInvestor(false);
+    } catch (err: any) {
+      setInvestorError(err?.message || "Unable to send inquiry");
+    } finally {
+      setInvestorSubmitting(false);
+    }
+  };
+
   if (isLoading && labs.length === 0) {
     return (
       <section className="bg-background min-h-screen">
@@ -298,7 +474,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
               </button>
             </div>
             <div className="flex items-center gap-3">
-        {(logoUrl || ["premier", "custom"].includes(tierLower)) && (
+        {(logoUrl || tierLower === "premier") && (
                 <div className="h-12 w-12 overflow-hidden rounded-full border border-dashed border-border bg-muted/30 text-[11px] text-muted-foreground flex items-center justify-center flex-shrink-0">
                   {logoUrl ? (
                     <img src={logoUrl} alt={`${lab.name} logo`} className="h-full w-full object-cover" />
@@ -482,7 +658,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
             </div>
           </section>
 
-        {["premier", "custom"].includes(tierLower) && partnerLogos.length > 0 && (
+        {tierLower === "premier" && partnerLogos.length > 0 && (
             <div className="mt-8 rounded-2xl border border-primary/40 bg-primary/5 p-4">
               <h3 className="text-sm font-semibold text-foreground mb-3">Featured partners</h3>
               <div className="flex gap-3 overflow-x-auto pb-2">
@@ -500,19 +676,42 @@ export default function LabDetails({ params }: LabDetailsProps) {
           )}
 
           <footer className="flex flex-wrap gap-3 mt-6">
-            <Link
-              href={`/labs/${lab.id}/request`}
+            <button
+              type="button"
+              onClick={() => {
+                setShowRequest(true);
+                setRequestError(null);
+                setRequestSuccess(null);
+              }}
               className="inline-flex items-center justify-center rounded-full border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
             >
               Request lab time
-            </Link>
+            </button>
+            {tierLower === "premier" && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowInvestor(true);
+                  setInvestorError(null);
+                  setInvestorSuccess(null);
+                }}
+                className="inline-flex items-center justify-center rounded-full border border-primary/70 px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+              >
+                Contact for investment
+              </button>
+            )}
             {canCollaborate && (
-              <Link
-                href={`/labs/${lab.id}/collaborate`}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCollab(true);
+                  setCollabError(null);
+                  setCollabSuccess(null);
+                }}
                 className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
               >
                 Collaborate
-              </Link>
+              </button>
             )}
             <Link
               href="/labs"
@@ -521,6 +720,396 @@ export default function LabDetails({ params }: LabDetailsProps) {
               Explore other labs
             </Link>
           </footer>
+
+          {showInvestor && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4 py-8">
+              <div className="relative w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl">
+                <button
+                  type="button"
+                  className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowInvestor(false)}
+                >
+                  ✕
+                </button>
+                <h3 className="text-lg font-semibold text-foreground">Investor inquiry</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Reach out to {lab.name}. We’ll forward this to their team.</p>
+
+                <div className="mt-4 grid gap-3">
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">Name</label>
+                    <input
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      value={investorName}
+                      onChange={e => setInvestorName(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">Email</label>
+                    <input
+                      type="email"
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      value={investorEmail}
+                      onChange={e => setInvestorEmail(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">Company (optional)</label>
+                    <input
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      value={investorCompany}
+                      onChange={e => setInvestorCompany(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">Website (optional)</label>
+                    <input
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      value={investorWebsite}
+                      onChange={e => setInvestorWebsite(e.target.value)}
+                      placeholder="https://example.com"
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">Message</label>
+                    <textarea
+                      className="min-h-[120px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      value={investorMessage}
+                      onChange={e => setInvestorMessage(e.target.value)}
+                      placeholder="Brief intro and what you’re interested in."
+                    />
+                  </div>
+                  {investorError && <p className="text-sm text-destructive">{investorError}</p>}
+                  {investorSuccess && <p className="text-sm text-emerald-600">{investorSuccess}</p>}
+                  <div className="flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      className="rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary transition"
+                      onClick={() => setShowInvestor(false)}
+                      disabled={investorSubmitting}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition disabled:opacity-70"
+                      onClick={submitInvestor}
+                      disabled={investorSubmitting}
+                    >
+                      {investorSubmitting ? "Sending…" : "Send inquiry"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showRequest && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4 py-8">
+              <div className="relative w-full max-w-2xl rounded-2xl border border-border bg-card p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+                <button
+                  type="button"
+                  className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowRequest(false)}
+                >
+                  ✕
+                </button>
+                <h3 className="text-lg font-semibold text-foreground">Request lab time</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Tell {lab.name} what you need. We’ll route this to their team.</p>
+
+                <div className="mt-4 grid gap-3">
+                  <div className="grid gap-1 md:grid-cols-2 md:gap-4">
+                    <div className="grid gap-1">
+                      <label className="text-sm font-medium text-foreground">Your name</label>
+                      <input
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                        value={requestForm.requesterName}
+                        onChange={e => setRequestForm(prev => ({ ...prev, requesterName: e.target.value }))}
+                      />
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-sm font-medium text-foreground">Email</label>
+                      <input
+                        type="email"
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                        value={requestForm.requesterEmail}
+                        onChange={e => setRequestForm(prev => ({ ...prev, requesterEmail: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-1 md:grid-cols-2 md:gap-4">
+                    <div className="grid gap-1">
+                      <label className="text-sm font-medium text-foreground">Organization</label>
+                      <input
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                        value={requestForm.organization}
+                        onChange={e => setRequestForm(prev => ({ ...prev, organization: e.target.value }))}
+                      />
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-sm font-medium text-foreground">Role / Title</label>
+                      <input
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                        value={requestForm.roleTitle}
+                        onChange={e => setRequestForm(prev => ({ ...prev, roleTitle: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">Project summary</label>
+                    <textarea
+                      className="min-h-[100px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      value={requestForm.projectSummary}
+                      onChange={e => setRequestForm(prev => ({ ...prev, projectSummary: e.target.value }))}
+                      placeholder="What work do you want to run here?"
+                    />
+                  </div>
+                  <div className="grid gap-1 md:grid-cols-2 md:gap-4">
+                    <div className="grid gap-1">
+                      <label className="text-sm font-medium text-foreground">Timeline</label>
+                      <input
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                        value={requestForm.workTimeline}
+                        onChange={e => setRequestForm(prev => ({ ...prev, workTimeline: e.target.value }))}
+                      />
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-sm font-medium text-foreground">Weekly hours needed</label>
+                      <input
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                        value={requestForm.weeklyHoursNeeded}
+                        onChange={e => setRequestForm(prev => ({ ...prev, weeklyHoursNeeded: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-1 md:grid-cols-2 md:gap-4">
+                    <div className="grid gap-1">
+                      <label className="text-sm font-medium text-foreground">Team size</label>
+                      <input
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                        value={requestForm.teamSize}
+                        onChange={e => setRequestForm(prev => ({ ...prev, teamSize: e.target.value }))}
+                      />
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-sm font-medium text-foreground">Equipment needs</label>
+                      <input
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                        value={requestForm.equipmentNeeds}
+                        onChange={e => setRequestForm(prev => ({ ...prev, equipmentNeeds: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">Special requirements</label>
+                    <textarea
+                      className="min-h-[80px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      value={requestForm.specialRequirements}
+                      onChange={e => setRequestForm(prev => ({ ...prev, specialRequirements: e.target.value }))}
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">Links</label>
+                    <input
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      value={requestForm.referencesOrLinks}
+                      onChange={e => setRequestForm(prev => ({ ...prev, referencesOrLinks: e.target.value }))}
+                      placeholder="Optional links to docs or examples"
+                    />
+                  </div>
+                  <div className="grid gap-1 md:grid-cols-2 md:gap-4">
+                    <div className="grid gap-1">
+                      <label className="text-sm font-medium text-foreground">Verification</label>
+                      <select
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                        value={requestForm.verification}
+                        onChange={e => setRequestForm(prev => ({ ...prev, verification: e.target.value as any }))}
+                      >
+                        <option value="glass_verified">Glass verified</option>
+                        <option value="partner_verified">Partner verified</option>
+                        <option value="unverified">Unverified</option>
+                      </select>
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-sm font-medium text-foreground">Preferred contact</label>
+                      <select
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                        value={requestForm.preferredContactMethod}
+                        onChange={e => setRequestForm(prev => ({ ...prev, preferredContactMethod: e.target.value as any }))}
+                      >
+                        <option value="email">Email</option>
+                        <option value="video_call">Video call</option>
+                        <option value="phone">Phone</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid gap-1 md:grid-cols-2 md:gap-4">
+                    <div className="grid gap-1">
+                      <label className="text-sm font-medium text-foreground">Verification proof (optional)</label>
+                      <input
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                        value={requestForm.verificationProof}
+                        onChange={e => setRequestForm(prev => ({ ...prev, verificationProof: e.target.value }))}
+                      />
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-sm font-medium text-foreground">Delivery preference</label>
+                      <select
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                        value={requestForm.preferredDeliveryWindow}
+                        onChange={e => setRequestForm(prev => ({ ...prev, preferredDeliveryWindow: e.target.value as any }))}
+                      >
+                        <option value="weekly_digest">Weekly digest</option>
+                        <option value="biweekly_digest">Bi-weekly digest</option>
+                        <option value="immediate">Immediate</option>
+                      </select>
+                    </div>
+                  </div>
+                  <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                      checked={requestForm.agreeToReview}
+                      onChange={e => setRequestForm(prev => ({ ...prev, agreeToReview: e.target.checked }))}
+                    />
+                    I agree to review this request with the lab.
+                  </label>
+                  {requestError && <p className="text-sm text-destructive">{requestError}</p>}
+                  {requestSuccess && <p className="text-sm text-emerald-600">{requestSuccess}</p>}
+                  <div className="flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      className="rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary transition"
+                      onClick={() => setShowRequest(false)}
+                      disabled={requestSubmitting}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition disabled:opacity-70"
+                      onClick={submitRequest}
+                      disabled={requestSubmitting}
+                    >
+                      {requestSubmitting ? "Sending…" : "Send request"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showCollab && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4 py-8">
+              <div className="relative w-full max-w-2xl rounded-2xl border border-border bg-card p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+                <button
+                  type="button"
+                  className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowCollab(false)}
+                >
+                  ✕
+                </button>
+                <h3 className="text-lg font-semibold text-foreground">Collaboration inquiry</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Share how you’d like to collaborate with {lab.name}.</p>
+
+                <div className="mt-4 grid gap-3">
+                  <div className="grid gap-1 md:grid-cols-2 md:gap-4">
+                    <div className="grid gap-1">
+                      <label className="text-sm font-medium text-foreground">Your name</label>
+                      <input
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                        value={collabForm.contactName}
+                        onChange={e => setCollabForm(prev => ({ ...prev, contactName: e.target.value }))}
+                      />
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-sm font-medium text-foreground">Email</label>
+                      <input
+                        type="email"
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                        value={collabForm.contactEmail}
+                        onChange={e => setCollabForm(prev => ({ ...prev, contactEmail: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">Target labs</label>
+                    <input
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      value={collabForm.targetLabs}
+                      onChange={e => setCollabForm(prev => ({ ...prev, targetLabs: e.target.value }))}
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">Collaboration focus</label>
+                    <textarea
+                      className="min-h-[100px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      value={collabForm.collaborationFocus}
+                      onChange={e => setCollabForm(prev => ({ ...prev, collaborationFocus: e.target.value }))}
+                      placeholder="What would you like to collaborate on?"
+                    />
+                  </div>
+                  <div className="grid gap-1 md:grid-cols-2 md:gap-4">
+                    <div className="grid gap-1">
+                      <label className="text-sm font-medium text-foreground">Resources offered</label>
+                      <textarea
+                        className="min-h-[80px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                        value={collabForm.resourcesOffered}
+                        onChange={e => setCollabForm(prev => ({ ...prev, resourcesOffered: e.target.value }))}
+                      />
+                    </div>
+                    <div className="grid gap-1">
+                      <label className="text-sm font-medium text-foreground">Timeline</label>
+                      <input
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                        value={collabForm.desiredTimeline}
+                        onChange={e => setCollabForm(prev => ({ ...prev, desiredTimeline: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">Additional notes</label>
+                    <textarea
+                      className="min-h-[80px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      value={collabForm.additionalNotes}
+                      onChange={e => setCollabForm(prev => ({ ...prev, additionalNotes: e.target.value }))}
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">Preferred contact</label>
+                    <select
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      value={collabForm.preferredContact}
+                      onChange={e => setCollabForm(prev => ({ ...prev, preferredContact: e.target.value as any }))}
+                    >
+                      <option value="email">Email</option>
+                      <option value="video_call">Video call</option>
+                      <option value="in_person">In person</option>
+                    </select>
+                  </div>
+                  {collabError && <p className="text-sm text-destructive">{collabError}</p>}
+                  {collabSuccess && <p className="text-sm text-emerald-600">{collabSuccess}</p>}
+                  <div className="flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      className="rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary transition"
+                      onClick={() => setShowCollab(false)}
+                      disabled={collabSubmitting}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition disabled:opacity-70"
+                      onClick={submitCollab}
+                      disabled={collabSubmitting}
+                    >
+                      {collabSubmitting ? "Sending…" : "Send collaboration"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </motion.div>
       </div>
     </section>
