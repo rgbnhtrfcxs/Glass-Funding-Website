@@ -39,6 +39,7 @@ import ManageSelect from "@/pages/ManageSelect";
 import NewLab from "@/pages/NewLab";
 import Favorites from "@/pages/Favorites";
 import Subscriptions from "@/pages/Subscriptions";
+import DonationFlow from "@/pages/DonationFlow";
 import { LabsProvider } from "@/context/LabsContext";
 import { AuthProvider } from "@/context/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -79,6 +80,17 @@ function PageTransition({ children }: { children: ReactNode }) {
   );
 }
 
+function BetaBanner() {
+  return (
+    <div className="fixed top-0 left-0 right-0 z-50 h-11 bg-primary/10 border-b border-primary/20 text-primary px-4 text-sm text-center flex items-center justify-center">
+      Glass Connect beta is free for early adopters. If it’s helpful, you can support us with an optional donation.
+      <a className="ml-2 font-semibold underline" href="/donate">
+        Donate here
+      </a>
+    </div>
+  );
+}
+
 function Router() {
   return (
     <Switch>
@@ -98,6 +110,7 @@ function Router() {
       <LabRoute path="/lab/manage/:id" component={MyLab} />
       <Route path="/payments" component={PaymentFlow} />
       <Route path="/stripe" component={StripeCheckout} />
+      <Route path="/donate" component={DonationFlow} />
       <Route path="/logout" component={Logout} />
 
       {/* Auth Pages */}
@@ -129,6 +142,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <LabsProvider>
+          <BetaBanner />
           <Navbar />
           <ScrollToTop />
           <PageTransition>

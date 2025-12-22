@@ -19,11 +19,11 @@ export function Navbar() {
   const { user, signOut } = useAuth();
 
   return (
-    <motion.nav 
+    <motion.nav
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6 }}
-      className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-sm border-b"
+      className="fixed top-11 left-0 right-0 z-40 bg-background/80 backdrop-blur-sm border-b"
     >
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
