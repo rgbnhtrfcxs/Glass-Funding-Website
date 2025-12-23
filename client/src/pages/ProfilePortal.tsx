@@ -23,6 +23,12 @@ export default function ProfilePortal() {
   const [subscriptionStatus, setSubscriptionStatus] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [legalName, setLegalName] = useState("");
+  const [addressLine1, setAddressLine1] = useState("");
+  const [addressLine2, setAddressLine2] = useState("");
+  const [city, setCity] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [country, setCountry] = useState("France");
 
   useEffect(() => {
     async function fetchProfile() {
@@ -34,7 +40,9 @@ export default function ProfilePortal() {
 
       const { data, error } = await supabase
         .from("profiles")
-        .select("user_id,email,display_name,role,subscription_status,name,avatar_url,created_at,updated_at")
+        .select(
+          "user_id,email,display_name,role,subscription_status,name,avatar_url,created_at,updated_at,legal_full_name,address_line1,address_line2,city,postal_code,country",
+        )
         .eq("user_id", user.id)
         .maybeSingle();
 
@@ -49,6 +57,12 @@ export default function ProfilePortal() {
           setRole(data.role ?? "");
           setSubscriptionStatus(data.subscription_status ?? "");
           setAvatarUrl(data.avatar_url ?? null);
+          setLegalName(data.legal_full_name ?? "");
+          setAddressLine1(data.address_line1 ?? "");
+          setAddressLine2(data.address_line2 ?? "");
+          setCity(data.city ?? "");
+          setPostalCode(data.postal_code ?? "");
+          setCountry(data.country ?? country);
         } else {
           // No row yet; initialize read-only fields from defaults
           setRole("user");
@@ -102,6 +116,12 @@ export default function ProfilePortal() {
         name: name || null,
         display_name: displayName || null,
         avatar_url: avatarUrl || null,
+        legal_full_name: legalName || null,
+        address_line1: addressLine1 || null,
+        address_line2: addressLine2 || null,
+        city: city || null,
+        postal_code: postalCode || null,
+        country: country || null,
       } as const;
 
       // Upsert row; RLS allows only own row
@@ -197,6 +217,14 @@ export default function ProfilePortal() {
                 <p><strong>Email:</strong> {user?.email || "—"}</p>
                 <p><strong>Role:</strong> {profileData.role || role || "—"}</p>
                 <p><strong>Subscription:</strong> {profileData.subscription_status || subscriptionStatus || "—"}</p>
+                <p><strong>Legal name:</strong> {profileData.legal_full_name || "—"}</p>
+                <p><strong>Company:</strong> {profileData.company_name || "—"}</p>
+                <p>
+                  <strong>Address:</strong>{" "}
+                  {profileData.address_line1 || profileData.address_line2 || profileData.city || profileData.postal_code || profileData.country
+                    ? `${profileData.address_line1 ?? ""} ${profileData.address_line2 ?? ""} ${profileData.postal_code ?? ""} ${profileData.city ?? ""} ${profileData.country ?? ""}`
+                    : "—"}
+                </p>
                 <button
                   className="mt-4 inline-flex items-center justify-center rounded-full bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
                   onClick={handleSignOut}
@@ -242,6 +270,26 @@ export default function ProfilePortal() {
               </Field>
               <Field label="Display name">
                 <input className={inputClasses} value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+              </Field>
+              <Field label="Legal full name (for receipts)">
+                <input className={inputClasses} value={legalName} onChange={e => setLegalName(e.target.value)} placeholder="Legal name for individual receipts" />
+              </Field>
+              <Field label="Address line 1">
+                <input className={inputClasses} value={addressLine1} onChange={e => setAddressLine1(e.target.value)} placeholder="Street and number" />
+              </Field>
+              <Field label="Address line 2 (optional)">
+                <input className={inputClasses} value={addressLine2} onChange={e => setAddressLine2(e.target.value)} placeholder="Apartment, suite, etc." />
+              </Field>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Field label="City">
+                  <input className={inputClasses} value={city} onChange={e => setCity(e.target.value)} />
+                </Field>
+                <Field label="Postal code">
+                  <input className={inputClasses} value={postalCode} onChange={e => setPostalCode(e.target.value)} />
+                </Field>
+              </div>
+              <Field label="Country">
+                <input className={inputClasses} value={country} onChange={e => setCountry(e.target.value)} />
               </Field>
               <Field label="Email">
                 <input className={inputClasses} value={user?.email ?? ""} disabled />

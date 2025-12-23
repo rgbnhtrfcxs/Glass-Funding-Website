@@ -9,6 +9,7 @@ import { labCollaborationStore } from "./collaboration-store";
 import { sendMail } from "./mailer";
 import jwt from "jsonwebtoken";
 import { supabasePublic } from "./supabasePublicClient.js";
+import { Buffer } from "node:buffer";
 
 import { z, ZodError } from "zod";
 
@@ -150,6 +151,60 @@ export function registerRoutes(app: Express) {
       res
         .status(500)
         .json({ message: error instanceof Error ? error.message : "Unable to load donations" });
+    }
+  });
+
+  // --------- Stripe Checkout for donations ----------
+  app.post("/api/donations/checkout", async (req, res) => {
+    try {
+      const { amount, email, donorType, recurring, ...meta } = req.body ?? {};
+      const amountNumber = Number(amount);
+      if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+        return res.status(400).json({ message: "Valid amount is required" });
+      }
+      if (typeof email !== "string" || !email.trim()) {
+        return res.status(400).json({ message: "Valid email is required" });
+      }
+      const stripeKey = process.env.STRIPE_SECRET_KEY;
+      if (!stripeKey) return res.status(500).json({ message: "Stripe not configured" });
+
+      const params = new URLSearchParams();
+      params.append("amount", Math.round(amountNumber * 100).toString());
+      params.append("currency", "eur");
+      params.append("receipt_email", email.trim());
+      params.append("description", "Glass Connect donation");
+      params.append("automatic_payment_methods[enabled]", "true");
+
+      const metaEntries = {
+        donorType: donorType || "",
+        recurring: recurring ? "true" : "false",
+        ...meta,
+      };
+      Object.entries(metaEntries).forEach(([key, val]) => {
+        if (val !== undefined && val !== null) {
+          params.append(`metadata[${key}]`, String(val));
+        }
+      });
+
+      const response = await fetch("https://api.stripe.com/v1/payment_intents", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${stripeKey}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: params.toString(),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return res.status(500).json({ message: "Stripe error", detail: errorText });
+      }
+      const intent = await response.json();
+      return res.status(200).json({ client_secret: intent.client_secret });
+    } catch (error) {
+      res
+        .status(500)
+        .json({ message: error instanceof Error ? error.message : "Unable to create payment intent" });
     }
   });
 

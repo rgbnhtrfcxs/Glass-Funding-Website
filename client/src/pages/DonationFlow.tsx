@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
+import { supabase } from "@/lib/supabaseClient";
+import { useAuth } from "@/context/AuthContext";
 
 const PRESET_AMOUNTS = [25, 50, 100, 250];
 
@@ -8,6 +10,7 @@ function isValidEmail(value: string) {
 }
 
 export default function DonateFlow() {
+  const { user } = useAuth();
   const [location, navigate] = useLocation();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [donorType, setDonorType] = useState<"individual" | "company">("individual");
@@ -16,7 +19,7 @@ export default function DonateFlow() {
   const [storedEmail, setStoredEmail] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [recurring, setRecurring] = useState(true);
-  const feeRate = 0.015;
+  const feeRate = 0.25;
   const [details, setDetails] = useState({
     fullName: "",
     companyName: "",
@@ -28,12 +31,137 @@ export default function DonateFlow() {
     postalCode: "",
     country: "France",
   });
+  const [ownedLabs, setOwnedLabs] = useState<
+    Array<{
+      id: number;
+      name: string;
+      siret_number?: string | null;
+      lab_manager?: string | null;
+      contact_email?: string | null;
+      address_line1?: string | null;
+      address_line2?: string | null;
+      city?: string | null;
+      postal_code?: string | null;
+      country?: string | null;
+    }>
+  >([]);
+  const [selectedLabId, setSelectedLabId] = useState<number | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [stripeReady, setStripeReady] = useState(false);
+  const paymentElementRef = useRef<HTMLDivElement | null>(null);
+  const stripeInstance = useRef<any>(null);
+  const stripeElements = useRef<any>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const savedEmail = window.localStorage.getItem("glass-demo-email") || window.sessionStorage.getItem("glass-demo-email");
     if (savedEmail) setStoredEmail(savedEmail);
   }, []);
+
+  // Load Stripe.js once
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const existing = document.querySelector('script[src="https://js.stripe.com/v3"]') as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener("load", () => setStripeReady(true));
+      if ((window as any).Stripe) setStripeReady(true);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://js.stripe.com/v3";
+    script.async = true;
+    script.onload = () => setStripeReady(true);
+    document.body.appendChild(script);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("profiles")
+      .select("email, display_name, name, legal_full_name, address_line1, address_line2, city, postal_code, country")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data) return;
+        if (!storedEmail) setEmail(data.email || user.email || "");
+        setDetails(prev => ({
+          ...prev,
+          fullName: data.legal_full_name || data.display_name || data.name || prev.fullName,
+          addressLine1: data.address_line1 || prev.addressLine1,
+          addressLine2: data.address_line2 || prev.addressLine2,
+          city: data.city || prev.city,
+          postalCode: data.postal_code || prev.postalCode,
+          country: data.country || prev.country || "France",
+        }));
+      })
+      .catch(() => {});
+  }, [storedEmail, user?.id]);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("labs")
+      .select(
+        "id, name, siret_number, lab_manager, contact_email, address_line1, address_line2, city, postal_code, country",
+      )
+      .or(`owner_user_id.eq.${user.id},contact_email.eq.${user.email}`)
+      .then(({ data }) => {
+        if (data && Array.isArray(data)) {
+          setOwnedLabs(data);
+          if (!selectedLabId && data.length > 0) {
+            setSelectedLabId(data[0].id);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [user?.id, user?.email]);
+
+  useEffect(() => {
+    if (donorType !== "company") return;
+    const lab = ownedLabs.find(l => l.id === selectedLabId) || ownedLabs[0];
+    if (!lab) return;
+    setSelectedLabId(lab.id);
+    setDetails(prev => ({
+      ...prev,
+      companyName: lab.name || prev.companyName,
+      siret: lab.siret_number || prev.siret,
+      contactName: lab.lab_manager || prev.contactName,
+      addressLine1: lab.address_line1 || prev.addressLine1,
+      addressLine2: lab.address_line2 || prev.addressLine2,
+      city: lab.city || prev.city,
+      postalCode: lab.postal_code || prev.postalCode,
+      country: lab.country || prev.country,
+    }));
+    if (!storedEmail && !email) {
+      setEmail(lab.contact_email || "");
+    }
+  }, [donorType, selectedLabId, ownedLabs]);
+
+  // Mount Payment Element when client secret arrives
+  useEffect(() => {
+    if (!stripeReady || !clientSecret) return;
+    const StripeCtor = (window as any).Stripe;
+    if (!StripeCtor) return;
+    const pk = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+    if (!pk) return;
+    const stripe = StripeCtor(pk);
+    const elements = stripe.elements({ clientSecret });
+    const paymentEl = elements.create("payment");
+    if (paymentElementRef.current) {
+      paymentEl.mount(paymentElementRef.current);
+    }
+    stripeInstance.current = stripe;
+    stripeElements.current = elements;
+    return () => {
+      try {
+        paymentEl.unmount();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [stripeReady, clientSecret]);
 
   const searchParams = useMemo(() => {
     const query = location.split("?")[1] ?? "";
@@ -42,7 +170,7 @@ export default function DonateFlow() {
 
   const donationLabel = "Glass Connect (beta)";
 
-  const fee = typeof amount === "number" ? +(amount * feeRate + 0.25).toFixed(2) : 0;
+  const fee = typeof amount === "number" ? +(amount * feeRate + 0.3).toFixed(2) : 0;
   const total = typeof amount === "number" ? +(amount + fee).toFixed(2) : 0;
   const emailValue = storedEmail ?? email;
   const isEmailValid = storedEmail ? true : email !== "" && isValidEmail(email);
@@ -64,7 +192,7 @@ export default function DonateFlow() {
     else setEmailError("Enter a valid email address.");
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (step === 1) {
       if (!isAmountValid) {
         return;
@@ -90,27 +218,82 @@ export default function DonateFlow() {
         return;
       }
       setEmailError(null);
-      setStep(3);
+      setCheckoutLoading(true);
+      setCheckoutError(null);
+      try {
+        const res = await fetch("/api/donations/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount: total,
+            email: emailValue,
+            donorType,
+            recurring,
+            fullName: details.fullName,
+            companyName: details.companyName,
+            siret: details.siret,
+            contactName: details.contactName,
+            addressLine1: details.addressLine1,
+            addressLine2: details.addressLine2,
+            city: details.city,
+            postalCode: details.postalCode,
+            country: details.country,
+          }),
+        });
+
+        if (!res.ok) {
+          const txt = await res.text();
+          throw new Error(txt || "Unable to start checkout");
+        }
+        const payload = await res.json();
+        if (!payload?.client_secret) {
+          throw new Error("No client secret returned");
+        }
+        setClientSecret(payload.client_secret);
+        setStep(3);
+      } catch (err) {
+        setCheckoutError(err instanceof Error ? err.message : "Unable to start checkout");
+      } finally {
+        setCheckoutLoading(false);
+      }
       return;
     }
 
-    const params = new URLSearchParams();
-    params.set("amount", total.toFixed(2));
-    params.set("donation", typeof amount === "number" ? amount.toFixed(2) : "0");
-    params.set("fee", fee.toFixed(2));
-    params.set("email", emailValue);
-    params.set("recurring", recurring ? "true" : "false");
-    params.set("donorType", donorType);
-    params.set("fullName", details.fullName);
-    params.set("companyName", details.companyName);
-    params.set("siret", details.siret);
-    params.set("contactName", details.contactName);
-    params.set("addressLine1", details.addressLine1);
-    params.set("addressLine2", details.addressLine2);
-    params.set("city", details.city);
-    params.set("postalCode", details.postalCode);
-    params.set("country", details.country);
-    navigate(`/donate-confirmation?${params.toString()}`);
+    // Step 3: confirm payment inline
+    if (!stripeInstance.current || !stripeElements.current) {
+      setCheckoutError("Payment form is still loading. Please wait a second.");
+      return;
+    }
+    setCheckoutLoading(true);
+    setCheckoutError(null);
+    try {
+      const amountParam = total.toFixed(2);
+      const result = await stripeInstance.current.confirmPayment({
+        elements: stripeElements.current,
+        confirmParams: {
+          return_url: `${window.location.origin}/donate-confirmation?status=success&amount=${amountParam}`,
+        },
+        redirect: "if_required",
+      });
+      if (result.error) {
+        throw new Error(result.error.message || "Payment could not be completed");
+      }
+      // If no redirect was needed, confirm status and show success locally.
+      const status = result.paymentIntent?.status;
+      if (status === "succeeded" || status === "processing") {
+        navigate(`/donate-confirmation?status=success&amount=${amountParam}`);
+        return;
+      }
+      if (status === "requires_action") {
+        setCheckoutError("Additional authentication is required. Please follow the on-screen prompts.");
+        return;
+      }
+      navigate(`/donate-confirmation?status=success&amount=${amountParam}`);
+    } catch (err) {
+      setCheckoutError(err instanceof Error ? err.message : "Payment failed");
+    } finally {
+      setCheckoutLoading(false);
+    }
   };
 
   return (
@@ -245,6 +428,22 @@ export default function DonateFlow() {
               </div>
             ) : (
               <div className="grid gap-3 mt-4">
+                {ownedLabs.length > 1 && (
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">Select lab for receipt</label>
+                    <select
+                      className="rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      value={selectedLabId ?? ""}
+                      onChange={e => setSelectedLabId(Number(e.target.value))}
+                    >
+                      {ownedLabs.map(l => (
+                        <option key={l.id} value={l.id}>
+                          {l.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="grid gap-1">
                   <label className="text-sm font-medium text-foreground">Company name</label>
                   <input
@@ -320,24 +519,31 @@ export default function DonateFlow() {
         )}
 
         {step === 3 && (
-          <div className="space-y-3 text-sm text-muted-foreground">
-            <div className="flex justify-between">
-              <span>Donation</span>
-              <span className="font-medium text-foreground">€{typeof amount === "number" ? amount.toFixed(2) : "0.00"}</span>
+          <div className="space-y-4">
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <div className="flex justify-between">
+                <span>Donation</span>
+                <span className="font-medium text-foreground">€{typeof amount === "number" ? amount.toFixed(2) : "0.00"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Platform fee (2,5% + €0.3)</span>
+                <span className="font-medium text-foreground">€{fee.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-foreground font-semibold">
+                <span>Total today</span>
+                <span>€{total.toFixed(2)}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {recurring
+                  ? "Recurring donations help us plan ahead. You can cancel any time."
+                  : "One-time donation. We’ll issue a receipt once processed."}
+              </p>
             </div>
-            <div className="flex justify-between">
-              <span>Platform fee (1.5% + €0.25)</span>
-              <span className="font-medium text-foreground">€{fee.toFixed(2)}</span>
+            <div className="rounded-2xl border border-border bg-muted/40 p-4">
+              {!clientSecret && <p className="text-sm text-muted-foreground">Preparing secure payment form…</p>}
+              <div ref={paymentElementRef} className="min-h-[180px]" />
             </div>
-            <div className="flex justify-between text-foreground font-semibold">
-              <span>Total today</span>
-              <span>€{total.toFixed(2)}</span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {recurring
-                ? "Recurring donations help us plan ahead. You can cancel any time."
-                : "One-time donation. We’ll issue a receipt once processed."}
-            </p>
+            {checkoutError && <p className="text-xs text-destructive">{checkoutError}</p>}
           </div>
         )}
 
@@ -351,14 +557,17 @@ export default function DonateFlow() {
             Back
           </button>
           <button
-          type="button"
-          className="rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition disabled:cursor-not-allowed disabled:opacity-60"
-          onClick={handleSubmit}
-          disabled={step === 1 && !isAmountValid}
-        >
-          {step < 3 ? "Next" : "Proceed to checkout"}
-        </button>
-      </div>
+            type="button"
+            className="rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={handleSubmit}
+            disabled={(step === 1 && !isAmountValid) || checkoutLoading || (step === 3 && !clientSecret)}
+          >
+            {step < 3 ? "Next" : checkoutLoading ? "Processing…" : `Pay €${total.toFixed(2)}`}
+          </button>
+        </div>
+        {checkoutError && step < 3 && (
+          <p className="text-xs text-destructive text-right">{checkoutError}</p>
+        )}
       </div>
     </div>
   );

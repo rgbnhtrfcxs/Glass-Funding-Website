@@ -40,6 +40,8 @@ import NewLab from "@/pages/NewLab";
 import Favorites from "@/pages/Favorites";
 import Subscriptions from "@/pages/Subscriptions";
 import DonationFlow from "@/pages/DonationFlow";
+import DonationConfirmation from "@/pages/DonationConfirmation";
+import DonationDisabled from "@/pages/DonationDisabled";
 import { LabsProvider } from "@/context/LabsContext";
 import { AuthProvider } from "@/context/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -80,13 +82,15 @@ function PageTransition({ children }: { children: ReactNode }) {
   );
 }
 
+import { Link } from "wouter";
+
 function BetaBanner() {
   return (
     <div className="fixed top-0 left-0 right-0 z-50 h-11 bg-primary/10 border-b border-primary/20 text-primary px-4 text-sm text-center flex items-center justify-center">
       Glass Connect beta is free for early adopters. If it’s helpful, you can support us with an optional donation.
-      <a className="ml-2 font-semibold underline" href="/donate">
+      <Link href="/donate" className="ml-2 font-semibold underline">
         Donate here
-      </a>
+      </Link>
     </div>
   );
 }
@@ -110,7 +114,9 @@ function Router() {
       <LabRoute path="/lab/manage/:id" component={MyLab} />
       <Route path="/payments" component={PaymentFlow} />
       <Route path="/stripe" component={StripeCheckout} />
-      <Route path="/donate" component={DonationFlow} />
+      {/* Temporarily disable donation flow for deployment */}
+      <Route path="/donate" component={DonationDisabled} />
+      <Route path="/donate-confirmation" component={DonationConfirmation} />
       <Route path="/logout" component={Logout} />
 
       {/* Auth Pages */}
@@ -145,9 +151,11 @@ function App() {
           <BetaBanner />
           <Navbar />
           <ScrollToTop />
-          <PageTransition>
-            <Router />
-          </PageTransition>
+          <div className="pt-24">
+            <PageTransition>
+              <Router />
+            </PageTransition>
+          </div>
           <Footer />
           <Toaster />
         </LabsProvider>
