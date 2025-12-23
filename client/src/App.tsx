@@ -115,7 +115,8 @@ function Router() {
       <LabRoute path="/lab/manage/:id" component={MyLab} />
       <Route path="/payments" component={PaymentFlow} />
       <Route path="/stripe" component={StripeCheckout} />
-      <Route path="/donate" component={DonationFlow} />
+      {/* Donations paused for deployment; original flow retained for later */}
+      <Route path="/donate" component={DonationDisabled} />
       <Route path="/logout" component={Logout} />
 
       {/* Auth Pages */}
@@ -127,7 +128,8 @@ function Router() {
       {/* Base Pages */}
       <Route path="/" component={Home} />
       <Route path="/about" component={About} />
-      <Route path="/pricing" component={Pricing} />
+      {/* Pricing archived during beta; original page kept for later */}
+      <Route path="/pricing" component={PricingArchived} />
       <Route path="/contact" component={Contact} />
       <Route path="/one-pagers" component={OnePagers} />
       <Route path="/roadmap" component={Roadmap} />
