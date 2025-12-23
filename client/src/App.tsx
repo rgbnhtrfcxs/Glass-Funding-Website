@@ -41,6 +41,7 @@ import Favorites from "@/pages/Favorites";
 import Subscriptions from "@/pages/Subscriptions";
 import DonationFlow from "@/pages/DonationFlow";
 import DonationConfirmation from "@/pages/DonationConfirmation";
+import PricingArchived from "@/pages/PricingArchived";
 import DonationDisabled from "@/pages/DonationDisabled";
 import { LabsProvider } from "@/context/LabsContext";
 import { AuthProvider } from "@/context/AuthContext";
@@ -128,7 +129,8 @@ function Router() {
       {/* Base Pages */}
       <Route path="/" component={Home} />
       <Route path="/about" component={About} />
-      <Route path="/pricing" component={Pricing} />
+      {/* Pricing archived during beta; keep original page for later */}
+      <Route path="/pricing" component={PricingArchived} />
       <Route path="/contact" component={Contact} />
       <Route path="/one-pagers" component={OnePagers} />
       <Route path="/roadmap" component={Roadmap} />
