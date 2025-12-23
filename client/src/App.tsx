@@ -89,8 +89,8 @@ function BetaBanner() {
   return (
     <div className="fixed top-0 left-0 right-0 z-50 h-11 bg-primary/10 border-b border-primary/20 text-primary px-4 text-sm text-center flex items-center justify-center">
       Glass Connect beta is free for early adopters. If it’s helpful, you can support us with an optional donation.
-      <Link href="/donate" className="ml-2 font-semibold underline">
-        Donate here
+      <Link href="/donate">
+        <a className="ml-2 font-semibold underline">Donate here</a>
       </Link>
     </div>
   );
@@ -115,9 +115,7 @@ function Router() {
       <LabRoute path="/lab/manage/:id" component={MyLab} />
       <Route path="/payments" component={PaymentFlow} />
       <Route path="/stripe" component={StripeCheckout} />
-      {/* Temporarily disable donation flow for deployment */}
-      <Route path="/donate" component={DonationDisabled} />
-      <Route path="/donate-confirmation" component={DonationConfirmation} />
+      <Route path="/donate" component={DonationFlow} />
       <Route path="/logout" component={Logout} />
 
       {/* Auth Pages */}
@@ -129,8 +127,7 @@ function Router() {
       {/* Base Pages */}
       <Route path="/" component={Home} />
       <Route path="/about" component={About} />
-      {/* Pricing archived during beta; keep original page for later */}
-      <Route path="/pricing" component={PricingArchived} />
+      <Route path="/pricing" component={Pricing} />
       <Route path="/contact" component={Contact} />
       <Route path="/one-pagers" component={OnePagers} />
       <Route path="/roadmap" component={Roadmap} />
@@ -153,7 +150,7 @@ function App() {
           <BetaBanner />
           <Navbar />
           <ScrollToTop />
-          <div className="pt-24">
+          <div className="pt-28">
             <PageTransition>
               <Router />
             </PageTransition>
