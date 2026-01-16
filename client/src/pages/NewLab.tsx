@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useLocation } from "wouter";
 import { useLabs } from "@/context/LabsContext";
@@ -59,6 +59,25 @@ export default function NewLab() {
   const [activeTab, setActiveTab] = useState<
     "Basics" | "Photos" | "Company details" | "Branding & Links" | "Compliance" | "Offers & pricing"
   >("Basics");
+  const [profileTier, setProfileTier] = useState<string>("base");
+
+  const canUseLogo = profileTier === "premier" || profileTier === "custom" || profileTier === "verified";
+  const canUsePartnerLogos = profileTier === "premier" || profileTier === "custom";
+  const maxPhotos = profileTier === "base" ? 2 : Number.POSITIVE_INFINITY;
+
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from("profiles")
+      .select("subscription_tier")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        const tier = (data?.subscription_tier || "base").toLowerCase();
+        setProfileTier(tier);
+      })
+      .catch(() => {});
+  }, [user?.id]);
 
   const handleChange = (field: keyof typeof form, value: string | boolean | OfferOption[] | string[]) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -237,47 +256,47 @@ export default function NewLab() {
 
             {activeTab === "Photos" && (
               <Section title="Photos">
-                <div className="space-y-2">
-                  <Field label="Logo (premier/custom only)">
-                    <input
-                      className="input"
-                      value={form.logoUrl}
-                      onChange={e => handleChange("logoUrl", e.target.value)}
-                      placeholder="Available for premier/custom tiers"
-                    />
-                  </Field>
-                  <label className="inline-flex items-center gap-3">
-                    <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
-                      Choose file
+                {canUseLogo && (
+                  <div className="space-y-2">
+                    <Field label="Logo">
                       <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={async e => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          setLogoError(null);
-                          setLogoUploading(true);
-                          await uploadToBucket(
-                            "lab-logos",
-                            file,
-                            "new/logos",
-                            (url, name) => setForm(prev => ({ ...prev, logoUrl: url || prev.logoUrl || "", })),
-                            msg => setLogoError(msg),
-                          );
-                          setLogoUploading(false);
-                          if (e.target) e.target.value = "";
-                        }}
+                        className="input"
+                        value={form.logoUrl}
+                        onChange={e => handleChange("logoUrl", e.target.value)}
                       />
-                    </span>
-                    {logoUploading && <p className="text-xs text-muted-foreground">Uploading…</p>}
-                    {logoError && <p className="text-xs text-destructive">{logoError}</p>}
-                  </label>
-                  <p className="text-xs text-muted-foreground">Logo avatars display for premier/custom labs.</p>
-                </div>
+                    </Field>
+                    <label className="inline-flex items-center gap-3">
+                      <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
+                        Choose file
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={async e => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setLogoError(null);
+                            setLogoUploading(true);
+                            await uploadToBucket(
+                              "lab-logos",
+                              file,
+                              "new/logos",
+                              (url, name) => setForm(prev => ({ ...prev, logoUrl: url || prev.logoUrl || "", })),
+                              msg => setLogoError(msg),
+                            );
+                            setLogoUploading(false);
+                            if (e.target) e.target.value = "";
+                          }}
+                        />
+                      </span>
+                      {logoUploading && <p className="text-xs text-muted-foreground">Uploading…</p>}
+                      {logoError && <p className="text-xs text-destructive">{logoError}</p>}
+                    </label>
+                  </div>
+                )}
 
                 <div className="space-y-3">
-                  <p className="text-sm font-medium text-foreground">Photos (base: up to 2)</p>
+                  <p className="text-sm font-medium text-foreground">Photos</p>
                   <div className="flex flex-wrap gap-2">
                     {photos.map(asset => (
                       <div key={asset.url} className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
@@ -304,12 +323,12 @@ export default function NewLab() {
                       className="inline-flex items-center rounded-full border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:border-primary"
                       onClick={() => {
                         const url = photoUrlInput.trim();
-                        if (!url || photos.length >= 2) return;
+                        if (!url || photos.length >= maxPhotos) return;
                         const name = url.split("/").pop() || `Photo ${photos.length + 1}`;
                         setPhotos(prev => [...prev, { name, url }]);
                         setPhotoUrlInput("");
                       }}
-                      disabled={photos.length >= 2}
+                      disabled={photos.length >= maxPhotos}
                     >
                       Add photo
                     </button>
@@ -322,10 +341,10 @@ export default function NewLab() {
                           type="file"
                           accept="image/*"
                           className="hidden"
-                          disabled={photos.length >= 2}
+                          disabled={photos.length >= maxPhotos}
                           onChange={async e => {
                             const file = e.target.files?.[0];
-                            if (!file || photos.length >= 2) return;
+                            if (!file || photos.length >= maxPhotos) return;
                             setPhotoError(null);
                             setPhotoUploading(true);
                             await uploadToBucket(
@@ -344,77 +363,77 @@ export default function NewLab() {
                     {photoUploading && <p className="text-xs text-muted-foreground">Uploading…</p>}
                     {photoError && <p className="text-xs text-destructive">{photoError}</p>}
                   </div>
-                  <p className="text-xs text-muted-foreground">Base labs can add 2 photos here; you can add more later in manage.</p>
                 </div>
 
-                <div className="space-y-3">
-                  <p className="text-sm font-medium text-foreground">Partner logos (premier/custom)</p>
-                  <div className="flex flex-wrap gap-2">
-                    {partnerLogos.map(asset => (
-                      <div key={asset.url} className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
-                        <span className="text-xs text-foreground break-all max-w-[200px] truncate">{asset.name || asset.url}</span>
-                        <button
-                          type="button"
-                          className="text-xs text-muted-foreground hover:text-destructive"
-                          onClick={() => setPartnerLogos(prev => prev.filter(p => p.url !== asset.url))}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
+                {canUsePartnerLogos && (
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium text-foreground">Partner logos</p>
+                    <div className="flex flex-wrap gap-2">
+                      {partnerLogos.map(asset => (
+                        <div key={asset.url} className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
+                          <span className="text-xs text-foreground break-all max-w-[200px] truncate">{asset.name || asset.url}</span>
+                          <button
+                            type="button"
+                            className="text-xs text-muted-foreground hover:text-destructive"
+                            onClick={() => setPartnerLogos(prev => prev.filter(p => p.url !== asset.url))}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        className="input flex-1"
+                        value={partnerUrlInput}
+                        onChange={e => setPartnerUrlInput(e.target.value)}
+                        placeholder="https://example.com/logo.png"
+                      />
+                      <button
+                        type="button"
+                        className="inline-flex items-center rounded-full border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:border-primary"
+                        onClick={() => {
+                          const url = partnerUrlInput.trim();
+                          if (!url) return;
+                          const name = url.split("/").pop() || `Logo ${partnerLogos.length + 1}`;
+                          setPartnerLogos(prev => [...prev, { name, url }]);
+                          setPartnerUrlInput("");
+                        }}
+                      >
+                        Add logo
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="inline-flex items-center gap-3">
+                        <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
+                          Choose file
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={async e => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              setPartnerError(null);
+                              setPartnerUploading(true);
+                              await uploadToBucket(
+                                "lab-logos",
+                                file,
+                                "new/partners",
+                                (url, name) => setPartnerLogos(prev => [...prev, { name, url }]),
+                                msg => setPartnerError(msg),
+                              );
+                              setPartnerUploading(false);
+                              if (e.target) e.target.value = "";
+                            }}
+                          />
+                        </span>
+                      </label>
+                      {partnerUploading && <p className="text-xs text-muted-foreground">Uploading…</p>}
+                      {partnerError && <p className="text-xs text-destructive">{partnerError}</p>}
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <input
-                      className="input flex-1"
-                      value={partnerUrlInput}
-                      onChange={e => setPartnerUrlInput(e.target.value)}
-                      placeholder="https://example.com/logo.png"
-                    />
-                    <button
-                      type="button"
-                      className="inline-flex items-center rounded-full border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:border-primary"
-                      onClick={() => {
-                        const url = partnerUrlInput.trim();
-                        if (!url) return;
-                        const name = url.split("/").pop() || `Logo ${partnerLogos.length + 1}`;
-                        setPartnerLogos(prev => [...prev, { name, url }]);
-                        setPartnerUrlInput("");
-                      }}
-                    >
-                      Add logo
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="inline-flex items-center gap-3">
-                      <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
-                        Choose file
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={async e => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            setPartnerError(null);
-                            setPartnerUploading(true);
-                            await uploadToBucket(
-                              "lab-logos",
-                              file,
-                              "new/partners",
-                              (url, name) => setPartnerLogos(prev => [...prev, { name, url }]),
-                              msg => setPartnerError(msg),
-                            );
-                            setPartnerUploading(false);
-                            if (e.target) e.target.value = "";
-                          }}
-                        />
-                      </span>
-                    </label>
-                    {partnerUploading && <p className="text-xs text-muted-foreground">Uploading…</p>}
-                    {partnerError && <p className="text-xs text-destructive">{partnerError}</p>}
-                  </div>
-                  <p className="text-xs text-muted-foreground">Partner logos are shown for premier/custom labs.</p>
-                </div>
+                )}
               </Section>
             )}
 
