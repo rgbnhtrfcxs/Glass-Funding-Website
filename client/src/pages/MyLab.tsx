@@ -50,6 +50,9 @@ export default function MyLab({ params }: { params: { id: string } }) {
   const [isVisible, setIsVisible] = useState<boolean>(true);
   const [photos, setPhotos] = useState<MediaAsset[]>([]);
   const [photoUrlInput, setPhotoUrlInput] = useState("");
+  const [activeTab, setActiveTab] = useState<
+    "Basics" | "Branding" | "Company details" | "Compliance" | "Photos" | "Offers & pricing"
+  >("Basics");
   const [form, setForm] = useState<Form>({
     name: "",
     location: "",
@@ -425,7 +428,25 @@ export default function MyLab({ params }: { params: { id: string } }) {
             className="mt-8 space-y-8"
             onSubmit={e => { e.preventDefault(); void save(); }}
           >
-            <Section title="Basics">
+            <div className="flex flex-wrap gap-2">
+              {(["Basics", "Branding", "Company details", "Compliance", "Photos", "Offers & pricing"] as const).map(tab => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setActiveTab(tab)}
+                  className={`rounded-full border px-4 py-1.5 text-sm font-medium transition ${
+                    activeTab === tab
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:border-primary/50 hover:text-primary"
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+
+            {activeTab === "Basics" && (
+              <Section title="Basics">
               <Field label="Lab name">
                 <input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
               </Field>
@@ -464,7 +485,9 @@ export default function MyLab({ params }: { params: { id: string } }) {
                 Offers lab space (enables pricing/offers on your page)
               </label>
             </Section>
+            )}
 
+            {activeTab === "Branding" && (
             <Section title="Branding & Links">
               {(subscriptionTier === "premier" || subscriptionTier === "custom") && (
                 <Field label="Logo">
@@ -555,7 +578,9 @@ export default function MyLab({ params }: { params: { id: string } }) {
                 />
               </Field>
             </Section>
+            )}
 
+            {activeTab === "Company details" && (
             <Section title="Company details">
               <Field label="Address line 1">
                 <input className="input" value={form.addressLine1} onChange={e => setForm({ ...form, addressLine1: e.target.value })} />
@@ -579,7 +604,9 @@ export default function MyLab({ params }: { params: { id: string } }) {
                 <input className="input" value={form.country} onChange={e => setForm({ ...form, country: e.target.value })} />
               </Field>
             </Section>
+            )}
 
+            {activeTab === "Compliance" && (
             <Section title="Compliance & capabilities">
               <Field label="Compliance">
                 <div className="space-y-2">
@@ -666,7 +693,9 @@ export default function MyLab({ params }: { params: { id: string } }) {
                 </div>
               </Field>
             </Section>
+            )}
 
+            {activeTab === "Photos" && (
             <Section title="Photos">
               <Field label="Add photo">
                 <div className="flex flex-col gap-2">
@@ -717,7 +746,9 @@ export default function MyLab({ params }: { params: { id: string } }) {
                 </div>
               )}
             </Section>
+            )}
 
+            {activeTab === "Offers & pricing" && (
             <Section title="Offers & pricing">
               <Field label="Offers">
                 <div className="flex flex-wrap gap-3">
@@ -748,6 +779,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
                 Pricing shared privately
               </label>
             </Section>
+            )}
 
             {message && <p className="text-sm text-emerald-600">{message}</p>}
             <div className="flex gap-3">
