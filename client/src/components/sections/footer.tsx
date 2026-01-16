@@ -65,7 +65,7 @@ export function Footer() {
               <a href="https://x.com/GlassFunding" className="text-muted-foreground hover:text-primary transition-colors">
                 <XIcon className="h-5 w-5" />
               </a>
-              <a href="https://www.linkedin.com/company/glass-funding/" className="text-muted-foreground hover:text-primary transition-colors">
+              <a href="" className="text-muted-foreground hover:text-primary transition-colors">
                 <Linkedin className="h-5 w-5" />
               </a>
               <a href="https://www.instagram.com/glass_funding/" className="text-muted-foreground hover:text-primary transition-colors">
