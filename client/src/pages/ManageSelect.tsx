@@ -119,49 +119,46 @@ export default function ManageSelect() {
           <p className="mt-6 text-sm text-muted-foreground">Loading labs…</p>
         ) : error ? (
           <p className="mt-6 text-sm text-destructive">{error}</p>
-        ) : filtered.length === 0 ? (
-          <p className="mt-6 text-sm text-muted-foreground">
-            No labs match that search. {labs.length === 0 ? "No lab is linked to your account yet." : ""}
-          </p>
         ) : (
+          <>
             <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            <motion.div
-              key="add-lab"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-              className="flex h-full flex-col rounded-3xl border border-dashed border-border bg-card/60 shadow-sm overflow-hidden"
-            >
-              <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <Plus className="h-6 w-6" />
+              <motion.div
+                key="add-lab"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+                className="flex h-full flex-col rounded-3xl border border-dashed border-border bg-card/60 shadow-sm overflow-hidden"
+              >
+                <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <Plus className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground">Add a new lab</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {canAddAnother
+                      ? "Create another lab profile and manage its details."
+                      : "Multi-lab management is available on Custom tier."}
+                  </p>
                 </div>
-                <h3 className="text-lg font-semibold text-foreground">Add a new lab</h3>
-                <p className="text-sm text-muted-foreground">
-                  {canAddAnother
-                    ? "Create another lab profile and manage its details."
-                    : "Multi-lab management is available on Custom tier."}
-                </p>
-              </div>
-              <div className="p-4">
-                {canAddAnother ? (
-                  <Link
-                    href="/lab/manage/new"
-                    className="inline-flex w-full items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
-                  >
-                    Add lab
-                  </Link>
-                ) : (
-                  <Link
-                    href="/payments?plan=custom#custom"
-                    className="inline-flex w-full items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                  >
-                    Upgrade to Custom
-                  </Link>
-                )}
-              </div>
-            </motion.div>
-            {filtered.map(lab => (
+                <div className="p-4">
+                  {canAddAnother ? (
+                    <Link
+                      href="/lab/manage/new"
+                      className="inline-flex w-full items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+                    >
+                      Add lab
+                    </Link>
+                  ) : (
+                    <Link
+                      href="/payments?plan=custom#custom"
+                      className="inline-flex w-full items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                    >
+                      Upgrade to Custom
+                    </Link>
+                  )}
+                </div>
+              </motion.div>
+              {filtered.map(lab => (
               <motion.div
                 key={lab.id}
                 initial={{ opacity: 0, y: 8 }}
@@ -204,7 +201,13 @@ export default function ManageSelect() {
                 </div>
               </motion.div>
             ))}
-          </div>
+            </div>
+            {filtered.length === 0 && (
+              <p className="mt-6 text-sm text-muted-foreground">
+                No labs match that search. {labs.length === 0 ? "No lab is linked to your account yet." : ""}
+              </p>
+            )}
+          </>
         )}
       </div>
     </section>
