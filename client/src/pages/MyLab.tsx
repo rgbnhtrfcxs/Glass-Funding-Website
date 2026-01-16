@@ -489,77 +489,6 @@ export default function MyLab({ params }: { params: { id: string } }) {
 
             {activeTab === "Branding" && (
             <Section title="Branding & Links">
-              {(subscriptionTier === "premier" || subscriptionTier === "custom") && (
-                <Field label="Logo">
-                  <div className="flex flex-col gap-2">
-                    <label className="inline-flex items-center gap-3">
-                      <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
-                        Choose file
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleLogoUpload}
-                          className="hidden"
-                        />
-                      </span>
-                      {form.logoUrl && (
-                        <button
-                          type="button"
-                          onClick={() => setForm({ ...form, logoUrl: "" })}
-                          className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-destructive hover:text-destructive"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </label>
-                    {logoUploading && <p className="text-xs text-muted-foreground">Uploading logo…</p>}
-                    {logoError && <p className="text-xs text-destructive">{logoError}</p>}
-                    {form.logoUrl && (
-                      <div className="mt-2 inline-flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
-                        <img src={form.logoUrl} alt={`${form.name || "Lab"} logo`} className="h-10 w-10 rounded-full object-cover" />
-                        <span className="text-xs text-muted-foreground break-all max-w-[200px] truncate">{form.logoUrl}</span>
-                      </div>
-                    )}
-                  </div>
-                </Field>
-              )}
-
-              {subscriptionTier === "premier" ? (
-                <Field label="Partner logos (premier feature)">
-                  <div className="flex flex-col gap-2">
-                    <label className="inline-flex items-center gap-3">
-                      <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
-                        Choose file
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handlePartnerLogoUpload}
-                          className="hidden"
-                        />
-                      </span>
-                    </label>
-                    {partnerLogos.length > 0 && (
-                      <div className="flex gap-3 overflow-x-auto pb-2">
-                        {partnerLogos.map(logo => (
-                          <div key={logo.url} className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 flex-shrink-0">
-                            <img src={logo.url} alt={logo.name} className="h-10 w-10 rounded object-cover" />
-                            <button
-                              type="button"
-                              onClick={() => removePartnerLogo(logo.url)}
-                              className="text-xs text-muted-foreground hover:text-destructive"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <p className="text-xs text-muted-foreground">Stored in `lab-logos` under partners/ folders. Shown for premier labs.</p>
-                  </div>
-                </Field>
-              ) : (
-                <p className="text-xs text-muted-foreground">Partner logos are available on the premier plan.</p>
-              )}
 
               <Field label="Website (optional)">
                 <input
@@ -697,6 +626,78 @@ export default function MyLab({ params }: { params: { id: string } }) {
 
             {activeTab === "Photos" && (
             <Section title="Photos">
+              {(subscriptionTier === "premier" || subscriptionTier === "custom" || subscriptionTier === "verified") && (
+                <Field label="Logo (premier feature)">
+                  <div className="flex flex-col gap-2">
+                    <label className="inline-flex items-center gap-3">
+                      <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
+                        Choose file
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLogoUpload}
+                          className="hidden"
+                        />
+                      </span>
+                      {form.logoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setForm({ ...form, logoUrl: "" })}
+                          className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-destructive hover:text-destructive"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </label>
+                    {logoUploading && <p className="text-xs text-muted-foreground">Uploading logo…</p>}
+                    {logoError && <p className="text-xs text-destructive">{logoError}</p>}
+                    {form.logoUrl && (
+                      <div className="mt-2 inline-flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
+                        <img src={form.logoUrl} alt={`${form.name || "Lab"} logo`} className="h-10 w-10 rounded-full object-cover" />
+                        <span className="text-xs text-muted-foreground break-all max-w-[200px] truncate">{form.logoUrl}</span>
+                      </div>
+                    )}
+                  </div>
+                </Field>
+              )}
+
+              {subscriptionTier === "premier" ? (
+                <Field label="Partner logos (premier feature)">
+                  <div className="flex flex-col gap-2">
+                    <label className="inline-flex items-center gap-3">
+                      <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
+                        Choose file
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handlePartnerLogoUpload}
+                          className="hidden"
+                        />
+                      </span>
+                    </label>
+                    {partnerLogos.length > 0 && (
+                      <div className="flex gap-3 overflow-x-auto pb-2">
+                        {partnerLogos.map(logo => (
+                          <div key={logo.url} className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 flex-shrink-0">
+                            <img src={logo.url} alt={logo.name} className="h-10 w-10 rounded object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => removePartnerLogo(logo.url)}
+                              className="text-xs text-muted-foreground hover:text-destructive"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">Stored in `lab-logos` under partners/ folders. Shown for premier labs.</p>
+                  </div>
+                </Field>
+              ) : (
+                <p className="text-xs text-muted-foreground">Partner logos are available on the premier plan.</p>
+              )}
+
               <Field label="Add photo">
                 <div className="flex flex-col gap-2">
                   <div className="flex flex-wrap gap-2">

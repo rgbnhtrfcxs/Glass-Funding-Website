@@ -2,7 +2,7 @@ import { Link } from "wouter";
 
 export default function PricingArchived() {
   return (
-    <div className="max-w-4xl mx-auto pt-32 px-4 pb-20 space-y-6">
+    <div className="max-w-4xl mx-auto px-4 pb-20 space-y-6">
       <div className="rounded-3xl border border-border bg-card/80 p-8 shadow-sm">
         <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-2">Beta update</p>
         <h1 className="text-3xl font-semibold mb-2">Pricing is paused during beta</h1>

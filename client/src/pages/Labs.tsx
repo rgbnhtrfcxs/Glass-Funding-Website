@@ -135,7 +135,7 @@ export default function Labs() {
 
   return (
     <section className="bg-background min-h-screen">
-      <div className="container mx-auto px-4 py-20 lg:py-24">
+      <div className="container mx-auto px-4 py-12 lg:py-16">
         <motion.div
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
@@ -417,12 +417,6 @@ export default function Labs() {
                         View details
                       </a>
                     </Link>
-                    <a
-                      href={`mailto:${lab.contactEmail}`}
-                      className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
-                    >
-                      Contact lab
-                    </a>
                   </div>
                   </motion.div>
                 );

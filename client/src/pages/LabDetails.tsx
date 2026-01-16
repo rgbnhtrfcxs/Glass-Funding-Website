@@ -62,7 +62,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   if (isLoading && !lab) {
     return (
       <section className="bg-background min-h-screen">
-        <div className="container mx-auto px-4 py-20">
+        <div className="container mx-auto px-4 py-12">
           <div className="rounded-3xl border border-border bg-card/80 p-8 text-muted-foreground">Loading lab…</div>
         </div>
       </section>
@@ -72,7 +72,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   if (!lab) {
     return (
       <section className="bg-background min-h-screen">
-        <div className="container mx-auto px-4 py-20">
+        <div className="container mx-auto px-4 py-12">
           <div className="rounded-3xl border border-border bg-card/80 p-8 text-muted-foreground">Lab not found.</div>
         </div>
       </section>
@@ -382,7 +382,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   if (isLoading && labs.length === 0) {
     return (
       <section className="bg-background min-h-screen">
-        <div className="container mx-auto px-4 py-24 max-w-3xl text-center space-y-6">
+        <div className="container mx-auto px-4 py-16 max-w-3xl text-center space-y-6">
           <h1 className="text-4xl font-semibold text-foreground">Loading lab details…</h1>
           <p className="text-muted-foreground">Pulling the latest information from the lab directory.</p>
         </div>
@@ -393,7 +393,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   if (!lab) {
     return (
       <section className="bg-background min-h-screen">
-        <div className="container mx-auto px-4 py-24 max-w-3xl text-center space-y-6">
+        <div className="container mx-auto px-4 py-16 max-w-3xl text-center space-y-6">
           <h1 className="text-4xl font-semibold text-foreground">Lab not found</h1>
           <p className="text-muted-foreground">
             We could not find the lab you were looking for. It may have been removed or you might
@@ -411,7 +411,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
 
   return (
     <section className="bg-background min-h-screen">
-      <div className="container mx-auto px-4 py-20 lg:py-24 max-w-5xl">
+      <div className="container mx-auto px-4 py-12 lg:py-16 max-w-5xl">
         <Link href="/labs" className="inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-primary">
           <ArrowLeft className="h-4 w-4" />
           Back to labs
@@ -486,7 +486,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
               <h1 className="text-4xl font-semibold text-foreground">{lab.name}</h1>
             </div>
             {lab.description ? (
-              <p className="text-muted-foreground text-base leading-relaxed">{lab.description}</p>
+              <p className="text-muted-foreground text-base leading-relaxed text-justify">{lab.description}</p>
             ) : (
               <p className="text-muted-foreground text-base leading-relaxed">
                 Review compliance, offers, and baseline expectations before requesting space. Minimum commitment:
@@ -559,9 +559,54 @@ export default function LabDetails({ params }: LabDetailsProps) {
 
             <div className="rounded-2xl border border-border/80 bg-background/50 p-6 space-y-3 md:col-span-2">
               <span className="text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground">
-                Compliance posture
+                Focus areas
               </span>
+              <p className="text-sm text-muted-foreground">
+                Primary scientific domains supported by the lab team.
+              </p>
               <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+                {lab.focusAreas.map(area => (
+                  <span
+                    key={area}
+                    className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1"
+                  >
+                    {area}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {offersLabSpace && (
+            <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
+              <h2 className="text-lg font-semibold text-foreground">Pricing & availability offers</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Labs may extend multiple engagement models; choose the approach that best matches your run plan.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {lab.offers.map(offer => (
+                  <span
+                    key={offer}
+                    className="rounded-full bg-muted/60 px-3 py-1 text-xs font-medium text-muted-foreground"
+                  >
+                    {offer}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-muted-foreground">
+                <CalendarClock className="h-4 w-4 text-primary" />
+                Minimum stay expectation: <span className="font-medium text-foreground">{lab.minimumStay}</span>
+              </div>
+            </section>
+          )}
+
+          <section className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-2xl border border-border/80 bg-background/50 p-6">
+              <h2 className="text-lg font-semibold text-foreground">Compliance posture</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Compliance certifications and baseline expectations for this lab.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2 text-sm text-muted-foreground">
                 {lab.compliance.map(item => (
                   <span
                     key={item}
@@ -594,52 +639,6 @@ export default function LabDetails({ params }: LabDetailsProps) {
                   </ul>
                 </div>
               )}
-            </div>
-          </div>
-
-          {offersLabSpace && (
-            <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
-              <h2 className="text-lg font-semibold text-foreground">Pricing & availability offers</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Labs may extend multiple engagement models; choose the approach that best matches your run plan.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {lab.offers.map(offer => (
-                  <span
-                    key={offer}
-                    className="rounded-full bg-muted/60 px-3 py-1 text-xs font-medium text-muted-foreground"
-                  >
-                    {offer}
-                  </span>
-                ))}
-              </div>
-              <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-muted-foreground">
-                <CalendarClock className="h-4 w-4 text-primary" />
-                Minimum stay expectation: <span className="font-medium text-foreground">{lab.minimumStay}</span>
-              </div>
-              <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-muted-foreground">
-                <Images className="h-4 w-4 text-primary" />
-                {lab.photos.length} photo{lab.photos.length === 1 ? "" : "s"} included
-              </div>
-            </section>
-          )}
-
-          <section className="grid gap-6 lg:grid-cols-2">
-            <div className="rounded-2xl border border-border/80 bg-background/50 p-6">
-              <h2 className="text-lg font-semibold text-foreground">Focus areas</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Primary scientific domains supported by the lab team.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {lab.focusAreas.map(area => (
-                  <span
-                    key={area}
-                    className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
-                  >
-                    {area}
-                  </span>
-                ))}
-              </div>
             </div>
 
             <div className="rounded-2xl border border-border/80 bg-background/50 p-6">

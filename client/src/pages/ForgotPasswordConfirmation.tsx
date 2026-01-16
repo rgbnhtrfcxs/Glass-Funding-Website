@@ -3,7 +3,7 @@ import { Link } from "wouter";
 export default function ForgotPasswordConfirmation() {
   return (
     <section className="bg-background min-h-screen">
-      <div className="container mx-auto px-4 pt-28 pb-20">
+      <div className="container mx-auto px-4 pb-20">
         <div className="mx-auto max-w-3xl rounded-3xl border border-border bg-card/90 p-10 text-center shadow-lg">
           <span className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/40 px-4 py-1.5 text-xs uppercase tracking-[0.3em] text-muted-foreground">
             Check your inbox

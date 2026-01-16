@@ -60,7 +60,7 @@ export default function Login() {
 
   return (
     <section className="bg-background min-h-screen">
-      <div className="container mx-auto px-4 pt-28 pb-20">
+      <div className="container mx-auto px-4 pb-20">
         <div className="mx-auto max-w-4xl grid gap-12 items-center lg:grid-cols-[1.1fr_0.9fr]">
           <div className="space-y-6">
             <span className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/40 px-4 py-1.5 text-xs uppercase tracking-[0.3em] text-muted-foreground">

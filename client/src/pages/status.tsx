@@ -79,7 +79,7 @@ export default function Status() {
 
   return (
     <section className="bg-background min-h-screen">
-      <div className="container mx-auto px-4 pt-24 pb-20">
+      <div className="container mx-auto px-4 pb-20">
         <div className="max-w-4xl">
           <span className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/40 px-4 py-1.5 text-xs uppercase tracking-[0.3em] text-muted-foreground">
             System status

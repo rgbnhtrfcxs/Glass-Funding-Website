@@ -297,7 +297,7 @@ export default function DonateFlow() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto pt-40 px-4 pb-20 space-y-6">
+    <div className="max-w-3xl mx-auto px-4 pb-20 space-y-6">
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-semibold">Support {donationLabel}</h1>
         <p className="text-sm text-muted-foreground max-w-2xl mx-auto">

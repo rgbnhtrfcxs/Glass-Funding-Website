@@ -9,7 +9,7 @@ import { FeaturedLabs } from "@/components/sections/FeaturedLabs";
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-background pt-16">
+    <div className="min-h-screen bg-background">
       <Hero />
       <FeaturedLabs
         title="Featured labs"

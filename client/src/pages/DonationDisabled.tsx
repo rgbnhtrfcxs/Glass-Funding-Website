@@ -2,7 +2,7 @@ import { Link } from "wouter";
 
 export default function DonationDisabled() {
   return (
-    <div className="max-w-3xl mx-auto pt-32 px-4 pb-20">
+    <div className="max-w-3xl mx-auto px-4 pb-20">
       <div className="rounded-3xl border border-border bg-card/80 p-8 shadow-sm space-y-4 text-center">
         <h1 className="text-2xl font-semibold">Donations are paused for now</h1>
         <p className="text-sm text-muted-foreground">

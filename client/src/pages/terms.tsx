@@ -2,7 +2,7 @@ import React from 'react';
 
 export default function Terms() {
   return (
-    <main className="container mx-auto px-4 py-10 pt-24">
+    <main className="container mx-auto px-4 py-10">
       <h1 className="text-3xl font-bold mb-6">Terms of Use</h1>
       <p>Welcome to GLASS-Connect. By accessing or using our website, you agree to the following terms and conditions. Please read them carefully.</p>
 

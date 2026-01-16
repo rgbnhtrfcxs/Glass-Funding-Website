@@ -89,7 +89,7 @@ export default function LabCollaboration({ params }: Props) {
 
   return (
     <section className="bg-background min-h-screen">
-      <div className="container mx-auto px-4 pt-28 pb-20 max-w-2xl">
+      <div className="container mx-auto px-4 pb-20 max-w-2xl">
         <Link href={`/labs/${labId}`} className="text-sm text-muted-foreground hover:text-primary">Back to lab</Link>
         <h1 className="mt-4 text-2xl font-semibold text-foreground">Propose a collaboration</h1>
         <p className="mt-2 text-sm text-muted-foreground">

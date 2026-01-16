@@ -10,7 +10,7 @@ export default function DonationConfirmation() {
   const isSuccess = status === "success";
 
   return (
-    <div className="max-w-3xl mx-auto pt-32 px-4 pb-20">
+    <div className="max-w-3xl mx-auto px-4 pb-20">
       <div className="rounded-3xl border border-border bg-card/80 p-8 shadow-sm space-y-4 text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary text-xl font-semibold">
           {isSuccess ? "✓" : "!"}

@@ -39,7 +39,7 @@ const history = [
 
 export default function Roadmap() {
   return (
-    <div className="min-h-screen bg-background pt-32 pb-32">
+    <div className="min-h-screen bg-background pb-32">
       <div className="container mx-auto px-4">
         <div className="max-w-3xl">
           <h1 className="text-4xl md:text-5xl font-bold mb-6">Product Roadmap</h1>

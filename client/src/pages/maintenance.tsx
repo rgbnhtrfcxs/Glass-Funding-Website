@@ -4,7 +4,7 @@ import { Wrench } from "lucide-react";
 export default function Maintenance() {
   return (
     <section className="bg-background min-h-screen">
-      <div className="container mx-auto px-4 pt-28 pb-20 flex flex-col items-center text-center">
+      <div className="container mx-auto px-4 pb-20 flex flex-col items-center text-center">
         <span className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/40 px-4 py-1.5 text-xs uppercase tracking-[0.3em] text-muted-foreground">
           Scheduled maintenance
         </span>
