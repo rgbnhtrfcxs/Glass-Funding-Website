@@ -43,6 +43,7 @@ const LAB_SELECT = `
   lab_compliance_docs (name, url),
   lab_publications (title, url),
   lab_patents (title, url),
+  hal_structure_id,
   lab_equipment (item),
   lab_focus_areas (focus_area),
   lab_offers (offer)
@@ -79,6 +80,7 @@ type LabRow = {
   lab_compliance_docs: Array<{ name: string; url: string }> | null;
   lab_publications: Array<{ title: string; url: string }> | null;
   lab_patents: Array<{ title: string; url: string }> | null;
+  hal_structure_id: string | null;
   lab_equipment: Array<{ item: string }> | null;
   lab_focus_areas: Array<{ focus_area: string }> | null;
   lab_offers: Array<{ offer: OfferOption }> | null;
@@ -162,6 +164,7 @@ function mapLabRow(row: LabRow): LabPartner {
     complianceDocs: (row.lab_compliance_docs ?? []).map(doc => ({ name: doc.name, url: doc.url })),
     publications: (row.lab_publications ?? []).map(item => ({ title: item.title, url: item.url })),
     patents: (row.lab_patents ?? []).map(item => ({ title: item.title, url: item.url })),
+    halStructureId: row.hal_structure_id || null,
     isVerified: parseBoolean(row.is_verified),
     isVisible: parseBoolean(row.is_visible, true),
     equipment: (row.lab_equipment ?? []).map(item => item.item),
@@ -348,6 +351,7 @@ export class LabStore {
         website: data.website ?? null,
         linkedin: data.linkedin ?? null,
         field: data.field ?? null,
+        hal_structure_id: data.halStructureId ?? null,
         is_verified: data.isVerified,
         is_visible: data.isVisible,
         price_privacy: data.pricePrivacy,
@@ -399,6 +403,7 @@ export class LabStore {
     if (Object.prototype.hasOwnProperty.call(updates, "logoUrl")) baseUpdates.logo_url = parsed.logoUrl ?? null;
     if (Object.prototype.hasOwnProperty.call(updates, "descriptionShort")) baseUpdates.description_short = parsed.descriptionShort ?? null;
     if (Object.prototype.hasOwnProperty.call(updates, "descriptionLong")) baseUpdates.description_long = parsed.descriptionLong ?? null;
+    if (Object.prototype.hasOwnProperty.call(updates, "halStructureId")) baseUpdates.hal_structure_id = parsed.halStructureId ?? null;
     if (Object.prototype.hasOwnProperty.call(updates, "offersLabSpace"))
       baseUpdates.offers_lab_space = parsed.offersLabSpace ?? true;
     if (Object.prototype.hasOwnProperty.call(updates, "addressLine1")) baseUpdates.address_line1 = parsed.addressLine1 ?? null;

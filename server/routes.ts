@@ -366,6 +366,47 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  // --------- HAL publications ----------
+  app.get("/api/labs/:id/hal-publications", async (req, res) => {
+    try {
+      const labId = Number(req.params.id);
+      if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
+
+      const { data, error } = await supabase
+        .from("labs")
+        .select("hal_structure_id")
+        .eq("id", labId)
+        .maybeSingle();
+      if (error) throw error;
+      const halId = data?.hal_structure_id;
+      if (!halId) return res.status(404).json({ message: "HAL ID not set" });
+
+      const params = new URLSearchParams();
+      params.set("q", `structId_s:${halId}`);
+      params.set("wt", "json");
+      params.set("rows", "50");
+      params.set("fl", "title_s,uri_s,doiId_s,publicationDateY_i,authFullName_s");
+
+      const response = await fetch(`https://api.archives-ouvertes.fr/search/?${params.toString()}`);
+      if (!response.ok) {
+        const txt = await response.text();
+        return res.status(500).json({ message: "HAL error", detail: txt });
+      }
+      const payload = await response.json();
+      const docs = payload?.response?.docs ?? [];
+      const items = docs.map((doc: any) => ({
+        title: Array.isArray(doc.title_s) ? doc.title_s[0] : doc.title_s,
+        url: doc.uri_s || doc.doiId_s || "",
+        doi: doc.doiId_s || null,
+        year: doc.publicationDateY_i || null,
+        authors: doc.authFullName_s || [],
+      }));
+      res.json({ items });
+    } catch (err) {
+      res.status(500).json({ message: err instanceof Error ? err.message : "Unable to load HAL publications" });
+    }
+  });
+
   // --------- Waitlist ----------
   app.post("/api/waitlist", async (req, res) => {
     try {

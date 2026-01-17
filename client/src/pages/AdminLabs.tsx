@@ -51,6 +51,7 @@ interface LabFormState {
   pricePrivacy: PricePrivacyOption;
   equipment: string;
   focusAreas: string;
+  halStructureId: string;
   offers: OfferOption[];
   minimumStay: string;
   rating: string;
@@ -82,6 +83,7 @@ const emptyForm: LabFormState = {
   pricePrivacy: "no",
   equipment: "",
   focusAreas: "",
+  halStructureId: "",
   offers: [],
   minimumStay: "",
   rating: "",
@@ -114,6 +116,7 @@ function labToForm(lab: LabPartner): LabFormState {
     pricePrivacy: lab.pricePrivacy ? "yes" : "no",
     equipment: lab.equipment.join(", "),
     focusAreas: lab.focusAreas.join(", "),
+    halStructureId: lab.halStructureId || "",
     offers: [...lab.offers],
     minimumStay: lab.minimumStay,
     rating: lab.rating.toString(),
@@ -196,6 +199,7 @@ function formToPayload(
     photos,
     complianceDocs,
     isVisible: form.isVisible === "yes",
+    halStructureId: form.halStructureId.trim() || null,
   };
 }
 
@@ -910,6 +914,20 @@ export default function AdminLabs() {
                       placeholder="Suite, floor, etc."
                     />
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground" htmlFor="lab-hal-id">
+                    HAL structure ID (optional)
+                  </label>
+                  <input
+                    id="lab-hal-id"
+                    type="text"
+                    value={formState.halStructureId}
+                    onChange={event => handleChange("halStructureId", event.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    placeholder="struct-123456"
+                  />
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-3">

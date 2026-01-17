@@ -106,6 +106,10 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [favoriteError, setFavoriteError] = useState<string | null>(null);
   const [showAllEquipment, setShowAllEquipment] = useState(false);
+  const [showHalModal, setShowHalModal] = useState(false);
+  const [halItems, setHalItems] = useState<Array<{ title: string; url: string; year?: number | null; doi?: string | null }>>([]);
+  const [halLoading, setHalLoading] = useState(false);
+  const [halError, setHalError] = useState<string | null>(null);
   const [viewRecorded, setViewRecorded] = useState(false);
   const [showInvestor, setShowInvestor] = useState(false);
   const [investorName, setInvestorName] = useState("");
@@ -212,6 +216,33 @@ export default function LabDetails({ params }: LabDetailsProps) {
       active = false;
     };
   }, [lab.id, user?.id]);
+
+  useEffect(() => {
+    if (!showHalModal || !lab?.id) return;
+    let active = true;
+    setHalLoading(true);
+    setHalError(null);
+    fetch(`/api/labs/${lab.id}/hal-publications`)
+      .then(async res => {
+        if (!res.ok) {
+          const txt = await res.text();
+          throw new Error(txt || "Unable to load publications");
+        }
+        return res.json();
+      })
+      .then(data => {
+        if (active) setHalItems(data?.items ?? []);
+      })
+      .catch(err => {
+        if (active) setHalError(err instanceof Error ? err.message : "Unable to load publications");
+      })
+      .finally(() => {
+        if (active) setHalLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [showHalModal, lab?.id]);
 
   useEffect(() => {
     if (viewRecorded) return;
@@ -677,49 +708,24 @@ export default function LabDetails({ params }: LabDetailsProps) {
             </div>
           </section>
 
-          {(lab.publications.length > 0 || lab.patents.length > 0) && (
-            <section className="grid gap-6 lg:grid-cols-2">
-              {lab.publications.length > 0 && (
-                <div className="rounded-2xl border border-border/80 bg-background/50 p-6">
-                  <h2 className="text-lg font-semibold text-foreground">Publications</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">Recent research outputs from this lab.</p>
-                  <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-                    {lab.publications.map(item => (
-                      <a
-                        key={item.url}
-                        href={item.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-between gap-2 rounded-xl border border-border px-3 py-2 hover:border-primary hover:text-primary transition"
-                      >
-                        <span className="truncate">{item.title}</span>
-                        <ArrowUpRight className="h-4 w-4 flex-shrink-0" />
-                      </a>
-                    ))}
-                  </div>
+          {lab.halStructureId && (
+            <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Publications & patents</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    View the lab&apos;s publications from HAL.
+                  </p>
                 </div>
-              )}
-
-              {lab.patents.length > 0 && (
-                <div className="rounded-2xl border border-border/80 bg-background/50 p-6">
-                  <h2 className="text-lg font-semibold text-foreground">Patents</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">Selected patents and IP linked to the lab.</p>
-                  <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-                    {lab.patents.map(item => (
-                      <a
-                        key={item.url}
-                        href={item.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-between gap-2 rounded-xl border border-border px-3 py-2 hover:border-primary hover:text-primary transition"
-                      >
-                        <span className="truncate">{item.title}</span>
-                        <ArrowUpRight className="h-4 w-4 flex-shrink-0" />
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
+                <button
+                  type="button"
+                  onClick={() => setShowHalModal(true)}
+                  className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                >
+                  View publications
+                  <ArrowUpRight className="h-4 w-4" />
+                </button>
+              </div>
             </section>
           )}
 
@@ -738,7 +744,48 @@ export default function LabDetails({ params }: LabDetailsProps) {
                 ))}
               </div>
             </div>
-          )}
+        )}
+
+        {showHalModal && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4 py-8">
+            <div className="w-full max-w-3xl rounded-3xl border border-border bg-background p-6 shadow-xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-foreground">HAL publications</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowHalModal(false)}
+                  className="rounded-full border border-border px-3 py-1 text-sm text-muted-foreground hover:border-primary hover:text-primary"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="mt-4 space-y-3">
+                {halLoading && <p className="text-sm text-muted-foreground">Loading publications…</p>}
+                {halError && <p className="text-sm text-destructive">{halError}</p>}
+                {!halLoading && !halError && halItems.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No publications found for this lab.</p>
+                )}
+                {halItems.map(item => (
+                  <a
+                    key={item.url}
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary transition"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-foreground">{item.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {item.year ? `${item.year} • ` : ""}{item.doi || item.url}
+                      </p>
+                    </div>
+                    <ArrowUpRight className="h-4 w-4 flex-shrink-0" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
           <footer className="flex flex-wrap gap-3 mt-6">
             <button
