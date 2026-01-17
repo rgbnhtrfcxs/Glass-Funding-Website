@@ -107,7 +107,10 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const [favoriteError, setFavoriteError] = useState<string | null>(null);
   const [showAllEquipment, setShowAllEquipment] = useState(false);
   const [showHalModal, setShowHalModal] = useState(false);
-  const [halItems, setHalItems] = useState<Array<{ title: string; url: string; year?: number | null; doi?: string | null }>>([]);
+  const [halModalType, setHalModalType] = useState<"publications" | "patents">("publications");
+  const [halItems, setHalItems] = useState<
+    Array<{ title: string; url: string; year?: number | null; doi?: string | null }>
+  >([]);
   const [halLoading, setHalLoading] = useState(false);
   const [halError, setHalError] = useState<string | null>(null);
   const [viewRecorded, setViewRecorded] = useState(false);
@@ -222,11 +225,13 @@ export default function LabDetails({ params }: LabDetailsProps) {
     let active = true;
     setHalLoading(true);
     setHalError(null);
-    fetch(`/api/labs/${lab.id}/hal-publications`)
+    const endpoint =
+      halModalType === "patents" ? `/api/labs/${lab.id}/hal-patents` : `/api/labs/${lab.id}/hal-publications`;
+    fetch(endpoint)
       .then(async res => {
         if (!res.ok) {
           const txt = await res.text();
-          throw new Error(txt || "Unable to load publications");
+          throw new Error(txt || `Unable to load ${halModalType}`);
         }
         return res.json();
       })
@@ -234,7 +239,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
         if (active) setHalItems(data?.items ?? []);
       })
       .catch(err => {
-        if (active) setHalError(err instanceof Error ? err.message : "Unable to load publications");
+        if (active) setHalError(err instanceof Error ? err.message : `Unable to load ${halModalType}`);
       })
       .finally(() => {
         if (active) setHalLoading(false);
@@ -242,7 +247,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
     return () => {
       active = false;
     };
-  }, [showHalModal, lab?.id]);
+  }, [showHalModal, halModalType, lab?.id]);
 
   useEffect(() => {
     if (viewRecorded) return;
@@ -708,23 +713,39 @@ export default function LabDetails({ params }: LabDetailsProps) {
             </div>
           </section>
 
-          {lab.halStructureId && (
+          {(lab.halStructureId || lab.halPersonId) && (
             <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold text-foreground">Publications & patents</h2>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    View the lab&apos;s publications from HAL.
+                    View the lab&apos;s publications and patents from HAL.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowHalModal(true)}
-                  className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                >
-                  View publications
-                  <ArrowUpRight className="h-4 w-4" />
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHalModalType("publications");
+                      setShowHalModal(true);
+                    }}
+                    className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                  >
+                    View publications
+                    <ArrowUpRight className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHalModalType("patents");
+                      setShowHalModal(true);
+                    }}
+                    className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                  >
+                    View patents
+                    <ArrowUpRight className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             </section>
           )}
@@ -750,7 +771,9 @@ export default function LabDetails({ params }: LabDetailsProps) {
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4 py-8">
             <div className="w-full max-w-3xl rounded-3xl border border-border bg-background p-6 shadow-xl">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-foreground">HAL publications</h3>
+                <h3 className="text-lg font-semibold text-foreground">
+                  {halModalType === "patents" ? "HAL patents" : "HAL publications"}
+                </h3>
                 <button
                   type="button"
                   onClick={() => setShowHalModal(false)}
@@ -760,14 +783,20 @@ export default function LabDetails({ params }: LabDetailsProps) {
                 </button>
               </div>
               <div className="mt-4 space-y-3">
-                {halLoading && <p className="text-sm text-muted-foreground">Loading publications…</p>}
+                {halLoading && (
+                  <p className="text-sm text-muted-foreground">
+                    Loading {halModalType === "patents" ? "patents" : "publications"}…
+                  </p>
+                )}
                 {halError && <p className="text-sm text-destructive">{halError}</p>}
                 {!halLoading && !halError && halItems.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No publications found for this lab.</p>
+                  <p className="text-sm text-muted-foreground">
+                    No {halModalType === "patents" ? "patents" : "publications"} found for this lab.
+                  </p>
                 )}
                 {halItems.map(item => (
                   <a
-                    key={item.url}
+                    key={`${item.url}-${item.title}`}
                     href={item.url}
                     target="_blank"
                     rel="noopener noreferrer"

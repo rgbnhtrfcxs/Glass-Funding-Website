@@ -27,6 +27,7 @@ type Form = {
   publications: { title: string; url: string }[];
   patents: { title: string; url: string }[];
   halStructureId: string;
+  halPersonId: string;
   equipmentTags: string[];
   focusTags: string[];
   offers: OfferOption[];
@@ -78,6 +79,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
     publications: [],
     patents: [],
     halStructureId: "",
+    halPersonId: "",
     equipmentTags: [],
     focusTags: [],
     offers: [],
@@ -287,6 +289,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
         publications: lab.publications || [],
         patents: lab.patents || [],
         halStructureId: lab.halStructureId || "",
+        halPersonId: lab.halPersonId || "",
         equipmentTags: lab.equipment || [],
         focusTags: lab.focusAreas || [],
         offers: lab.offers || [],
@@ -365,6 +368,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
           publications: form.publications,
           patents: form.patents,
           halStructureId: form.halStructureId || null,
+          halPersonId: form.halPersonId || null,
           equipment: form.equipmentTags,
           focusAreas: form.focusTags,
           offers: form.offers,
@@ -519,6 +523,14 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   value={form.halStructureId}
                   onChange={e => setForm({ ...form, halStructureId: e.target.value })}
                   placeholder="e.g., struct-123456"
+                />
+              </Field>
+              <Field label="HAL person ID (optional)">
+                <input
+                  className="input"
+                  value={form.halPersonId}
+                  onChange={e => setForm({ ...form, halPersonId: e.target.value })}
+                  placeholder="e.g., 123456"
                 />
               </Field>
               <label className="flex items-center gap-3 text-sm text-foreground">

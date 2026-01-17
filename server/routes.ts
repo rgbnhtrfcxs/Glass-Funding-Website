@@ -374,20 +374,31 @@ export function registerRoutes(app: Express) {
 
       const { data, error } = await supabase
         .from("labs")
-        .select("hal_structure_id")
+        .select("hal_structure_id, hal_person_id")
         .eq("id", labId)
         .maybeSingle();
       if (error) throw error;
-      const halId = data?.hal_structure_id;
-      if (!halId) return res.status(404).json({ message: "HAL ID not set" });
+      const halStructureId = data?.hal_structure_id;
+      const halPersonId = data?.hal_person_id;
+      if (!halStructureId && !halPersonId) return res.status(404).json({ message: "HAL ID not set" });
 
       const params = new URLSearchParams();
-      const numericId = halId.replace(/\D/g, "");
-      const queryParts = [`structId_s:${halId}`];
-      if (numericId) {
-        queryParts.push(`structId_i:${numericId}`);
+      const queryParts: string[] = [];
+      if (halStructureId) {
+        const numericId = halStructureId.replace(/\D/g, "");
+        queryParts.push(`structId_s:${halStructureId}`);
+        if (numericId) {
+          queryParts.push(`structId_i:${numericId}`);
+        }
       }
-      params.set("q", queryParts.join(" OR "));
+      if (halPersonId) {
+        const numericId = halPersonId.replace(/\D/g, "");
+        queryParts.push(`authId_s:${halPersonId}`);
+        if (numericId) {
+          queryParts.push(`authId_i:${numericId}`);
+        }
+      }
+      params.set("q", queryParts.length > 1 ? `(${queryParts.join(" OR ")})` : queryParts[0]);
       params.set("wt", "json");
       params.set("rows", "50");
       params.set("fl", "title_s,uri_s,doiId_s,publicationDateY_i,authFullName_s");
@@ -409,6 +420,64 @@ export function registerRoutes(app: Express) {
       res.json({ items });
     } catch (err) {
       res.status(500).json({ message: err instanceof Error ? err.message : "Unable to load HAL publications" });
+    }
+  });
+
+  // --------- HAL patents ----------
+  app.get("/api/labs/:id/hal-patents", async (req, res) => {
+    try {
+      const labId = Number(req.params.id);
+      if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
+
+      const { data, error } = await supabase
+        .from("labs")
+        .select("hal_structure_id, hal_person_id")
+        .eq("id", labId)
+        .maybeSingle();
+      if (error) throw error;
+      const halStructureId = data?.hal_structure_id;
+      const halPersonId = data?.hal_person_id;
+      if (!halStructureId && !halPersonId) return res.status(404).json({ message: "HAL ID not set" });
+
+      const params = new URLSearchParams();
+      const queryParts: string[] = [];
+      if (halStructureId) {
+        const numericId = halStructureId.replace(/\D/g, "");
+        queryParts.push(`structId_s:${halStructureId}`);
+        if (numericId) {
+          queryParts.push(`structId_i:${numericId}`);
+        }
+      }
+      if (halPersonId) {
+        const numericId = halPersonId.replace(/\D/g, "");
+        queryParts.push(`authId_s:${halPersonId}`);
+        if (numericId) {
+          queryParts.push(`authId_i:${numericId}`);
+        }
+      }
+      const query = queryParts.length > 1 ? `(${queryParts.join(" OR ")})` : queryParts[0];
+      params.set("q", `${query} AND docType_s:patent`);
+      params.set("wt", "json");
+      params.set("rows", "50");
+      params.set("fl", "title_s,uri_s,doiId_s,publicationDateY_i,authFullName_s");
+
+      const response = await fetch(`https://api.archives-ouvertes.fr/search/?${params.toString()}`);
+      if (!response.ok) {
+        const txt = await response.text();
+        return res.status(500).json({ message: "HAL error", detail: txt });
+      }
+      const payload = await response.json();
+      const docs = payload?.response?.docs ?? [];
+      const items = docs.map((doc: any) => ({
+        title: Array.isArray(doc.title_s) ? doc.title_s[0] : doc.title_s,
+        url: doc.uri_s || doc.doiId_s || "",
+        doi: doc.doiId_s || null,
+        year: doc.publicationDateY_i || null,
+        authors: doc.authFullName_s || [],
+      }));
+      res.json({ items });
+    } catch (err) {
+      res.status(500).json({ message: err instanceof Error ? err.message : "Unable to load HAL patents" });
     }
   });
 

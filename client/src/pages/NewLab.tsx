@@ -39,6 +39,7 @@ export default function NewLab() {
     publications: [] as { title: string; url: string }[],
     patents: [] as { title: string; url: string }[],
     halStructureId: "",
+    halPersonId: "",
   });
   const [photos, setPhotos] = useState<MediaAsset[]>([]);
   const [partnerLogos, setPartnerLogos] = useState<MediaAsset[]>([]);
@@ -166,6 +167,7 @@ export default function NewLab() {
         publications: form.publications,
         patents: form.patents,
         halStructureId: form.halStructureId.trim() || null,
+        halPersonId: form.halPersonId.trim() || null,
       });
       setLocation(`/lab/manage/${created.id}`);
     } catch (err: any) {
@@ -273,6 +275,14 @@ export default function NewLab() {
                     value={form.halStructureId}
                     onChange={e => handleChange("halStructureId", e.target.value)}
                     placeholder="e.g., struct-123456"
+                  />
+                </Field>
+                <Field label="HAL person ID (optional)">
+                  <input
+                    className="w-full rounded-xl border-2 border-primary/30 bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    value={form.halPersonId}
+                    onChange={e => handleChange("halPersonId", e.target.value)}
+                    placeholder="e.g., 123456"
                   />
                 </Field>
                 <label className="inline-flex items-center gap-2 text-sm text-foreground">

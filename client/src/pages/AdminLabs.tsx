@@ -52,6 +52,7 @@ interface LabFormState {
   equipment: string;
   focusAreas: string;
   halStructureId: string;
+  halPersonId: string;
   offers: OfferOption[];
   minimumStay: string;
   rating: string;
@@ -84,6 +85,7 @@ const emptyForm: LabFormState = {
   equipment: "",
   focusAreas: "",
   halStructureId: "",
+  halPersonId: "",
   offers: [],
   minimumStay: "",
   rating: "",
@@ -117,6 +119,7 @@ function labToForm(lab: LabPartner): LabFormState {
     equipment: lab.equipment.join(", "),
     focusAreas: lab.focusAreas.join(", "),
     halStructureId: lab.halStructureId || "",
+    halPersonId: lab.halPersonId || "",
     offers: [...lab.offers],
     minimumStay: lab.minimumStay,
     rating: lab.rating.toString(),
@@ -200,6 +203,7 @@ function formToPayload(
     complianceDocs,
     isVisible: form.isVisible === "yes",
     halStructureId: form.halStructureId.trim() || null,
+    halPersonId: form.halPersonId.trim() || null,
   };
 }
 
@@ -927,6 +931,19 @@ export default function AdminLabs() {
                     onChange={event => handleChange("halStructureId", event.target.value)}
                     className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     placeholder="struct-123456"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground" htmlFor="lab-hal-person-id">
+                    HAL person ID (optional)
+                  </label>
+                  <input
+                    id="lab-hal-person-id"
+                    type="text"
+                    value={formState.halPersonId}
+                    onChange={event => handleChange("halPersonId", event.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    placeholder="123456"
                   />
                 </div>
 

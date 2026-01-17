@@ -43,6 +43,7 @@ export const labCoreSchema = z.object({
   publications: z.array(linkAssetSchema).default([]),
   patents: z.array(linkAssetSchema).default([]),
   halStructureId: z.string().min(1).optional().nullable(),
+  halPersonId: z.string().min(1).optional().nullable(),
   isVerified: z.boolean().default(false),
   isVisible: z.boolean().default(true),
   equipment: z.array(z.string().min(1)).default([]),
