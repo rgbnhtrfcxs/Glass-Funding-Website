@@ -43,6 +43,7 @@ import DonationFlow from "@/pages/DonationFlow";
 import DonationConfirmation from "@/pages/DonationConfirmation";
 import PricingArchived from "@/pages/PricingArchived";
 import DonationDisabled from "@/pages/DonationDisabled";
+import Subscribe from "@/pages/Subscribe";
 import { LabsProvider } from "@/context/LabsContext";
 import { AuthProvider } from "@/context/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -115,8 +116,9 @@ function Router() {
       <LabRoute path="/lab/manage/:id" component={MyLab} />
       <Route path="/payments" component={PaymentFlow} />
       <Route path="/stripe" component={StripeCheckout} />
-      {/* Donations paused for deployment; original flow retained for later */}
       <Route path="/donate" component={DonationDisabled} />
+      <Route path="/donate-confirmation" component={DonationConfirmation} />
+      <Route path="/subscribe" component={Subscribe} />
       <Route path="/logout" component={Logout} />
 
       {/* Auth Pages */}
@@ -128,7 +130,6 @@ function Router() {
       {/* Base Pages */}
       <Route path="/" component={Home} />
       <Route path="/about" component={About} />
-      {/* Pricing archived during beta; original page kept for later */}
       <Route path="/pricing" component={PricingArchived} />
       <Route path="/contact" component={Contact} />
       <Route path="/one-pagers" component={OnePagers} />

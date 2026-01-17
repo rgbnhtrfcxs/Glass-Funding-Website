@@ -19,7 +19,7 @@ export default function DonateFlow() {
   const [storedEmail, setStoredEmail] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [recurring, setRecurring] = useState(true);
-  const feeRate = 0.25;
+  const feeRate = 0.025;
   const [details, setDetails] = useState({
     fullName: "",
     companyName: "",

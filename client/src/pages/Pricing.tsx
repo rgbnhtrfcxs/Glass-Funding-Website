@@ -1,14 +1,24 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowUpRight, Sparkles, ShieldCheck, ClipboardCheck } from "lucide-react";
+import { ArrowUpRight, Sparkles, ClipboardCheck } from "lucide-react";
 import { Link } from "wouter";
 import { usePricing } from "@/hooks/usePricing";
 
 export default function Pricing() {
   const { tiers } = usePricing();
+  const [interval, setInterval] = useState<"monthly" | "yearly">("yearly");
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+
+  const startCheckout = (plan: string) => {
+    setCheckoutError(null);
+    setCheckoutLoading(plan);
+    window.location.href = `/subscribe?plan=${plan}&interval=${interval}`;
+  };
 
   return (
     <section className="bg-background min-h-screen">
-      <div className="container mx-auto px-4 py-24 lg:py-28">
+      <div className="container mx-auto px-4 py-12 lg:py-16">
         <motion.div
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
@@ -40,58 +50,114 @@ export default function Pricing() {
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
-          className="mt-14 grid gap-6 lg:grid-cols-2"
+          className="mt-14"
         >
-          {tiers.map(tier => {
-            const plan = tier.name.toLowerCase();
-            const paymentHref = tier.name === "Custom" ? `/payments?plan=${plan}#custom` : `/payments?plan=${plan}`;
-            const priceVal: any = (tier as any).monthly_price ?? (tier as any).monthlyPrice;
-            const isFree = priceVal === 0 || priceVal === "0";
-            const hasPrice = priceVal !== null && priceVal !== undefined && !isFree;
-            const priceLabel = isFree ? "Free" : hasPrice ? `€${priceVal}` : "Custom";
-            return (
-              <article
-                key={tier.name}
-                className={`rounded-[32px] border border-border bg-card/90 p-8 shadow-sm ${
-                  tier.featured ? "lg:col-span-2 bg-gradient-to-br from-card to-primary/5" : ""
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+            <div className="text-sm text-muted-foreground">
+              Billing
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/80 p-1 text-sm">
+              <button
+                type="button"
+                onClick={() => setInterval("monthly")}
+                className={`rounded-full px-4 py-1.5 font-medium transition ${
+                  interval === "monthly"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-primary"
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <div>
+                Monthly
+              </button>
+              <button
+                type="button"
+                onClick={() => setInterval("yearly")}
+                className={`rounded-full px-4 py-1.5 font-medium transition ${
+                  interval === "yearly"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-primary"
+                }`}
+              >
+                Yearly
+              </button>
+            </div>
+          </div>
+          <div className="grid gap-6 lg:grid-cols-3">
+            {tiers.map(tier => {
+              const plan = tier.name.toLowerCase();
+              const paymentHref = tier.name === "Custom" ? `/payments?plan=${plan}#custom` : `/payments?plan=${plan}`;
+              const priceVal: any = (tier as any).monthly_price ?? (tier as any).monthlyPrice;
+              const isFree = priceVal === 0 || priceVal === "0";
+              const hasPrice = priceVal !== null && priceVal !== undefined && !isFree;
+              const priceLabel = isFree ? "Free" : hasPrice ? `€${priceVal}` : "Custom";
+              const isFeatured = tier.name.toLowerCase() === "verified";
+              return (
+                <article
+                  key={tier.name}
+                  className={`relative flex h-full flex-col rounded-[28px] border border-border bg-card/90 p-7 shadow-sm ${
+                    isFeatured ? "ring-2 ring-primary/50 bg-gradient-to-br from-card to-primary/10" : ""
+                  }`}
+                >
+                  {isFeatured && (
+                    <span className="absolute right-6 top-6 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-primary">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Most popular
+                    </span>
+                  )}
+                  <div className="space-y-3">
                     <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">{tier.name}</p>
-                    <p className="mt-3 text-4xl font-semibold text-foreground">
-                      {priceLabel}
-                      {hasPrice && <span className="text-base text-muted-foreground"> / month</span>}
-                    </p>
+                    <div className="flex items-end gap-2">
+                      <span className="text-4xl font-semibold text-foreground">{priceLabel}</span>
+                      {hasPrice && <span className="text-sm text-muted-foreground">/ month</span>}
+                    </div>
+                    <p className="text-sm text-muted-foreground">{tier.description}</p>
                   </div>
-                  {tier.featured && <Sparkles className="h-6 w-6 text-primary" />}
-                </div>
-                <p className="mt-4 text-sm text-muted-foreground">{tier.description}</p>
-                <ul className="mt-6 space-y-3 text-sm text-muted-foreground">
-                  {tier.highlights.map(item => (
-                    <li key={item} className="flex items-center gap-3">
-                      <ClipboardCheck className="h-4 w-4 text-primary" />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-                {tier.name === "Custom" ? (
-                  <Link href={paymentHref}>
-                    <a className="mt-6 inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary">
-                      Talk to partnerships
-                      <ArrowUpRight className="ml-2 h-4 w-4" />
-                    </a>
-                  </Link>
-                ) : (
-                  <Link href={paymentHref}>
-                    <a className="mt-6 inline-flex items-center rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:bg-foreground/90">
-                      Get started
-                    </a>
-                  </Link>
-                )}
-              </article>
-            );
-          })}
+
+                  <div className="mt-6 flex-1">
+                    <h3 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+                      What&apos;s included
+                    </h3>
+                    <ul className="mt-4 space-y-3 text-sm text-muted-foreground">
+                      {tier.highlights.map(item => (
+                        <li key={item} className="flex items-start gap-3">
+                          <ClipboardCheck className="mt-0.5 h-4 w-4 text-primary" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="mt-6">
+                    {tier.name === "Custom" ? (
+                      <Link href="/contact">
+                        <a className="inline-flex w-full items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary">
+                          Talk to partnerships
+                          <ArrowUpRight className="ml-2 h-4 w-4" />
+                        </a>
+                      </Link>
+                    ) : tier.name === "Base" ? (
+                      <Link href="/signup">
+                        <a className="inline-flex w-full items-center justify-center rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:bg-foreground/90">
+                          Get started free
+                        </a>
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => startCheckout(plan)}
+                        disabled={checkoutLoading === plan}
+                        className="inline-flex w-full items-center justify-center rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:bg-foreground/90 disabled:opacity-60"
+                      >
+                        {checkoutLoading === plan ? "Redirecting…" : "Get started"}
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+          {checkoutError && (
+            <p className="mt-4 text-sm text-destructive">{checkoutError}</p>
+          )}
         </motion.div>
 
         <motion.div

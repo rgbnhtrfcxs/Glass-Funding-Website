@@ -208,6 +208,164 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  // --------- Stripe Checkout for subscriptions ----------
+  app.post("/api/subscriptions/checkout", async (req, res) => {
+    try {
+      const { plan, interval } = req.body ?? {};
+      const planKey = typeof plan === "string" ? plan.toLowerCase() : "";
+      const intervalKey = typeof interval === "string" ? interval.toLowerCase() : "monthly";
+      if (!planKey || !["verified", "premier"].includes(planKey)) {
+        return res.status(400).json({ message: "Invalid plan" });
+      }
+      if (!["monthly", "yearly"].includes(intervalKey)) {
+        return res.status(400).json({ message: "Invalid interval" });
+      }
+
+      const stripeKey = process.env.STRIPE_SECRET_KEY;
+      if (!stripeKey) return res.status(500).json({ message: "Stripe not configured" });
+
+      const priceId =
+        planKey === "verified"
+          ? intervalKey === "yearly"
+            ? process.env.STRIPE_PRICE_VERIFIED_YEARLY
+            : process.env.STRIPE_PRICE_VERIFIED_MONTHLY
+          : intervalKey === "yearly"
+            ? process.env.STRIPE_PRICE_PREMIER_YEARLY
+            : process.env.STRIPE_PRICE_PREMIER_MONTHLY;
+
+      if (!priceId) {
+        return res.status(500).json({ message: "Stripe price not configured" });
+      }
+
+      const successUrl =
+        process.env.STRIPE_SUCCESS_URL ||
+        `${req.protocol}://${req.get("host")}/account?status=subscription_success&plan=${planKey}`;
+      const cancelUrl =
+        process.env.STRIPE_CANCEL_URL ||
+        `${req.protocol}://${req.get("host")}/pricing?status=subscription_cancel`;
+
+      const params = new URLSearchParams();
+      params.append("mode", "subscription");
+      params.append("line_items[0][price]", priceId);
+      params.append("line_items[0][quantity]", "1");
+      params.append("success_url", successUrl);
+      params.append("cancel_url", cancelUrl);
+
+      if (req.user?.email) {
+        params.append("customer_email", req.user.email);
+      }
+      params.append("metadata[plan]", planKey);
+      params.append("metadata[interval]", intervalKey);
+
+      const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${stripeKey}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: params.toString(),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return res.status(500).json({ message: "Stripe error", detail: errorText });
+      }
+      const session = await response.json();
+      return res.status(200).json({ url: session.url });
+    } catch (error) {
+      res.status(500).json({
+        message: error instanceof Error ? error.message : "Unable to create subscription session",
+      });
+    }
+  });
+
+  // --------- Stripe embedded subscription intent ----------
+  app.post("/api/subscriptions/intent", async (req, res) => {
+    try {
+      const { plan, interval, email } = req.body ?? {};
+      const planKey = typeof plan === "string" ? plan.toLowerCase() : "";
+      const intervalKey = typeof interval === "string" ? interval.toLowerCase() : "yearly";
+      const emailValue = typeof email === "string" ? email.trim() : "";
+
+      if (!planKey || !["verified", "premier"].includes(planKey)) {
+        return res.status(400).json({ message: "Invalid plan" });
+      }
+      if (!["monthly", "yearly"].includes(intervalKey)) {
+        return res.status(400).json({ message: "Invalid interval" });
+      }
+      if (!emailValue) {
+        return res.status(400).json({ message: "Email is required" });
+      }
+
+      const stripeKey = process.env.STRIPE_SECRET_KEY;
+      if (!stripeKey) return res.status(500).json({ message: "Stripe not configured" });
+
+      const priceId =
+        planKey === "verified"
+          ? intervalKey === "yearly"
+            ? process.env.STRIPE_PRICE_VERIFIED_YEARLY
+            : process.env.STRIPE_PRICE_VERIFIED_MONTHLY
+          : intervalKey === "yearly"
+            ? process.env.STRIPE_PRICE_PREMIER_YEARLY
+            : process.env.STRIPE_PRICE_PREMIER_MONTHLY;
+
+      if (!priceId) {
+        return res.status(500).json({ message: "Stripe price not configured" });
+      }
+
+      const customerParams = new URLSearchParams();
+      customerParams.append("email", emailValue);
+      if (req.user?.id) {
+        customerParams.append("metadata[user_id]", req.user.id);
+      }
+      const customerRes = await fetch("https://api.stripe.com/v1/customers", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${stripeKey}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: customerParams.toString(),
+      });
+      if (!customerRes.ok) {
+        const errorText = await customerRes.text();
+        return res.status(500).json({ message: "Stripe error", detail: errorText });
+      }
+      const customer = await customerRes.json();
+
+      const params = new URLSearchParams();
+      params.append("customer", customer.id);
+      params.append("items[0][price]", priceId);
+      params.append("payment_behavior", "default_incomplete");
+      params.append("collection_method", "charge_automatically");
+      params.append("expand[]", "latest_invoice.payment_intent");
+      params.append("metadata[plan]", planKey);
+      params.append("metadata[interval]", intervalKey);
+
+      const subRes = await fetch("https://api.stripe.com/v1/subscriptions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${stripeKey}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: params.toString(),
+      });
+      if (!subRes.ok) {
+        const errorText = await subRes.text();
+        return res.status(500).json({ message: "Stripe error", detail: errorText });
+      }
+      const subscription = await subRes.json();
+      const clientSecret = subscription?.latest_invoice?.payment_intent?.client_secret;
+      if (!clientSecret) {
+        return res.status(500).json({ message: "Missing payment intent" });
+      }
+      return res.status(200).json({ client_secret: clientSecret });
+    } catch (error) {
+      res.status(500).json({
+        message: error instanceof Error ? error.message : "Unable to create subscription intent",
+      });
+    }
+  });
+
   // --------- Waitlist ----------
   app.post("/api/waitlist", async (req, res) => {
     try {
