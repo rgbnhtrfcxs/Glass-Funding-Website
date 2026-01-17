@@ -30,11 +30,11 @@ type PricePrivacyOption = "yes" | "no";
 
 interface LabFormState {
   name: string;
-  location: string;
   labManager: string;
   contactEmail: string;
   logoUrl: string;
-  description: string;
+  descriptionShort: string;
+  descriptionLong: string;
   offersLabSpace: string;
   siretNumber: string;
   addressLine1: string;
@@ -61,11 +61,11 @@ interface LabFormState {
 
 const emptyForm: LabFormState = {
   name: "",
-  location: "",
   labManager: "",
   contactEmail: "",
   logoUrl: "",
-  description: "",
+  descriptionShort: "",
+  descriptionLong: "",
   offersLabSpace: "no",
   siretNumber: "",
   addressLine1: "",
@@ -93,11 +93,11 @@ const emptyForm: LabFormState = {
 function labToForm(lab: LabPartner): LabFormState {
   return {
     name: lab.name,
-    location: lab.location,
     labManager: lab.labManager,
     contactEmail: lab.contactEmail,
     logoUrl: lab.logoUrl || "",
-    description: lab.description || "",
+    descriptionShort: lab.descriptionShort || "",
+    descriptionLong: lab.descriptionLong || "",
     offersLabSpace: lab.offersLabSpace ? "yes" : "no",
     siretNumber: lab.siretNumber || "",
     addressLine1: lab.addressLine1 || "",
@@ -169,11 +169,11 @@ function formToPayload(
 
   return {
     name: form.name.trim(),
-    location: form.location.trim(),
     labManager: form.labManager.trim(),
     contactEmail: form.contactEmail.trim(),
     logoUrl: form.logoUrl.trim() || null,
-    description: form.description.trim() || null,
+    descriptionShort: form.descriptionShort.trim() || null,
+    descriptionLong: form.descriptionLong.trim() || null,
     offersLabSpace: form.offersLabSpace === "yes",
     siretNumber: form.siretNumber.trim() || null,
     addressLine1: form.addressLine1.trim() || null,
@@ -233,7 +233,8 @@ export default function AdminLabs() {
     const term = searchTerm.trim().toLowerCase();
     if (!term) return labs;
     return labs.filter(lab => {
-      const haystack = [lab.name, lab.location, lab.labManager, lab.contactEmail].filter(Boolean).join(" ").toLowerCase();
+    const location = [lab.city, lab.country].filter(Boolean).join(", ");
+    const haystack = [lab.name, location, lab.labManager, lab.contactEmail].filter(Boolean).join(" ").toLowerCase();
       return haystack.includes(term);
     });
   }, [labs, searchTerm]);
@@ -435,9 +436,6 @@ export default function AdminLabs() {
     if (!formState.name.trim()) {
       throw new Error("Lab name is required");
     }
-    if (!formState.location.trim()) {
-      throw new Error("Location is required");
-    }
     if (!formState.contactEmail.trim()) {
       throw new Error("Contact email is required");
     }
@@ -591,7 +589,7 @@ export default function AdminLabs() {
                       <h2 className="text-xl font-semibold text-foreground">{lab.name}</h2>
                       <div className="mt-1 inline-flex items-center gap-2 text-sm text-muted-foreground">
                         <MapPin className="h-4 w-4 text-primary" />
-                        {lab.location}
+                        {[lab.city, lab.country].filter(Boolean).join(", ") || "Location not set"}
                       </div>
                     </div>
                     <div className="flex flex-wrap justify-end gap-2">
@@ -737,21 +735,6 @@ export default function AdminLabs() {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-location">
-                    Location
-                  </label>
-                  <input
-                    id="lab-location"
-                    type="text"
-                    value={formState.location}
-                    onChange={event => handleChange("location", event.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    placeholder="Boston, MA"
-                    required
-                  />
-                </div>
-
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground" htmlFor="lab-manager">
@@ -860,18 +843,28 @@ export default function AdminLabs() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-description">
-                    Lab description
+                  <label className="text-sm font-medium text-foreground" htmlFor="lab-description-short">
+                    Short description
                   </label>
                   <textarea
-                    id="lab-description"
-                    value={formState.description}
-                    onChange={event => handleChange("description", event.target.value)}
+                    id="lab-description-short"
+                    value={formState.descriptionShort}
+                    onChange={event => handleChange("descriptionShort", event.target.value)}
                     className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    placeholder="Short intro to the lab (shown on Lab Details)"
-                    rows={4}
+                    placeholder="One or two sentences under the lab title."
+                    rows={3}
                   />
-                  <p className="text-xs text-muted-foreground">Optional intro that appears on the lab detail page.</p>
+                  <label className="text-sm font-medium text-foreground mt-4" htmlFor="lab-description-long">
+                    Long description
+                  </label>
+                  <textarea
+                    id="lab-description-long"
+                    value={formState.descriptionLong}
+                    onChange={event => handleChange("descriptionLong", event.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    placeholder="Longer overview shown later on the page."
+                    rows={6}
+                  />
                 </div>
 
                 <div className="space-y-2">

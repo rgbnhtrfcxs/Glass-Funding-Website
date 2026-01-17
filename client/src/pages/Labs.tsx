@@ -26,6 +26,8 @@ export default function Labs() {
   const visibleLabs = useMemo(() => labs.filter(lab => lab.isVisible !== false), [labs]);
   const labCount = visibleLabs.length;
   const verifiedCount = visibleLabs.filter(lab => lab.isVerified).length;
+  const formatLocation = (lab: { city?: string | null; country?: string | null }) =>
+    [lab.city, lab.country].filter(Boolean).join(", ");
   const uniqueEquipmentCount = useMemo(() => {
     const equipment = new Set<string>();
     visibleLabs.forEach(lab => {
@@ -106,7 +108,7 @@ export default function Labs() {
     const term = searchTerm.trim().toLowerCase();
     let subset = term
       ? visibleLabs.filter(lab => {
-          const haystack = [lab.name, lab.location, lab.equipment.join(" "), lab.focusAreas.join(" ")]
+          const haystack = [lab.name, formatLocation(lab), lab.equipment.join(" "), lab.focusAreas.join(" ")]
             .filter(Boolean)
             .join(" ")
             .toLowerCase();
@@ -195,7 +197,7 @@ export default function Labs() {
                 type="search"
                 value={searchTerm}
                 onChange={event => setSearchTerm(event.target.value)}
-                placeholder="Search labs by name or location"
+                placeholder="Search labs by name, city, or equipment"
                 className="w-full rounded-full border border-border bg-card/80 px-4 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
               <MapPin className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -309,7 +311,7 @@ export default function Labs() {
                           <h3 className="text-xl font-semibold text-foreground">{lab.name}</h3>
                           <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
                             <MapPin className="h-4 w-4 text-primary" />
-                            <span>{lab.location}</span>
+                        <span>{formatLocation(lab) || "Location not set"}</span>
                           </div>
                         </div>
                       </div>

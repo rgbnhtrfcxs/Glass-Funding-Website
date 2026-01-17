@@ -1323,7 +1323,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
       const { data, error } = await supabase
         .from("labs")
         .select(
-          "id, name, subscription_tier, location, logo_url, is_visible, lab_photos (url, name), lab_equipment (item)",
+          "id, name, subscription_tier, city, country, logo_url, is_visible, lab_photos (url, name), lab_equipment (item)",
         )
         .or(clauses.join(","));
       if (error) throw error;

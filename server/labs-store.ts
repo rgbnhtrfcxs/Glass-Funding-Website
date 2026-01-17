@@ -14,13 +14,13 @@ import { supabase } from "./supabaseClient";
 const LAB_SELECT = `
   id,
   name,
-  location,
   lab_manager,
   contact_email,
   owner_user_id,
   siret_number,
   logo_url,
-  description,
+  description_short,
+  description_long,
   field,
   offers_lab_space,
   address_line1,
@@ -41,6 +41,8 @@ const LAB_SELECT = `
   lab_photos (name, url),
   lab_compliance_labels (label),
   lab_compliance_docs (name, url),
+  lab_publications (title, url),
+  lab_patents (title, url),
   lab_equipment (item),
   lab_focus_areas (focus_area),
   lab_offers (offer)
@@ -49,13 +51,13 @@ const LAB_SELECT = `
 type LabRow = {
   id: number;
   name: string;
-  location: string;
   lab_manager: string;
   contact_email: string;
   owner_user_id: string | null;
   siret_number: string | null;
   logo_url: string | null;
-  description: string | null;
+  description_short: string | null;
+  description_long: string | null;
   offers_lab_space: boolean | string | null;
   address_line1: string | null;
   address_line2: string | null;
@@ -75,6 +77,8 @@ type LabRow = {
   lab_photos: Array<{ name: string; url: string }> | null;
   lab_compliance_labels: Array<{ label: string }> | null;
   lab_compliance_docs: Array<{ name: string; url: string }> | null;
+  lab_publications: Array<{ title: string; url: string }> | null;
+  lab_patents: Array<{ title: string; url: string }> | null;
   lab_equipment: Array<{ item: string }> | null;
   lab_focus_areas: Array<{ focus_area: string }> | null;
   lab_offers: Array<{ offer: OfferOption }> | null;
@@ -137,13 +141,13 @@ function mapLabRow(row: LabRow): LabPartner {
   const mapped = {
     id: Number(row.id),
     name: row.name,
-    location: row.location,
     labManager: row.lab_manager,
     contactEmail: (row.contact_email ?? "").trim(),
     ownerUserId: row.owner_user_id || null,
     siretNumber: row.siret_number || null,
     logoUrl: row.logo_url || null,
-    description: row.description || null,
+    descriptionShort: row.description_short || null,
+    descriptionLong: row.description_long || null,
     offersLabSpace: parseBoolean(row.offers_lab_space, false),
     addressLine1: row.address_line1 || null,
     addressLine2: row.address_line2 || null,
@@ -156,6 +160,8 @@ function mapLabRow(row: LabRow): LabPartner {
     partnerLogos,
     compliance: (row.lab_compliance_labels ?? []).map(item => item.label),
     complianceDocs: (row.lab_compliance_docs ?? []).map(doc => ({ name: doc.name, url: doc.url })),
+    publications: (row.lab_publications ?? []).map(item => ({ title: item.title, url: item.url })),
+    patents: (row.lab_patents ?? []).map(item => ({ title: item.title, url: item.url })),
     isVerified: parseBoolean(row.is_verified),
     isVisible: parseBoolean(row.is_visible, true),
     equipment: (row.lab_equipment ?? []).map(item => item.item),
@@ -198,6 +204,26 @@ async function replaceLabComplianceDocs(labId: number, docs: MediaAsset[]) {
   const ins = await supabase
     .from("lab_compliance_docs")
     .insert(docs.map(doc => ({ lab_id: labId, name: doc.name, url: doc.url })));
+  if (ins.error) throw ins.error;
+}
+
+async function replaceLabPublications(labId: number, items: Array<{ title: string; url: string }>) {
+  const del = await supabase.from("lab_publications").delete().eq("lab_id", labId);
+  if (del.error) throw del.error;
+  if (!items.length) return;
+  const ins = await supabase
+    .from("lab_publications")
+    .insert(items.map(item => ({ lab_id: labId, title: item.title, url: item.url })));
+  if (ins.error) throw ins.error;
+}
+
+async function replaceLabPatents(labId: number, items: Array<{ title: string; url: string }>) {
+  const del = await supabase.from("lab_patents").delete().eq("lab_id", labId);
+  if (del.error) throw del.error;
+  if (!items.length) return;
+  const ins = await supabase
+    .from("lab_patents")
+    .insert(items.map(item => ({ lab_id: labId, title: item.title, url: item.url })));
   if (ins.error) throw ins.error;
 }
 
@@ -244,6 +270,8 @@ async function writeLabRelations(labId: number, lab: InsertLab | LabPartner) {
   await replaceLabPartnerLogos(labId, (lab as any).partnerLogos ?? []);
   await replaceLabComplianceLabels(labId, lab.compliance);
   await replaceLabComplianceDocs(labId, lab.complianceDocs);
+  await replaceLabPublications(labId, (lab as any).publications ?? []);
+  await replaceLabPatents(labId, (lab as any).patents ?? []);
   await replaceLabEquipment(labId, lab.equipment);
   await replaceLabFocusAreas(labId, lab.focusAreas);
   await replaceLabOffers(labId, lab.offers);
@@ -303,13 +331,13 @@ export class LabStore {
       .from("labs")
       .insert({
         name: data.name,
-        location: data.location,
         lab_manager: data.labManager,
         contact_email: data.contactEmail,
         owner_user_id: ownerUserId,
         siret_number: data.siretNumber ?? null,
         logo_url: data.logoUrl ?? null,
-        description: data.description ?? null,
+        description_short: data.descriptionShort ?? null,
+        description_long: data.descriptionLong ?? null,
         offers_lab_space: data.offersLabSpace ?? true,
         address_line1: data.addressLine1 ?? null,
         address_line2: data.addressLine2 ?? null,
@@ -364,13 +392,13 @@ export class LabStore {
     const baseUpdates: Record<string, unknown> = {};
 
     if (Object.prototype.hasOwnProperty.call(updates, "name")) baseUpdates.name = parsed.name;
-    if (Object.prototype.hasOwnProperty.call(updates, "location")) baseUpdates.location = parsed.location;
     if (Object.prototype.hasOwnProperty.call(updates, "labManager")) baseUpdates.lab_manager = parsed.labManager;
     if (Object.prototype.hasOwnProperty.call(updates, "contactEmail")) baseUpdates.contact_email = parsed.contactEmail;
     baseUpdates.owner_user_id = ownerUserId ?? null;
     if (Object.prototype.hasOwnProperty.call(updates, "siretNumber")) baseUpdates.siret_number = parsed.siretNumber ?? null;
     if (Object.prototype.hasOwnProperty.call(updates, "logoUrl")) baseUpdates.logo_url = parsed.logoUrl ?? null;
-    if (Object.prototype.hasOwnProperty.call(updates, "description")) baseUpdates.description = parsed.description ?? null;
+    if (Object.prototype.hasOwnProperty.call(updates, "descriptionShort")) baseUpdates.description_short = parsed.descriptionShort ?? null;
+    if (Object.prototype.hasOwnProperty.call(updates, "descriptionLong")) baseUpdates.description_long = parsed.descriptionLong ?? null;
     if (Object.prototype.hasOwnProperty.call(updates, "offersLabSpace"))
       baseUpdates.offers_lab_space = parsed.offersLabSpace ?? true;
     if (Object.prototype.hasOwnProperty.call(updates, "addressLine1")) baseUpdates.address_line1 = parsed.addressLine1 ?? null;
@@ -398,6 +426,10 @@ export class LabStore {
     if (Object.prototype.hasOwnProperty.call(updates, "photos")) await replaceLabPhotos(id, parsed.photos ?? []);
     if (Object.prototype.hasOwnProperty.call(updates, "compliance")) await replaceLabComplianceLabels(id, parsed.compliance ?? []);
     if (Object.prototype.hasOwnProperty.call(updates, "complianceDocs")) await replaceLabComplianceDocs(id, parsed.complianceDocs ?? []);
+    if (Object.prototype.hasOwnProperty.call(updates, "publications"))
+      await replaceLabPublications(id, (parsed as any).publications ?? []);
+    if (Object.prototype.hasOwnProperty.call(updates, "patents"))
+      await replaceLabPatents(id, (parsed as any).patents ?? []);
     if (Object.prototype.hasOwnProperty.call(updates, "equipment")) await replaceLabEquipment(id, parsed.equipment ?? []);
     if (Object.prototype.hasOwnProperty.call(updates, "focusAreas")) await replaceLabFocusAreas(id, parsed.focusAreas ?? []);
     if (Object.prototype.hasOwnProperty.call(updates, "offers")) await replaceLabOffers(id, parsed.offers ?? []);

@@ -9,7 +9,8 @@ type LabSummary = {
   id: number;
   name: string;
   subscription_tier?: string | null;
-  location?: string | null;
+  city?: string | null;
+  country?: string | null;
   logo_url?: string | null;
   is_visible?: boolean | null;
   lab_photos?: Array<{ url: string; name: string }>;
@@ -61,7 +62,8 @@ export default function ManageSelect() {
     if (!term) return labs;
     return labs.filter(lab => {
       const equipment = (lab.lab_equipment ?? []).map(e => e.item).join(" ");
-      const haystack = [lab.name, lab.location, equipment].filter(Boolean).join(" ").toLowerCase();
+      const location = [lab.city, lab.country].filter(Boolean).join(", ");
+      const haystack = [lab.name, location, equipment].filter(Boolean).join(" ").toLowerCase();
       return haystack.includes(term);
     });
   }, [labs, search]);
@@ -177,7 +179,7 @@ export default function ManageSelect() {
                       <h2 className="text-lg font-semibold text-foreground">{lab.name}</h2>
                       <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                         <MapPin className="h-3.5 w-3.5 text-primary" />
-                        <span>{lab.location?.trim() || "Location not set"}</span>
+                        <span>{[lab.city, lab.country].filter(Boolean).join(", ") || "Location not set"}</span>
                       </div>
                     </div>
                     {badge(lab)}

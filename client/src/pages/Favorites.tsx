@@ -87,7 +87,9 @@ export default function Favorites() {
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="font-semibold text-foreground">{lab.name}</p>
-                        <p className="text-xs text-muted-foreground">{lab.location}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {[lab.city, lab.country].filter(Boolean).join(", ") || "Location not set"}
+                        </p>
                       </div>
                       {premium && (
                         <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">Premium</span>

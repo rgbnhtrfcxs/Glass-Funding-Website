@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
+  ArrowUpRight,
   Beaker,
   CalendarClock,
   CheckCircle2,
@@ -104,6 +105,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [favoriteError, setFavoriteError] = useState<string | null>(null);
+  const [showAllEquipment, setShowAllEquipment] = useState(false);
   const [viewRecorded, setViewRecorded] = useState(false);
   const [showInvestor, setShowInvestor] = useState(false);
   const [investorName, setInvestorName] = useState("");
@@ -427,7 +429,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
             <div className="flex flex-wrap items-center gap-3">
               <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
                 <MapPin className="h-3.5 w-3.5" />
-                {lab.location}
+                {[lab.city, lab.country].filter(Boolean).join(", ") || "Location not set"}
               </span>
               <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${badgeClass}`}>
                 {status === "verified" ? (
@@ -485,8 +487,8 @@ export default function LabDetails({ params }: LabDetailsProps) {
               )}
               <h1 className="text-4xl font-semibold text-foreground">{lab.name}</h1>
             </div>
-            {lab.description ? (
-              <p className="text-muted-foreground text-base leading-relaxed text-justify">{lab.description}</p>
+            {lab.descriptionShort ? (
+              <p className="text-muted-foreground text-base leading-relaxed text-justify">{lab.descriptionShort}</p>
             ) : (
               <p className="text-muted-foreground text-base leading-relaxed">
                 Review compliance, offers, and baseline expectations before requesting space. Minimum commitment:
@@ -577,6 +579,15 @@ export default function LabDetails({ params }: LabDetailsProps) {
             </div>
           </div>
 
+          {lab.descriptionLong && (
+            <div className="mt-6 rounded-2xl border border-border/80 bg-background/50 p-6">
+              <h2 className="text-lg font-semibold text-foreground">About this lab</h2>
+              <p className="mt-3 text-sm text-muted-foreground leading-relaxed text-justify whitespace-pre-line">
+                {lab.descriptionLong}
+              </p>
+            </div>
+          )}
+
           {offersLabSpace && (
             <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
               <h2 className="text-lg font-semibold text-foreground">Pricing & availability offers</h2>
@@ -647,15 +658,70 @@ export default function LabDetails({ params }: LabDetailsProps) {
                 Critical instrumentation and tooling available in this lab.
               </p>
               <div className="mt-4 grid gap-2 text-sm text-muted-foreground">
-                {lab.equipment.map(item => (
+                {(showAllEquipment ? lab.equipment : lab.equipment.slice(0, 5)).map(item => (
                   <div key={item} className="inline-flex items-center gap-2">
                     <Beaker className="h-4 w-4 text-primary" />
                     {item}
                   </div>
                 ))}
               </div>
+              {lab.equipment.length > 5 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllEquipment(prev => !prev)}
+                  className="mt-4 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                >
+                  {showAllEquipment ? "Show fewer" : `Show ${lab.equipment.length - 5} more`}
+                </button>
+              )}
             </div>
           </section>
+
+          {(lab.publications.length > 0 || lab.patents.length > 0) && (
+            <section className="grid gap-6 lg:grid-cols-2">
+              {lab.publications.length > 0 && (
+                <div className="rounded-2xl border border-border/80 bg-background/50 p-6">
+                  <h2 className="text-lg font-semibold text-foreground">Publications</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">Recent research outputs from this lab.</p>
+                  <div className="mt-4 space-y-2 text-sm text-muted-foreground">
+                    {lab.publications.map(item => (
+                      <a
+                        key={item.url}
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between gap-2 rounded-xl border border-border px-3 py-2 hover:border-primary hover:text-primary transition"
+                      >
+                        <span className="truncate">{item.title}</span>
+                        <ArrowUpRight className="h-4 w-4 flex-shrink-0" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {lab.patents.length > 0 && (
+                <div className="rounded-2xl border border-border/80 bg-background/50 p-6">
+                  <h2 className="text-lg font-semibold text-foreground">Patents</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">Selected patents and IP linked to the lab.</p>
+                  <div className="mt-4 space-y-2 text-sm text-muted-foreground">
+                    {lab.patents.map(item => (
+                      <a
+                        key={item.url}
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between gap-2 rounded-xl border border-border px-3 py-2 hover:border-primary hover:text-primary transition"
+                      >
+                        <span className="truncate">{item.title}</span>
+                        <ArrowUpRight className="h-4 w-4 flex-shrink-0" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
 
         {tierLower === "premier" && partnerLogos.length > 0 && (
             <div className="mt-8 rounded-2xl border border-primary/40 bg-primary/5 p-4">

@@ -6,7 +6,8 @@ type LabAsset = { url: string; name?: string };
 type LabItem = {
   id: number;
   name: string;
-  location: string;
+  city?: string | null;
+  country?: string | null;
   subscriptionTier?: string | null;
   subscription_tier?: string | null;
   isVisible?: boolean | null;
@@ -109,7 +110,7 @@ export function FeaturedLabs({ title = "Featured labs", description, className =
                     <p className="text-sm font-semibold text-foreground line-clamp-2">{lab.name}</p>
                     <p className="flex items-center gap-1 text-xs text-muted-foreground">
                       <MapPin className="h-3 w-3" />
-                      {lab.location}
+                      {[lab.city, lab.country].filter(Boolean).join(", ") || "Location not set"}
                     </p>
                     <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                       <ShieldCheck className="h-3 w-3 text-emerald-600" />

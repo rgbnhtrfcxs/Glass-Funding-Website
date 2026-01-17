@@ -7,13 +7,13 @@ import { Link } from "wouter";
 
 type Form = {
   name: string;
-  location: string;
   labManager: string;
   contactEmail: string;
   logoUrl: string;
   siretNumber: string;
   offersLabSpace: boolean;
-  description: string;
+  descriptionShort: string;
+  descriptionLong: string;
   addressLine1: string;
   addressLine2: string;
   city: string;
@@ -24,6 +24,8 @@ type Form = {
   linkedin: string;
   partnerLogos: { name: string; url: string }[];
   complianceTags: string[];
+  publications: { title: string; url: string }[];
+  patents: { title: string; url: string }[];
   equipmentTags: string[];
   focusTags: string[];
   offers: OfferOption[];
@@ -55,13 +57,13 @@ export default function MyLab({ params }: { params: { id: string } }) {
   >("Basics");
   const [form, setForm] = useState<Form>({
     name: "",
-    location: "",
     labManager: "",
     contactEmail: "",
     logoUrl: "",
     siretNumber: "",
     offersLabSpace: false,
-    description: "",
+    descriptionShort: "",
+    descriptionLong: "",
     addressLine1: "",
     addressLine2: "",
     city: "",
@@ -72,6 +74,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
     linkedin: "",
     partnerLogos: [],
     complianceTags: [],
+    publications: [],
+    patents: [],
     equipmentTags: [],
     focusTags: [],
     offers: [],
@@ -85,6 +89,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
     field: "complianceTags",
     value: "",
   });
+  const [publicationInput, setPublicationInput] = useState({ title: "", url: "" });
+  const [patentInput, setPatentInput] = useState({ title: "", url: "" });
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
 
@@ -217,6 +223,23 @@ export default function MyLab({ params }: { params: { id: string } }) {
     setForm(prev => ({ ...prev, [field]: prev[field].filter(item => item !== value) }));
   };
 
+  const addLink = (field: "publications" | "patents", title: string, url: string) => {
+    const trimmedTitle = title.trim();
+    const trimmedUrl = url.trim();
+    if (!trimmedTitle || !trimmedUrl) return;
+    setForm(prev => ({
+      ...prev,
+      [field]: [...prev[field], { title: trimmedTitle, url: trimmedUrl }],
+    }));
+  };
+
+  const removeLink = (field: "publications" | "patents", url: string) => {
+    setForm(prev => ({
+      ...prev,
+      [field]: prev[field].filter(item => item.url !== url),
+    }));
+  };
+
   const handleTagKey = (field: "complianceTags" | "equipmentTags" | "focusTags") => (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -242,13 +265,13 @@ export default function MyLab({ params }: { params: { id: string } }) {
       setIsVisible(lab.isVisible !== false);
       setForm({
         name: lab.name || "",
-        location: lab.location || "",
         labManager: lab.labManager || "",
         contactEmail: lab.contactEmail || user?.email || "",
         logoUrl: lab.logoUrl || "",
         siretNumber: lab.siretNumber || "",
         offersLabSpace: lab.offersLabSpace ?? true,
-        description: lab.description || "",
+        descriptionShort: lab.descriptionShort || "",
+        descriptionLong: lab.descriptionLong || "",
         addressLine1: lab.addressLine1 || "",
         addressLine2: lab.addressLine2 || "",
         city: lab.city || "",
@@ -259,6 +282,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
         linkedin: lab.linkedin || "",
         partnerLogos: lab.partnerLogos || [],
         complianceTags: lab.compliance || [],
+        publications: lab.publications || [],
+        patents: lab.patents || [],
         equipmentTags: lab.equipment || [],
         focusTags: lab.focusAreas || [],
         offers: lab.offers || [],
@@ -315,13 +340,13 @@ export default function MyLab({ params }: { params: { id: string } }) {
         },
         body: JSON.stringify({
           name: form.name,
-          location: form.location,
           labManager: form.labManager,
           contactEmail: form.contactEmail,
           logoUrl: form.logoUrl || null,
           siretNumber: form.siretNumber || null,
           offersLabSpace: form.offersLabSpace,
-          description: form.description || null,
+          descriptionShort: form.descriptionShort || null,
+          descriptionLong: form.descriptionLong || null,
           ownerUserId: user?.id || null,
           addressLine1: form.addressLine1 || null,
           addressLine2: form.addressLine2 || null,
@@ -334,6 +359,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
           photos,
           partnerLogos: form.partnerLogos,
           compliance: form.complianceTags,
+          publications: form.publications,
+          patents: form.patents,
           equipment: form.equipmentTags,
           focusAreas: form.focusTags,
           offers: form.offers,
@@ -450,9 +477,6 @@ export default function MyLab({ params }: { params: { id: string } }) {
               <Field label="Lab name">
                 <input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
               </Field>
-              <Field label="Location">
-                <input className="input" value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} />
-              </Field>
               <Field label="Lab manager">
                 <input className="input" value={form.labManager} onChange={e => setForm({ ...form, labManager: e.target.value })} />
               </Field>
@@ -467,13 +491,22 @@ export default function MyLab({ params }: { params: { id: string } }) {
                 </span>
               </div>
             </Field>
-              <Field label="Lab description">
+              <Field label="Short description">
                 <textarea
                   className="input"
                   rows={4}
-                  value={form.description}
-                  onChange={e => setForm({ ...form, description: e.target.value })}
-                  placeholder="Short intro to your lab (shown on Lab Details)"
+                  value={form.descriptionShort}
+                  onChange={e => setForm({ ...form, descriptionShort: e.target.value })}
+                  placeholder="Short intro under your lab name."
+                />
+              </Field>
+              <Field label="Long description (optional)">
+                <textarea
+                  className="input"
+                  rows={6}
+                  value={form.descriptionLong}
+                  onChange={e => setForm({ ...form, descriptionLong: e.target.value })}
+                  placeholder="Longer overview shown later on the page."
                 />
               </Field>
               <label className="flex items-center gap-3 text-sm text-foreground">
@@ -537,7 +570,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
 
             {activeTab === "Compliance" && (
             <Section title="Compliance & capabilities">
-              <Field label="Compliance">
+                <Field label="Compliance">
                 <div className="space-y-2">
                   <input
                     className="input"
@@ -619,6 +652,94 @@ export default function MyLab({ params }: { params: { id: string } }) {
                       </span>
                     ))}
                   </div>
+                </div>
+                </Field>
+
+              <Field label="Publications">
+                <div className="space-y-2">
+                  {form.publications.map(item => (
+                    <div key={item.url} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-xs text-foreground truncate">{item.title}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{item.url}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeLink("publications", item.url)}
+                        className="text-xs text-muted-foreground hover:text-destructive"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <input
+                      className="input"
+                      placeholder="Publication title"
+                      value={publicationInput.title}
+                      onChange={e => setPublicationInput(prev => ({ ...prev, title: e.target.value }))}
+                    />
+                    <input
+                      className="input"
+                      placeholder="https://doi.org/..."
+                      value={publicationInput.url}
+                      onChange={e => setPublicationInput(prev => ({ ...prev, url: e.target.value }))}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="rounded-full border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary"
+                    onClick={() => {
+                      addLink("publications", publicationInput.title, publicationInput.url);
+                      setPublicationInput({ title: "", url: "" });
+                    }}
+                  >
+                    Add publication
+                  </button>
+                </div>
+              </Field>
+
+              <Field label="Patents">
+                <div className="space-y-2">
+                  {form.patents.map(item => (
+                    <div key={item.url} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-xs text-foreground truncate">{item.title}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{item.url}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeLink("patents", item.url)}
+                        className="text-xs text-muted-foreground hover:text-destructive"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <input
+                      className="input"
+                      placeholder="Patent title"
+                      value={patentInput.title}
+                      onChange={e => setPatentInput(prev => ({ ...prev, title: e.target.value }))}
+                    />
+                    <input
+                      className="input"
+                      placeholder="https://patents.google.com/..."
+                      value={patentInput.url}
+                      onChange={e => setPatentInput(prev => ({ ...prev, url: e.target.value }))}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="rounded-full border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary"
+                    onClick={() => {
+                      addLink("patents", patentInput.title, patentInput.url);
+                      setPatentInput({ title: "", url: "" });
+                    }}
+                  >
+                    Add patent
+                  </button>
                 </div>
               </Field>
             </Section>
