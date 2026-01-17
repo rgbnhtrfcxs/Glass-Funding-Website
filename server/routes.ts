@@ -382,7 +382,12 @@ export function registerRoutes(app: Express) {
       if (!halId) return res.status(404).json({ message: "HAL ID not set" });
 
       const params = new URLSearchParams();
-      params.set("q", `structId_s:${halId}`);
+      const numericId = halId.replace(/\D/g, "");
+      const queryParts = [`structId_s:${halId}`];
+      if (numericId) {
+        queryParts.push(`structId_i:${numericId}`);
+      }
+      params.set("q", queryParts.join(" OR "));
       params.set("wt", "json");
       params.set("rows", "50");
       params.set("fl", "title_s,uri_s,doiId_s,publicationDateY_i,authFullName_s");
