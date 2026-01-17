@@ -15,8 +15,6 @@ export const mockLabs: LabPartner[] = [
         url: "https://files.glass-demo.com/atlas/Atlas-GMP-SOP.pdf",
       },
     ],
-    publications: [],
-    patents: [],
     isVerified: true,
     equipment: [
       "Single-use bioreactors",
@@ -49,8 +47,6 @@ export const mockLabs: LabPartner[] = [
     contactEmail: "labs+neuro@glass.demo",
     compliance: ["BSL-2", "IACUC certified staff"],
     complianceDocs: [],
-    publications: [],
-    patents: [],
     isVerified: true,
     equipment: [
       "Patch-clamp rigs",
@@ -87,8 +83,6 @@ export const mockLabs: LabPartner[] = [
         url: "https://files.glass-demo.com/coastal/Coastal-CLIA-letter.pdf",
       },
     ],
-    publications: [],
-    patents: [],
     isVerified: false,
     equipment: [
       "NovaSeq 6000",
@@ -121,8 +115,6 @@ export const mockLabs: LabPartner[] = [
     contactEmail: "labs+forge@glass.demo",
     compliance: ["BSL-1", "ISO 8 cleanroom"],
     complianceDocs: [],
-    publications: [],
-    patents: [],
     isVerified: true,
     equipment: [
       "3D bioprinters",
@@ -154,8 +146,6 @@ export const mockLabs: LabPartner[] = [
     contactEmail: "labs+proteomics@glass.demo",
     compliance: ["BSL-2", "GLP documentation"],
     complianceDocs: [],
-    publications: [],
-    patents: [],
     isVerified: true,
     equipment: ["Orbitrap Eclipse", "UPLC systems", "Cold chain logistics"],
     focusAreas: ["Proteomics", "Metabolomics", "Biomarker discovery"],
@@ -183,8 +173,6 @@ export const mockLabs: LabPartner[] = [
     contactEmail: "labs+robotics@glass.demo",
     compliance: ["UL certified equipment", "On-site safety officer"],
     complianceDocs: [],
-    publications: [],
-    patents: [],
     isVerified: false,
     equipment: [
       "Collaborative robot cells",

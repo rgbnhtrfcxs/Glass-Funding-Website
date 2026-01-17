@@ -36,8 +36,6 @@ export default function NewLab() {
     complianceTags: [] as string[],
     offers: [] as OfferOption[],
     logoUrl: "",
-    publications: [] as { title: string; url: string }[],
-    patents: [] as { title: string; url: string }[],
     halStructureId: "",
     halPersonId: "",
   });
@@ -58,8 +56,6 @@ export default function NewLab() {
     field: "equipmentTags",
     value: "",
   });
-  const [publicationInput, setPublicationInput] = useState({ title: "", url: "" });
-  const [patentInput, setPatentInput] = useState({ title: "", url: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
@@ -102,23 +98,6 @@ export default function NewLab() {
 
   const removeTag = (field: "equipmentTags" | "focusTags" | "complianceTags", value: string) => {
     setForm(prev => ({ ...prev, [field]: prev[field].filter(item => item !== value) }));
-  };
-
-  const addLink = (field: "publications" | "patents", title: string, url: string) => {
-    const trimmedTitle = title.trim();
-    const trimmedUrl = url.trim();
-    if (!trimmedTitle || !trimmedUrl) return;
-    setForm(prev => ({
-      ...prev,
-      [field]: [...prev[field], { title: trimmedTitle, url: trimmedUrl }],
-    }));
-  };
-
-  const removeLink = (field: "publications" | "patents", url: string) => {
-    setForm(prev => ({
-      ...prev,
-      [field]: prev[field].filter(item => item.url !== url),
-    }));
   };
 
   const handleTagKey = (field: "equipmentTags" | "focusTags" | "complianceTags") => (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -164,8 +143,6 @@ export default function NewLab() {
         siretNumber: form.siretNumber.trim() || null,
         partnerLogos,
         field: form.field.trim() || null,
-        publications: form.publications,
-        patents: form.patents,
         halStructureId: form.halStructureId.trim() || null,
         halPersonId: form.halPersonId.trim() || null,
       });
@@ -683,95 +660,6 @@ export default function NewLab() {
                   <p className="text-xs text-muted-foreground">Upload PDF compliance certificates; you can add more later.</p>
                 </div>
 
-                <div className="space-y-3">
-                  <p className="text-sm font-medium text-foreground">Publications</p>
-                  <div className="space-y-2">
-                    {form.publications.map(item => (
-                      <div key={item.url} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
-                        <div className="min-w-0">
-                          <p className="text-xs text-foreground truncate">{item.title}</p>
-                          <p className="text-[11px] text-muted-foreground truncate">{item.url}</p>
-                        </div>
-                        <button
-                          type="button"
-                          className="text-xs text-muted-foreground hover:text-destructive"
-                          onClick={() => removeLink("publications", item.url)}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="grid gap-2 md:grid-cols-2">
-                    <input
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="Publication title"
-                      value={publicationInput.title}
-                      onChange={e => setPublicationInput(prev => ({ ...prev, title: e.target.value }))}
-                    />
-                    <input
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="https://doi.org/..."
-                      value={publicationInput.url}
-                      onChange={e => setPublicationInput(prev => ({ ...prev, url: e.target.value }))}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="inline-flex items-center rounded-full border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:border-primary"
-                    onClick={() => {
-                      addLink("publications", publicationInput.title, publicationInput.url);
-                      setPublicationInput({ title: "", url: "" });
-                    }}
-                  >
-                    Add publication
-                  </button>
-                </div>
-
-                <div className="space-y-3">
-                  <p className="text-sm font-medium text-foreground">Patents</p>
-                  <div className="space-y-2">
-                    {form.patents.map(item => (
-                      <div key={item.url} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
-                        <div className="min-w-0">
-                          <p className="text-xs text-foreground truncate">{item.title}</p>
-                          <p className="text-[11px] text-muted-foreground truncate">{item.url}</p>
-                        </div>
-                        <button
-                          type="button"
-                          className="text-xs text-muted-foreground hover:text-destructive"
-                          onClick={() => removeLink("patents", item.url)}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="grid gap-2 md:grid-cols-2">
-                    <input
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="Patent title"
-                      value={patentInput.title}
-                      onChange={e => setPatentInput(prev => ({ ...prev, title: e.target.value }))}
-                    />
-                    <input
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="https://patents.google.com/..."
-                      value={patentInput.url}
-                      onChange={e => setPatentInput(prev => ({ ...prev, url: e.target.value }))}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="inline-flex items-center rounded-full border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:border-primary"
-                    onClick={() => {
-                      addLink("patents", patentInput.title, patentInput.url);
-                      setPatentInput({ title: "", url: "" });
-                    }}
-                  >
-                    Add patent
-                  </button>
-                </div>
               </Section>
             )}
 

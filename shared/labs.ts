@@ -14,11 +14,6 @@ export const mediaAssetSchema = z.object({
   url: z.string().min(1, "Asset URL is required"),
 });
 
-export const linkAssetSchema = z.object({
-  title: z.string().min(1, "Title is required"),
-  url: z.string().url("Link must be a valid URL"),
-});
-
 export const labCoreSchema = z.object({
   name: z.string().min(1, "Lab name is required"),
   labManager: z.string().min(1, "Lab manager name is required"),
@@ -40,8 +35,6 @@ export const labCoreSchema = z.object({
   partnerLogos: z.array(mediaAssetSchema).default([]),
   compliance: z.array(z.string().min(1)).default([]),
   complianceDocs: z.array(mediaAssetSchema).default([]),
-  publications: z.array(linkAssetSchema).default([]),
-  patents: z.array(linkAssetSchema).default([]),
   halStructureId: z.string().min(1).optional().nullable(),
   halPersonId: z.string().min(1).optional().nullable(),
   isVerified: z.boolean().default(false),

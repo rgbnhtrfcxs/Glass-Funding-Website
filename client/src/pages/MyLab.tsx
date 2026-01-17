@@ -24,8 +24,6 @@ type Form = {
   linkedin: string;
   partnerLogos: { name: string; url: string }[];
   complianceTags: string[];
-  publications: { title: string; url: string }[];
-  patents: { title: string; url: string }[];
   halStructureId: string;
   halPersonId: string;
   equipmentTags: string[];
@@ -76,8 +74,6 @@ export default function MyLab({ params }: { params: { id: string } }) {
     linkedin: "",
     partnerLogos: [],
     complianceTags: [],
-    publications: [],
-    patents: [],
     halStructureId: "",
     halPersonId: "",
     equipmentTags: [],
@@ -93,8 +89,6 @@ export default function MyLab({ params }: { params: { id: string } }) {
     field: "complianceTags",
     value: "",
   });
-  const [publicationInput, setPublicationInput] = useState({ title: "", url: "" });
-  const [patentInput, setPatentInput] = useState({ title: "", url: "" });
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
 
@@ -227,23 +221,6 @@ export default function MyLab({ params }: { params: { id: string } }) {
     setForm(prev => ({ ...prev, [field]: prev[field].filter(item => item !== value) }));
   };
 
-  const addLink = (field: "publications" | "patents", title: string, url: string) => {
-    const trimmedTitle = title.trim();
-    const trimmedUrl = url.trim();
-    if (!trimmedTitle || !trimmedUrl) return;
-    setForm(prev => ({
-      ...prev,
-      [field]: [...prev[field], { title: trimmedTitle, url: trimmedUrl }],
-    }));
-  };
-
-  const removeLink = (field: "publications" | "patents", url: string) => {
-    setForm(prev => ({
-      ...prev,
-      [field]: prev[field].filter(item => item.url !== url),
-    }));
-  };
-
   const handleTagKey = (field: "complianceTags" | "equipmentTags" | "focusTags") => (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -286,8 +263,6 @@ export default function MyLab({ params }: { params: { id: string } }) {
         linkedin: lab.linkedin || "",
         partnerLogos: lab.partnerLogos || [],
         complianceTags: lab.compliance || [],
-        publications: lab.publications || [],
-        patents: lab.patents || [],
         halStructureId: lab.halStructureId || "",
         halPersonId: lab.halPersonId || "",
         equipmentTags: lab.equipment || [],
@@ -365,8 +340,6 @@ export default function MyLab({ params }: { params: { id: string } }) {
           photos,
           partnerLogos: form.partnerLogos,
           compliance: form.complianceTags,
-          publications: form.publications,
-          patents: form.patents,
           halStructureId: form.halStructureId || null,
           halPersonId: form.halPersonId || null,
           equipment: form.equipmentTags,
@@ -679,93 +652,6 @@ export default function MyLab({ params }: { params: { id: string } }) {
                 </div>
                 </Field>
 
-              <Field label="Publications">
-                <div className="space-y-2">
-                  {form.publications.map(item => (
-                    <div key={item.url} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
-                      <div className="min-w-0">
-                        <p className="text-xs text-foreground truncate">{item.title}</p>
-                        <p className="text-[11px] text-muted-foreground truncate">{item.url}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeLink("publications", item.url)}
-                        className="text-xs text-muted-foreground hover:text-destructive"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                  <div className="grid gap-2 md:grid-cols-2">
-                    <input
-                      className="input"
-                      placeholder="Publication title"
-                      value={publicationInput.title}
-                      onChange={e => setPublicationInput(prev => ({ ...prev, title: e.target.value }))}
-                    />
-                    <input
-                      className="input"
-                      placeholder="https://doi.org/..."
-                      value={publicationInput.url}
-                      onChange={e => setPublicationInput(prev => ({ ...prev, url: e.target.value }))}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded-full border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary"
-                    onClick={() => {
-                      addLink("publications", publicationInput.title, publicationInput.url);
-                      setPublicationInput({ title: "", url: "" });
-                    }}
-                  >
-                    Add publication
-                  </button>
-                </div>
-              </Field>
-
-              <Field label="Patents">
-                <div className="space-y-2">
-                  {form.patents.map(item => (
-                    <div key={item.url} className="flex items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
-                      <div className="min-w-0">
-                        <p className="text-xs text-foreground truncate">{item.title}</p>
-                        <p className="text-[11px] text-muted-foreground truncate">{item.url}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeLink("patents", item.url)}
-                        className="text-xs text-muted-foreground hover:text-destructive"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                  <div className="grid gap-2 md:grid-cols-2">
-                    <input
-                      className="input"
-                      placeholder="Patent title"
-                      value={patentInput.title}
-                      onChange={e => setPatentInput(prev => ({ ...prev, title: e.target.value }))}
-                    />
-                    <input
-                      className="input"
-                      placeholder="https://patents.google.com/..."
-                      value={patentInput.url}
-                      onChange={e => setPatentInput(prev => ({ ...prev, url: e.target.value }))}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded-full border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary"
-                    onClick={() => {
-                      addLink("patents", patentInput.title, patentInput.url);
-                      setPatentInput({ title: "", url: "" });
-                    }}
-                  >
-                    Add patent
-                  </button>
-                </div>
-              </Field>
             </Section>
             )}
 

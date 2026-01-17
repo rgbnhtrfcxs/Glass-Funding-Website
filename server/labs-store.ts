@@ -41,8 +41,6 @@ const LAB_SELECT = `
   lab_photos (name, url),
   lab_compliance_labels (label),
   lab_compliance_docs (name, url),
-  lab_publications (title, url),
-  lab_patents (title, url),
   hal_structure_id,
   hal_person_id,
   lab_equipment (item),
@@ -79,8 +77,6 @@ type LabRow = {
   lab_photos: Array<{ name: string; url: string }> | null;
   lab_compliance_labels: Array<{ label: string }> | null;
   lab_compliance_docs: Array<{ name: string; url: string }> | null;
-  lab_publications: Array<{ title: string; url: string }> | null;
-  lab_patents: Array<{ title: string; url: string }> | null;
   hal_structure_id: string | null;
   hal_person_id: string | null;
   lab_equipment: Array<{ item: string }> | null;
@@ -164,8 +160,6 @@ function mapLabRow(row: LabRow): LabPartner {
     partnerLogos,
     compliance: (row.lab_compliance_labels ?? []).map(item => item.label),
     complianceDocs: (row.lab_compliance_docs ?? []).map(doc => ({ name: doc.name, url: doc.url })),
-    publications: (row.lab_publications ?? []).map(item => ({ title: item.title, url: item.url })),
-    patents: (row.lab_patents ?? []).map(item => ({ title: item.title, url: item.url })),
     halStructureId: row.hal_structure_id || null,
     halPersonId: row.hal_person_id || null,
     isVerified: parseBoolean(row.is_verified),
@@ -213,26 +207,6 @@ async function replaceLabComplianceDocs(labId: number, docs: MediaAsset[]) {
   if (ins.error) throw ins.error;
 }
 
-async function replaceLabPublications(labId: number, items: Array<{ title: string; url: string }>) {
-  const del = await supabase.from("lab_publications").delete().eq("lab_id", labId);
-  if (del.error) throw del.error;
-  if (!items.length) return;
-  const ins = await supabase
-    .from("lab_publications")
-    .insert(items.map(item => ({ lab_id: labId, title: item.title, url: item.url })));
-  if (ins.error) throw ins.error;
-}
-
-async function replaceLabPatents(labId: number, items: Array<{ title: string; url: string }>) {
-  const del = await supabase.from("lab_patents").delete().eq("lab_id", labId);
-  if (del.error) throw del.error;
-  if (!items.length) return;
-  const ins = await supabase
-    .from("lab_patents")
-    .insert(items.map(item => ({ lab_id: labId, title: item.title, url: item.url })));
-  if (ins.error) throw ins.error;
-}
-
 async function replaceLabEquipment(labId: number, equipment: string[]) {
   const del = await supabase.from("lab_equipment").delete().eq("lab_id", labId);
   if (del.error) throw del.error;
@@ -276,8 +250,6 @@ async function writeLabRelations(labId: number, lab: InsertLab | LabPartner) {
   await replaceLabPartnerLogos(labId, (lab as any).partnerLogos ?? []);
   await replaceLabComplianceLabels(labId, lab.compliance);
   await replaceLabComplianceDocs(labId, lab.complianceDocs);
-  await replaceLabPublications(labId, (lab as any).publications ?? []);
-  await replaceLabPatents(labId, (lab as any).patents ?? []);
   await replaceLabEquipment(labId, lab.equipment);
   await replaceLabFocusAreas(labId, lab.focusAreas);
   await replaceLabOffers(labId, lab.offers);
@@ -436,10 +408,6 @@ export class LabStore {
     if (Object.prototype.hasOwnProperty.call(updates, "photos")) await replaceLabPhotos(id, parsed.photos ?? []);
     if (Object.prototype.hasOwnProperty.call(updates, "compliance")) await replaceLabComplianceLabels(id, parsed.compliance ?? []);
     if (Object.prototype.hasOwnProperty.call(updates, "complianceDocs")) await replaceLabComplianceDocs(id, parsed.complianceDocs ?? []);
-    if (Object.prototype.hasOwnProperty.call(updates, "publications"))
-      await replaceLabPublications(id, (parsed as any).publications ?? []);
-    if (Object.prototype.hasOwnProperty.call(updates, "patents"))
-      await replaceLabPatents(id, (parsed as any).patents ?? []);
     if (Object.prototype.hasOwnProperty.call(updates, "equipment")) await replaceLabEquipment(id, parsed.equipment ?? []);
     if (Object.prototype.hasOwnProperty.call(updates, "focusAreas")) await replaceLabFocusAreas(id, parsed.focusAreas ?? []);
     if (Object.prototype.hasOwnProperty.call(updates, "offers")) await replaceLabOffers(id, parsed.offers ?? []);
