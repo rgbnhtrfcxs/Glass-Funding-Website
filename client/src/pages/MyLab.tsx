@@ -26,6 +26,13 @@ type Form = {
   complianceTags: string[];
   halStructureId: string;
   halPersonId: string;
+  teamMembers: Array<{
+    name: string;
+    title: string;
+    linkedin?: string | null;
+    website?: string | null;
+    isLead?: boolean;
+  }>;
   equipmentTags: string[];
   focusTags: string[];
   offers: OfferOption[];
@@ -76,6 +83,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
     complianceTags: [],
     halStructureId: "",
     halPersonId: "",
+    teamMembers: [],
     equipmentTags: [],
     focusTags: [],
     offers: [],
@@ -85,6 +93,12 @@ export default function MyLab({ params }: { params: { id: string } }) {
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
   const [partnerLogos, setPartnerLogos] = useState<{ name: string; url: string }[]>([]);
+  const [teamMemberInput, setTeamMemberInput] = useState({
+    name: "",
+    title: "",
+    linkedin: "",
+    website: "",
+  });
   const [tagInput, setTagInput] = useState<{ field: "complianceTags" | "equipmentTags" | "focusTags"; value: string }>({
     field: "complianceTags",
     value: "",
@@ -229,6 +243,45 @@ export default function MyLab({ params }: { params: { id: string } }) {
     }
   };
 
+  const addTeamMember = () => {
+    const name = teamMemberInput.name.trim();
+    const title = teamMemberInput.title.trim();
+    if (!name || !title) return;
+    const linkedin = teamMemberInput.linkedin.trim();
+    const website = teamMemberInput.website.trim();
+    setForm(prev => ({
+      ...prev,
+      teamMembers: [
+        ...prev.teamMembers,
+        {
+          name,
+          title,
+          linkedin: linkedin || null,
+          website: website || null,
+          isLead: prev.teamMembers.length === 0,
+        },
+      ],
+    }));
+    setTeamMemberInput({ name: "", title: "", linkedin: "", website: "" });
+  };
+
+  const removeTeamMember = (name: string, title: string) => {
+    setForm(prev => ({
+      ...prev,
+      teamMembers: prev.teamMembers.filter(member => !(member.name === name && member.title === title)),
+    }));
+  };
+
+  const setLeadMember = (name: string, title: string) => {
+    setForm(prev => ({
+      ...prev,
+      teamMembers: prev.teamMembers.map(member => ({
+        ...member,
+        isLead: member.name === name && member.title === title,
+      })),
+    }));
+  };
+
   async function loadLabDetails(labId: number, token?: string | null) {
     try {
       setLoading(true);
@@ -265,6 +318,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
         complianceTags: lab.compliance || [],
         halStructureId: lab.halStructureId || "",
         halPersonId: lab.halPersonId || "",
+        teamMembers: lab.teamMembers || [],
         equipmentTags: lab.equipment || [],
         focusTags: lab.focusAreas || [],
         offers: lab.offers || [],
@@ -342,6 +396,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
           compliance: form.complianceTags,
           halStructureId: form.halStructureId || null,
           halPersonId: form.halPersonId || null,
+          teamMembers: form.teamMembers,
           equipment: form.equipmentTags,
           focusAreas: form.focusTags,
           offers: form.offers,
@@ -561,6 +616,82 @@ export default function MyLab({ params }: { params: { id: string } }) {
               </Field>
               <Field label="Country">
                 <input className="input" value={form.country} onChange={e => setForm({ ...form, country: e.target.value })} />
+              </Field>
+              <Field label="Team members">
+                <div className="space-y-3">
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <input
+                      className="input"
+                      placeholder="Full name"
+                      value={teamMemberInput.name}
+                      onChange={e => setTeamMemberInput(prev => ({ ...prev, name: e.target.value }))}
+                    />
+                    <input
+                      className="input"
+                      placeholder="Title"
+                      value={teamMemberInput.title}
+                      onChange={e => setTeamMemberInput(prev => ({ ...prev, title: e.target.value }))}
+                    />
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <input
+                      className="input"
+                      placeholder="LinkedIn (optional)"
+                      value={teamMemberInput.linkedin}
+                      onChange={e => setTeamMemberInput(prev => ({ ...prev, linkedin: e.target.value }))}
+                    />
+                    <input
+                      className="input"
+                      placeholder="Website (optional)"
+                      value={teamMemberInput.website}
+                      onChange={e => setTeamMemberInput(prev => ({ ...prev, website: e.target.value }))}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addTeamMember}
+                    className="inline-flex items-center rounded-full border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary"
+                  >
+                    Add team member
+                  </button>
+                  <div className="space-y-2">
+                    {form.teamMembers.map(member => (
+                      <div
+                        key={`${member.name}-${member.title}`}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground">
+                            {member.name}
+                            {member.isLead && <span className="ml-2 text-xs text-primary">Lead</span>}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{member.title}</p>
+                          {(member.linkedin || member.website) && (
+                            <p className="text-xs text-muted-foreground">
+                              {member.linkedin || member.website}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setLeadMember(member.name, member.title)}
+                            className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+                          >
+                            Set lead
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeTeamMember(member.name, member.title)}
+                            className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-destructive hover:text-destructive"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </Field>
             </Section>
             )}

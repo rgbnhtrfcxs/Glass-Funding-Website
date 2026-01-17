@@ -43,6 +43,7 @@ const LAB_SELECT = `
   lab_compliance_docs (name, url),
   hal_structure_id,
   hal_person_id,
+  lab_team_members (name, title, linkedin, website, is_lead),
   lab_equipment (item),
   lab_focus_areas (focus_area),
   lab_offers (offer)
@@ -79,6 +80,13 @@ type LabRow = {
   lab_compliance_docs: Array<{ name: string; url: string }> | null;
   hal_structure_id: string | null;
   hal_person_id: string | null;
+  lab_team_members: Array<{
+    name: string;
+    title: string;
+    linkedin: string | null;
+    website: string | null;
+    is_lead: boolean | string | null;
+  }> | null;
   lab_equipment: Array<{ item: string }> | null;
   lab_focus_areas: Array<{ focus_area: string }> | null;
   lab_offers: Array<{ offer: OfferOption }> | null;
@@ -162,6 +170,15 @@ function mapLabRow(row: LabRow): LabPartner {
     complianceDocs: (row.lab_compliance_docs ?? []).map(doc => ({ name: doc.name, url: doc.url })),
     halStructureId: row.hal_structure_id || null,
     halPersonId: row.hal_person_id || null,
+    teamMembers: (row.lab_team_members ?? [])
+      .map(member => ({
+        name: member.name,
+        title: member.title,
+        linkedin: member.linkedin || null,
+        website: member.website || null,
+        isLead: parseBoolean(member.is_lead, false),
+      }))
+      .sort((a, b) => Number(b.isLead) - Number(a.isLead)),
     isVerified: parseBoolean(row.is_verified),
     isVisible: parseBoolean(row.is_visible, true),
     equipment: (row.lab_equipment ?? []).map(item => item.item),
@@ -204,6 +221,29 @@ async function replaceLabComplianceDocs(labId: number, docs: MediaAsset[]) {
   const ins = await supabase
     .from("lab_compliance_docs")
     .insert(docs.map(doc => ({ lab_id: labId, name: doc.name, url: doc.url })));
+  if (ins.error) throw ins.error;
+}
+
+async function replaceLabTeamMembers(labId: number, members: Array<{
+  name: string;
+  title: string;
+  linkedin?: string | null;
+  website?: string | null;
+  isLead?: boolean | null;
+}>) {
+  const del = await supabase.from("lab_team_members").delete().eq("lab_id", labId);
+  if (del.error) throw del.error;
+  if (!members.length) return;
+  const ins = await supabase.from("lab_team_members").insert(
+    members.map(member => ({
+      lab_id: labId,
+      name: member.name,
+      title: member.title,
+      linkedin: member.linkedin ?? null,
+      website: member.website ?? null,
+      is_lead: member.isLead ?? false,
+    })),
+  );
   if (ins.error) throw ins.error;
 }
 
@@ -250,6 +290,7 @@ async function writeLabRelations(labId: number, lab: InsertLab | LabPartner) {
   await replaceLabPartnerLogos(labId, (lab as any).partnerLogos ?? []);
   await replaceLabComplianceLabels(labId, lab.compliance);
   await replaceLabComplianceDocs(labId, lab.complianceDocs);
+  await replaceLabTeamMembers(labId, (lab as any).teamMembers ?? []);
   await replaceLabEquipment(labId, lab.equipment);
   await replaceLabFocusAreas(labId, lab.focusAreas);
   await replaceLabOffers(labId, lab.offers);
@@ -413,6 +454,8 @@ export class LabStore {
     if (Object.prototype.hasOwnProperty.call(updates, "offers")) await replaceLabOffers(id, parsed.offers ?? []);
     if (Object.prototype.hasOwnProperty.call(updates, "partnerLogos"))
       await replaceLabPartnerLogos(id, (parsed as any).partnerLogos ?? []);
+    if (Object.prototype.hasOwnProperty.call(updates, "teamMembers"))
+      await replaceLabTeamMembers(id, (parsed as any).teamMembers ?? []);
 
     const updated = await this.findById(id);
     if (!updated) throw new Error("Lab not found after update");

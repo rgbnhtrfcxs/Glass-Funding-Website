@@ -108,6 +108,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const [showAllEquipment, setShowAllEquipment] = useState(false);
   const [showHalModal, setShowHalModal] = useState(false);
   const [halModalType, setHalModalType] = useState<"publications" | "patents">("publications");
+  const [showTeamModal, setShowTeamModal] = useState(false);
   const [halItems, setHalItems] = useState<
     Array<{ title: string; url: string; year?: number | null; doi?: string | null }>
   >([]);
@@ -713,6 +714,27 @@ export default function LabDetails({ params }: LabDetailsProps) {
             </div>
           </section>
 
+          {lab.teamMembers.length > 0 && (
+            <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Team members</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Meet the people leading the lab.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowTeamModal(true)}
+                  className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                >
+                  View team
+                  <ArrowUpRight className="h-4 w-4" />
+                </button>
+              </div>
+            </section>
+          )}
+
           {(lab.halStructureId || lab.halPersonId) && (
             <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -810,6 +832,65 @@ export default function LabDetails({ params }: LabDetailsProps) {
                     </div>
                     <ArrowUpRight className="h-4 w-4 flex-shrink-0" />
                   </a>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showTeamModal && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4 py-8">
+            <div className="w-full max-w-2xl rounded-3xl border border-border bg-background p-6 shadow-xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-foreground">Lab team</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowTeamModal(false)}
+                  className="rounded-full border border-border px-3 py-1 text-sm text-muted-foreground hover:border-primary hover:text-primary"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="mt-4 space-y-3">
+                {lab.teamMembers.map(member => (
+                  <div
+                    key={`${member.name}-${member.title}`}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">
+                        {member.name}
+                        {member.isLead && <span className="ml-2 text-xs text-primary">Lead</span>}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{member.title}</p>
+                      {(member.linkedin || member.website) && (
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          {member.linkedin && (
+                            <a
+                              href={member.linkedin}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 hover:border-primary hover:text-primary"
+                            >
+                              LinkedIn
+                              <ArrowUpRight className="h-3 w-3" />
+                            </a>
+                          )}
+                          {member.website && (
+                            <a
+                              href={member.website}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 hover:border-primary hover:text-primary"
+                            >
+                              Website
+                              <ArrowUpRight className="h-3 w-3" />
+                            </a>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>

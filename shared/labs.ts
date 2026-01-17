@@ -14,6 +14,14 @@ export const mediaAssetSchema = z.object({
   url: z.string().min(1, "Asset URL is required"),
 });
 
+export const teamMemberSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  title: z.string().min(1, "Title is required"),
+  linkedin: z.string().url("LinkedIn must be a valid URL").optional().nullable(),
+  website: z.string().url("Website must be a valid URL").optional().nullable(),
+  isLead: z.boolean().optional().default(false),
+});
+
 export const labCoreSchema = z.object({
   name: z.string().min(1, "Lab name is required"),
   labManager: z.string().min(1, "Lab manager name is required"),
@@ -37,6 +45,7 @@ export const labCoreSchema = z.object({
   complianceDocs: z.array(mediaAssetSchema).default([]),
   halStructureId: z.string().min(1).optional().nullable(),
   halPersonId: z.string().min(1).optional().nullable(),
+  teamMembers: z.array(teamMemberSchema).default([]),
   isVerified: z.boolean().default(false),
   isVisible: z.boolean().default(true),
   equipment: z.array(z.string().min(1)).default([]),
