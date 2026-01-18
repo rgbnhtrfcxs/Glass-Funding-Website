@@ -1,15 +1,39 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://glass-funding.com/</loc>
+    <loc>https://glass-connect.com/</loc>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://glass-funding.com/about</loc>
+    <loc>https://glass-connect.com/labs</loc>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://glass-connect.com/about</loc>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://glass-funding.com/contact</loc>
+    <loc>https://glass-connect.com/one-pagers</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://glass-connect.com/roadmap</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://glass-connect.com/contact</loc>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://glass-connect.com/terms</loc>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://glass-connect.com/privacy</loc>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://glass-connect.com/status</loc>
+    <priority>0.4</priority>
   </url>
 </urlset>
