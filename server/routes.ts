@@ -697,6 +697,7 @@ export function registerRoutes(app: Express) {
         contact_name: payload.requesterName,
         contact_email: payload.requesterEmail,
         message: payload.projectSummary ?? "",
+        preferred_contact_methods: payload.preferredContactMethods ?? [],
       });
       if (contactError) {
         throw contactError;
@@ -717,11 +718,7 @@ export function registerRoutes(app: Express) {
           `Compliance notes: ${payload.complianceNotes}`,
           `Requirements: ${payload.specialRequirements}`,
           `Links: ${payload.referencesOrLinks}`,
-          `Verification: ${payload.verification}`,
-          `Verification proof: ${payload.verificationProof}`,
-          `Preferred contact: ${payload.preferredContactMethod}`,
-          `Delivery window: ${payload.preferredDeliveryWindow}`,
-          `Agree to review: ${payload.agreeToReview}`,
+          `Preferred contact: ${payload.preferredContactMethods?.join(", ") || "N/A"}`,
         ].join("\n"),
         templateId: process.env.BREVO_TEMPLATE_LABREQ_ADMIN
           ? Number(process.env.BREVO_TEMPLATE_LABREQ_ADMIN)
@@ -740,8 +737,7 @@ export function registerRoutes(app: Express) {
           complianceNotes: payload.complianceNotes,
           specialRequirements: payload.specialRequirements,
           referencesOrLinks: payload.referencesOrLinks,
-          preferredContact: payload.preferredContactMethod,
-          deliveryWindow: payload.preferredDeliveryWindow,
+          preferredContact: payload.preferredContactMethods?.join(", ") || "N/A",
           logoUrl: process.env.MAIL_LOGO_URL || undefined,
         },
       });
@@ -763,8 +759,7 @@ export function registerRoutes(app: Express) {
             `Compliance notes: ${payload.complianceNotes}`,
             `Requirements: ${payload.specialRequirements}`,
             `Links: ${payload.referencesOrLinks}`,
-            `Preferred contact: ${payload.preferredContactMethod}`,
-            `Delivery window: ${payload.preferredDeliveryWindow}`,
+            `Preferred contact: ${payload.preferredContactMethods?.join(", ") || "N/A"}`,
           ].join("\n"),
           templateId: process.env.BREVO_TEMPLATE_LABREQ_LAB
             ? Number(process.env.BREVO_TEMPLATE_LABREQ_LAB)
@@ -783,8 +778,7 @@ export function registerRoutes(app: Express) {
             complianceNotes: payload.complianceNotes,
             specialRequirements: payload.specialRequirements,
             referencesOrLinks: payload.referencesOrLinks,
-            preferredContact: payload.preferredContactMethod,
-            deliveryWindow: payload.preferredDeliveryWindow,
+            preferredContact: payload.preferredContactMethods?.join(", ") || "N/A",
             logoUrl: process.env.MAIL_LOGO_URL || undefined,
           },
         });

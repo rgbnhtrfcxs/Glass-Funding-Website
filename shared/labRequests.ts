@@ -1,17 +1,5 @@
 import { z } from "zod";
 
-export const deliveryWindows = [
-  "weekly_digest",
-  "biweekly_digest",
-  "immediate",
-] as const;
-
-export const verificationStatus = [
-  "glass_verified",
-  "partner_verified",
-  "unverified",
-] as const;
-
 export const labRequestCoreSchema = z.object({
   labId: z.number().int().positive("Lab selection is required"),
   labName: z.string().min(1, "Lab name is required"),
@@ -27,13 +15,7 @@ export const labRequestCoreSchema = z.object({
   complianceNotes: z.string().optional().default(""),
   specialRequirements: z.string().optional().default(""),
   referencesOrLinks: z.string().optional().default(""),
-  verification: z.enum(verificationStatus).default("unverified"),
-  verificationProof: z.string().optional().default(""),
-  preferredContactMethod: z.enum(["email", "video_call", "phone"]).default("email"),
-  preferredDeliveryWindow: z.enum(deliveryWindows).default("weekly_digest"),
-  agreeToReview: z.boolean().refine(Boolean, {
-    message: "Please confirm the request can be reviewed for spam",
-  }),
+  preferredContactMethods: z.array(z.enum(["email", "video_call", "phone"])).min(1, "Select at least one contact method"),
 });
 
 export const labRequestSchema = labRequestCoreSchema.extend({

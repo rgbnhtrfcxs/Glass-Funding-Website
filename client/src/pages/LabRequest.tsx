@@ -24,11 +24,7 @@ type FormState = {
   complianceNotes: string;
   specialRequirements: string;
   referencesOrLinks: string;
-  verification: "glass_verified" | "partner_verified" | "unverified";
-  verificationProof: string;
-  preferredContactMethod: "email" | "video_call" | "phone";
-  preferredDeliveryWindow: "weekly_digest" | "biweekly_digest" | "immediate";
-  agreeToReview: boolean;
+  preferredContactMethods: Array<"email" | "video_call" | "phone">;
 };
 
 const defaultState: FormState = {
@@ -44,11 +40,7 @@ const defaultState: FormState = {
   complianceNotes: "",
   specialRequirements: "",
   referencesOrLinks: "",
-  verification: "glass_verified",
-  verificationProof: "",
-  preferredContactMethod: "email",
-  preferredDeliveryWindow: "weekly_digest",
-  agreeToReview: false,
+  preferredContactMethods: ["email"],
 };
 
 export default function LabRequest({ params }: RouteProps) {
@@ -63,13 +55,17 @@ export default function LabRequest({ params }: RouteProps) {
   const [error, setError] = useState<string | null>(null);
   const [successId, setSuccessId] = useState<number | null>(null);
 
-  const updateField = (field: keyof FormState, value: string | boolean) => {
+  const updateField = (field: keyof FormState, value: string | boolean | string[]) => {
     setFormState(prev => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!lab) return;
+    if (!formState.preferredContactMethods.length) {
+      setError("Select at least one contact method.");
+      return;
+    }
     setIsSubmitting(true);
     setError(null);
     try {
@@ -169,8 +165,7 @@ export default function LabRequest({ params }: RouteProps) {
                 <div>
                   <p className="font-medium">Request queued for review</p>
                   <p className="mt-1 text-emerald-900/80">
-                    Your submission #{successId} is pending internal moderation. We send approved requests to {lab.labManager}
-                    on the delivery window you selected.
+                    Your submission #{successId} is pending internal moderation. We’ll route approved requests to {lab.labManager}.
                   </p>
                 </div>
               </div>
@@ -316,59 +311,44 @@ export default function LabRequest({ params }: RouteProps) {
               />
             </Field>
 
-            <div className="grid gap-6 md:grid-cols-2">
-              <Field label="Contact preferences" description="We coordinate intros after your request is approved." required>
-                <div className="space-y-2 rounded-2xl border border-border p-3">
-                  {(
-                    [
-                      { value: "email", label: "Email digest" },
-                      { value: "video_call", label: "Schedule a call" },
-                      { value: "phone", label: "Phone call" },
-                    ] as const
-                  ).map(option => (
-                    <label key={option.value} className="flex items-center gap-2 text-sm text-foreground">
+            <Field label="Contact preferences" description="Choose how you want the lab to reach you." required>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    { value: "email", label: "Email" },
+                    { value: "video_call", label: "Video call" },
+                    { value: "phone", label: "Phone" },
+                  ] as const
+                ).map(option => {
+                  const checked = formState.preferredContactMethods.includes(option.value);
+                  return (
+                    <label
+                      key={option.value}
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition ${
+                        checked
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:border-primary/50 hover:text-primary"
+                      }`}
+                    >
                       <input
-                        type="radio"
-                        name="contact"
-                        value={option.value}
-                        checked={formState.preferredContactMethod === option.value}
-                        onChange={() => updateField("preferredContactMethod", option.value)}
+                        type="checkbox"
+                        className="rounded border-border text-primary"
+                        checked={checked}
+                        onChange={event =>
+                          updateField(
+                            "preferredContactMethods",
+                            event.target.checked
+                              ? [...formState.preferredContactMethods, option.value]
+                              : formState.preferredContactMethods.filter(item => item !== option.value),
+                          )
+                        }
                       />
                       {option.label}
                     </label>
-                  ))}
-                </div>
-                <select
-                  className={`${inputClasses} mt-3`}
-                  value={formState.preferredDeliveryWindow}
-                  onChange={event => updateField("preferredDeliveryWindow", event.target.value as FormState["preferredDeliveryWindow"])}
-                >
-                  <option value="weekly_digest">Send with the weekly digest</option>
-                  <option value="biweekly_digest">Hold for bi-weekly summary</option>
-                  <option value="immediate">Send immediately after review</option>
-                </select>
-              </Field>
-              <Field label="References or proof of work" description="Share anything that helps the lab trust your request (optional).">
-                <input
-                  type="text"
-                  className={inputClasses}
-                  value={formState.verificationProof}
-                  onChange={event => updateField("verificationProof", event.target.value)}
-                  placeholder="Link to a deck, partner reference, or update thread"
-                />
-              </Field>
-            </div>
-
-            <label className="flex items-start gap-3 rounded-2xl border border-border p-4 text-sm text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={formState.agreeToReview}
-                onChange={event => updateField("agreeToReview", event.target.checked)}
-              />
-              <span>
-                I agree that Glass can review this submission for spam and will only send it to {lab.name} once it passes moderation.
-              </span>
-            </label>
+                  );
+                })}
+              </div>
+            </Field>
 
             <div className="flex flex-wrap gap-3">
               <button
@@ -379,9 +359,6 @@ export default function LabRequest({ params }: RouteProps) {
                 {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
                 Submit request
               </button>
-              <p className="text-xs text-muted-foreground">
-                We queue requests once a week (or on demand if you selected immediate delivery).
-              </p>
             </div>
           </form>
         </motion.div>

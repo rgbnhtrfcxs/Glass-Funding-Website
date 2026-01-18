@@ -155,11 +155,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
     complianceNotes: "",
     specialRequirements: "",
     referencesOrLinks: "",
-    verification: "glass_verified",
-    verificationProof: "",
-    preferredContactMethod: "email",
-    preferredDeliveryWindow: "weekly_digest",
-    agreeToReview: false,
+    preferredContactMethods: ["email"],
   });
   const [showCollab, setShowCollab] = useState(false);
   const [collabSubmitting, setCollabSubmitting] = useState(false);
@@ -308,6 +304,18 @@ export default function LabDetails({ params }: LabDetailsProps) {
       setRequestError("Name, email, and project summary are required.");
       return;
     }
+    if (requestForm.projectSummary.trim().length < 50) {
+      setRequestError("Project summary must be at least 50 characters.");
+      return;
+    }
+    if (requestForm.projectSummary.trim().length > 1000) {
+      setRequestError("Project summary must be under 1000 characters.");
+      return;
+    }
+    if (!requestForm.preferredContactMethods.length) {
+      setRequestError("Select at least one preferred contact method.");
+      return;
+    }
     setRequestSubmitting(true);
     setRequestError(null);
     setRequestSuccess(null);
@@ -340,11 +348,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
         complianceNotes: "",
         specialRequirements: "",
         referencesOrLinks: "",
-        verification: "glass_verified",
-        verificationProof: "",
-        preferredContactMethod: "email",
-        preferredDeliveryWindow: "weekly_digest",
-        agreeToReview: false,
+        preferredContactMethods: ["email"],
       }));
       setShowRequest(false);
     } catch (err: any) {
@@ -1151,8 +1155,9 @@ export default function LabDetails({ params }: LabDetailsProps) {
                       className="min-h-[100px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
                       value={requestForm.projectSummary}
                       onChange={e => setRequestForm(prev => ({ ...prev, projectSummary: e.target.value }))}
-                      placeholder="What work do you want to run here?"
+                      placeholder="We need access to a GMP-ready wet lab for 8 weeks to validate a biosensor prototype."
                     />
+                    <p className="text-xs text-muted-foreground">Minimum 50 characters. Max 1000 characters.</p>
                   </div>
                   <div className="grid gap-1 md:grid-cols-2 md:gap-4">
                     <div className="grid gap-1">
@@ -1161,6 +1166,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
                         className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
                         value={requestForm.workTimeline}
                         onChange={e => setRequestForm(prev => ({ ...prev, workTimeline: e.target.value }))}
+                        placeholder="Start in 4–6 weeks"
                       />
                     </div>
                     <div className="grid gap-1">
@@ -1169,6 +1175,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
                         className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
                         value={requestForm.weeklyHoursNeeded}
                         onChange={e => setRequestForm(prev => ({ ...prev, weeklyHoursNeeded: e.target.value }))}
+                        placeholder="20–30 hrs/week"
                       />
                     </div>
                   </div>
@@ -1179,6 +1186,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
                         className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
                         value={requestForm.teamSize}
                         onChange={e => setRequestForm(prev => ({ ...prev, teamSize: e.target.value }))}
+                        placeholder="3 researchers"
                       />
                     </div>
                     <div className="grid gap-1">
@@ -1187,6 +1195,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
                         className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
                         value={requestForm.equipmentNeeds}
                         onChange={e => setRequestForm(prev => ({ ...prev, equipmentNeeds: e.target.value }))}
+                        placeholder="HPLC, centrifuge, biosafety hood"
                       />
                     </div>
                   </div>
@@ -1196,6 +1205,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
                       className="min-h-[80px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
                       value={requestForm.specialRequirements}
                       onChange={e => setRequestForm(prev => ({ ...prev, specialRequirements: e.target.value }))}
+                      placeholder="BSL-2 room access, temperature-controlled storage"
                     />
                   </div>
                   <div className="grid gap-1">
@@ -1207,63 +1217,43 @@ export default function LabDetails({ params }: LabDetailsProps) {
                       placeholder="Optional links to docs or examples"
                     />
                   </div>
-                  <div className="grid gap-1 md:grid-cols-2 md:gap-4">
-                    <div className="grid gap-1">
-                      <label className="text-sm font-medium text-foreground">Verification</label>
-                      <select
-                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                        value={requestForm.verification}
-                        onChange={e => setRequestForm(prev => ({ ...prev, verification: e.target.value as any }))}
-                      >
-                        <option value="glass_verified">Glass verified</option>
-                        <option value="partner_verified">Partner verified</option>
-                        <option value="unverified">Unverified</option>
-                      </select>
-                    </div>
-                    <div className="grid gap-1">
-                      <label className="text-sm font-medium text-foreground">Preferred contact</label>
-                      <select
-                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                        value={requestForm.preferredContactMethod}
-                        onChange={e => setRequestForm(prev => ({ ...prev, preferredContactMethod: e.target.value as any }))}
-                      >
-                        <option value="email">Email</option>
-                        <option value="video_call">Video call</option>
-                        <option value="phone">Phone</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div className="grid gap-1 md:grid-cols-2 md:gap-4">
-                    <div className="grid gap-1">
-                      <label className="text-sm font-medium text-foreground">Verification proof (optional)</label>
-                      <input
-                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                        value={requestForm.verificationProof}
-                        onChange={e => setRequestForm(prev => ({ ...prev, verificationProof: e.target.value }))}
-                      />
-                    </div>
-                    <div className="grid gap-1">
-                      <label className="text-sm font-medium text-foreground">Delivery preference</label>
-                      <select
-                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                        value={requestForm.preferredDeliveryWindow}
-                        onChange={e => setRequestForm(prev => ({ ...prev, preferredDeliveryWindow: e.target.value as any }))}
-                      >
-                        <option value="weekly_digest">Weekly digest</option>
-                        <option value="biweekly_digest">Bi-weekly digest</option>
-                        <option value="immediate">Immediate</option>
-                      </select>
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">Preferred contact</label>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { value: "email", label: "Email" },
+                        { value: "video_call", label: "Video call" },
+                        { value: "phone", label: "Phone" },
+                      ].map(option => {
+                        const checked = requestForm.preferredContactMethods.includes(option.value);
+                        return (
+                          <label
+                            key={option.value}
+                            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition ${
+                              checked
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border text-muted-foreground hover:border-primary/50 hover:text-primary"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="rounded border-border text-primary"
+                              checked={checked}
+                              onChange={e =>
+                                setRequestForm(prev => ({
+                                  ...prev,
+                                  preferredContactMethods: e.target.checked
+                                    ? [...prev.preferredContactMethods, option.value]
+                                    : prev.preferredContactMethods.filter(item => item !== option.value),
+                                }))
+                              }
+                            />
+                            {option.label}
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
-                  <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
-                      checked={requestForm.agreeToReview}
-                      onChange={e => setRequestForm(prev => ({ ...prev, agreeToReview: e.target.checked }))}
-                    />
-                    I agree to review this request with the lab.
-                  </label>
                   {requestError && <p className="text-sm text-destructive">{requestError}</p>}
                   {requestSuccess && <p className="text-sm text-emerald-600">{requestSuccess}</p>}
                   <div className="flex items-center justify-end gap-3">
