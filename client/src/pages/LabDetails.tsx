@@ -304,6 +304,14 @@ export default function LabDetails({ params }: LabDetailsProps) {
       setRequestError("Name, email, and project summary are required.");
       return;
     }
+    if (!requestForm.organization.trim() || !requestForm.roleTitle.trim()) {
+      setRequestError("Organization and role/title are required.");
+      return;
+    }
+    if (!requestForm.workTimeline.trim() || !requestForm.weeklyHoursNeeded.trim() || !requestForm.teamSize.trim()) {
+      setRequestError("Timeline, weekly hours, and team size are required.");
+      return;
+    }
     if (requestForm.projectSummary.trim().length < 50) {
       setRequestError("Project summary must be at least 50 characters.");
       return;

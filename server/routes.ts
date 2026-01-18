@@ -789,7 +789,7 @@ export function registerRoutes(app: Express) {
         const issue = error.issues[0];
         return res
           .status(400)
-          .json({ message: issue?.message ?? "Invalid lab request payload" });
+          .json({ message: issue ? `${issue.path.join(".")}: ${issue.message}` : "Invalid lab request payload" });
       }
       res.status(500).json({ message: "Unable to submit lab request" });
     }
