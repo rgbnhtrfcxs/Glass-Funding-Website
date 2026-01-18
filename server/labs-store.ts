@@ -43,7 +43,7 @@ const LAB_SELECT = `
   lab_compliance_docs (name, url),
   hal_structure_id,
   hal_person_id,
-  lab_team_members (name, title, linkedin, website, is_lead),
+  lab_team_members (name, title, linkedin, website, is_lead, team_name, role_rank),
   lab_equipment (item),
   lab_focus_areas (focus_area),
   lab_offers (offer)
@@ -86,6 +86,8 @@ type LabRow = {
     linkedin: string | null;
     website: string | null;
     is_lead: boolean | string | null;
+    team_name: string | null;
+    role_rank: number | string | null;
   }> | null;
   lab_equipment: Array<{ item: string }> | null;
   lab_focus_areas: Array<{ focus_area: string }> | null;
@@ -176,9 +178,22 @@ function mapLabRow(row: LabRow): LabPartner {
         title: member.title,
         linkedin: member.linkedin || null,
         website: member.website || null,
+        teamName: member.team_name || null,
+        roleRank: member.role_rank === null || member.role_rank === undefined
+          ? null
+          : (() => {
+              const value = typeof member.role_rank === "number" ? member.role_rank : Number(member.role_rank);
+              return Number.isNaN(value) ? null : value;
+            })(),
         isLead: parseBoolean(member.is_lead, false),
       }))
-      .sort((a, b) => Number(b.isLead) - Number(a.isLead)),
+      .sort((a, b) => {
+        if (a.isLead !== b.isLead) return Number(b.isLead) - Number(a.isLead);
+        const rankA = a.roleRank ?? 999;
+        const rankB = b.roleRank ?? 999;
+        if (rankA !== rankB) return rankA - rankB;
+        return a.name.localeCompare(b.name);
+      }),
     isVerified: parseBoolean(row.is_verified),
     isVisible: parseBoolean(row.is_visible, true),
     equipment: (row.lab_equipment ?? []).map(item => item.item),
@@ -229,6 +244,8 @@ async function replaceLabTeamMembers(labId: number, members: Array<{
   title: string;
   linkedin?: string | null;
   website?: string | null;
+  teamName?: string | null;
+  roleRank?: number | null;
   isLead?: boolean | null;
 }>) {
   const del = await supabase.from("lab_team_members").delete().eq("lab_id", labId);
@@ -241,6 +258,8 @@ async function replaceLabTeamMembers(labId: number, members: Array<{
       title: member.title,
       linkedin: member.linkedin ?? null,
       website: member.website ?? null,
+      team_name: member.teamName ?? null,
+      role_rank: member.roleRank ?? null,
       is_lead: member.isLead ?? false,
     })),
   );

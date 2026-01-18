@@ -92,6 +92,20 @@ export default function LabDetails({ params }: LabDetailsProps) {
     lab.offersLabSpace === "true" ||
     lab.offersLabSpace === 1 ||
     lab.offersLabSpace === "1";
+  const teamGroups = (() => {
+    const groups = new Map<string, typeof lab.teamMembers>();
+    for (const member of lab.teamMembers) {
+      const key = member.teamName?.trim() || "Team";
+      const bucket = groups.get(key) ?? [];
+      bucket.push(member);
+      groups.set(key, bucket);
+    }
+    return Array.from(groups.entries()).sort(([a], [b]) => {
+      if (a === "Team") return 1;
+      if (b === "Team") return -1;
+      return a.localeCompare(b);
+    });
+  })();
   const badgeClass =
     status === "verified"
       ? "bg-emerald-50 text-emerald-700"
@@ -851,45 +865,55 @@ export default function LabDetails({ params }: LabDetailsProps) {
                   Close
                 </button>
               </div>
-              <div className="mt-4 space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-                {lab.teamMembers.map(member => (
-                  <div
-                    key={`${member.name}-${member.title}`}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border px-4 py-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground">
-                        {member.name}
-                        {member.isLead && <span className="ml-2 text-xs text-primary">Lead</span>}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{member.title}</p>
-                      {(member.linkedin || member.website) && (
-                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                          {member.linkedin && (
-                            <a
-                              href={member.linkedin}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 hover:border-primary hover:text-primary"
-                            >
-                              LinkedIn
-                              <ArrowUpRight className="h-3 w-3" />
-                            </a>
-                          )}
-                          {member.website && (
-                            <a
-                              href={member.website}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 hover:border-primary hover:text-primary"
-                            >
-                              Website
-                              <ArrowUpRight className="h-3 w-3" />
-                            </a>
+              <div className="mt-4 space-y-6 max-h-[60vh] overflow-y-auto pr-1">
+                {teamGroups.map(([groupName, members]) => (
+                  <div key={groupName} className="space-y-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      {groupName}
+                    </p>
+                    {members.map(member => (
+                      <div
+                        key={`${member.name}-${member.title}`}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border px-4 py-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground">
+                            {member.name}
+                            {member.isLead && <span className="ml-2 text-xs text-primary">Lead</span>}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {member.title}
+                            {member.roleRank ? ` • Rank ${member.roleRank}` : ""}
+                          </p>
+                          {(member.linkedin || member.website) && (
+                            <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                              {member.linkedin && (
+                                <a
+                                  href={member.linkedin}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 hover:border-primary hover:text-primary"
+                                >
+                                  LinkedIn
+                                  <ArrowUpRight className="h-3 w-3" />
+                                </a>
+                              )}
+                              {member.website && (
+                                <a
+                                  href={member.website}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 hover:border-primary hover:text-primary"
+                                >
+                                  Website
+                                  <ArrowUpRight className="h-3 w-3" />
+                                </a>
+                              )}
+                            </div>
                           )}
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>

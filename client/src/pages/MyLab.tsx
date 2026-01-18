@@ -31,6 +31,8 @@ type Form = {
     title: string;
     linkedin?: string | null;
     website?: string | null;
+    teamName?: string | null;
+    roleRank?: number | null;
     isLead?: boolean;
   }>;
   equipmentTags: string[];
@@ -98,6 +100,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
     title: "",
     linkedin: "",
     website: "",
+    teamName: "",
+    roleRank: "",
   });
   const [tagInput, setTagInput] = useState<{ field: "complianceTags" | "equipmentTags" | "focusTags"; value: string }>({
     field: "complianceTags",
@@ -249,6 +253,9 @@ export default function MyLab({ params }: { params: { id: string } }) {
     if (!name || !title) return;
     const linkedin = teamMemberInput.linkedin.trim();
     const website = teamMemberInput.website.trim();
+    const teamName = teamMemberInput.teamName.trim();
+    const roleRank = teamMemberInput.roleRank.trim();
+    const parsedRank = roleRank ? Number(roleRank) : null;
     setForm(prev => ({
       ...prev,
       teamMembers: [
@@ -258,11 +265,13 @@ export default function MyLab({ params }: { params: { id: string } }) {
           title,
           linkedin: linkedin || null,
           website: website || null,
+          teamName: teamName || null,
+          roleRank: parsedRank && !Number.isNaN(parsedRank) ? parsedRank : null,
           isLead: prev.teamMembers.length === 0,
         },
       ],
     }));
-    setTeamMemberInput({ name: "", title: "", linkedin: "", website: "" });
+    setTeamMemberInput({ name: "", title: "", linkedin: "", website: "", teamName: "", roleRank: "" });
   };
 
   const removeTeamMember = (name: string, title: string) => {
@@ -636,6 +645,20 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   <div className="grid gap-2 md:grid-cols-2">
                     <input
                       className="input"
+                      placeholder="Team / group (optional)"
+                      value={teamMemberInput.teamName}
+                      onChange={e => setTeamMemberInput(prev => ({ ...prev, teamName: e.target.value }))}
+                    />
+                    <input
+                      className="input"
+                      placeholder="Role rank (1-8)"
+                      value={teamMemberInput.roleRank}
+                      onChange={e => setTeamMemberInput(prev => ({ ...prev, roleRank: e.target.value }))}
+                    />
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <input
+                      className="input"
                       placeholder="LinkedIn (optional)"
                       value={teamMemberInput.linkedin}
                       onChange={e => setTeamMemberInput(prev => ({ ...prev, linkedin: e.target.value }))}
@@ -665,7 +688,13 @@ export default function MyLab({ params }: { params: { id: string } }) {
                             {member.name}
                             {member.isLead && <span className="ml-2 text-xs text-primary">Lead</span>}
                           </p>
-                          <p className="text-xs text-muted-foreground">{member.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {member.title}
+                            {member.roleRank ? ` • Rank ${member.roleRank}` : ""}
+                          </p>
+                          {member.teamName && (
+                            <p className="text-xs text-muted-foreground">Team: {member.teamName}</p>
+                          )}
                           {(member.linkedin || member.website) && (
                             <p className="text-xs text-muted-foreground">
                               {member.linkedin || member.website}
