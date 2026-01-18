@@ -851,7 +851,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
                   Close
                 </button>
               </div>
-              <div className="mt-4 space-y-3">
+              <div className="mt-4 space-y-3 max-h-[60vh] overflow-y-auto pr-1">
                 {lab.teamMembers.map(member => (
                   <div
                     key={`${member.name}-${member.title}`}

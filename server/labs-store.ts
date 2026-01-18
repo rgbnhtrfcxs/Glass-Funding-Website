@@ -403,13 +403,14 @@ export class LabStore {
       : existing.ownerUserId ?? null;
     const ownerUserId = await resolveOwnerUserId(nextContactEmail, requestedOwner ?? existing.ownerUserId ?? null);
     const ownerRole = await fetchProfileRole(ownerUserId);
-    const subscriptionTier = normalizeTier(
-      ownerRole === "multi-lab"
+    const requestedTier = Object.prototype.hasOwnProperty.call(updates, "subscriptionTier")
+      ? (updates as any).subscriptionTier ?? existing.subscriptionTier
+      : existing.subscriptionTier;
+    const subscriptionTier = ownerRole === "admin"
+      ? normalizeTier(requestedTier)
+      : ownerRole === "multi-lab"
         ? "verified"
-        : Object.prototype.hasOwnProperty.call(updates, "subscriptionTier")
-          ? (updates as any).subscriptionTier
-          : existing.subscriptionTier,
-    );
+        : normalizeTier(requestedTier);
     const baseUpdates: Record<string, unknown> = {};
 
     if (Object.prototype.hasOwnProperty.call(updates, "name")) baseUpdates.name = parsed.name;
