@@ -309,7 +309,7 @@ export default function Labs() {
                           )}
                         </span>
                         {(lab.logoUrl || ["premier", "custom"].includes(tierLower)) && (
-                          <div className="absolute bottom-3 left-3 h-12 w-12 overflow-hidden rounded-full border border-dashed border-border bg-muted/30 text-[11px] text-muted-foreground flex items-center justify-center">
+                          <div className="absolute bottom-3 left-3 h-12 w-12 overflow-hidden rounded-full bg-white text-[11px] text-muted-foreground flex items-center justify-center ring-1 ring-white/80 shadow-sm">
                             {lab.logoUrl ? (
                               <img src={lab.logoUrl} alt={`${lab.name} logo`} className="h-full w-full object-cover" />
                             ) : (

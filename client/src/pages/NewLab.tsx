@@ -76,7 +76,7 @@ export default function NewLab() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
-    "Basics" | "Photos" | "Company details" | "Branding & Links" | "Compliance" | "Offers & pricing"
+    "Basics" | "Photos" | "Company details" | "Branding & Links" | "Compliance" | "Offers & pricing" | "Team"
   >("Basics");
   const [profileTier, setProfileTier] = useState<string>("base");
 
@@ -233,21 +233,30 @@ export default function NewLab() {
           <p className="mt-2 text-sm text-muted-foreground">Start with the basics. You can add photos, equipment, and pricing later.</p>
 
           <form className="mt-8 space-y-8" onSubmit={handleSubmit}>
-            <div className="flex flex-wrap gap-2">
-              {(["Basics", "Photos", "Company details", "Branding & Links", "Compliance", "Offers & pricing"] as const).map(tab => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setActiveTab(tab)}
-                  className={`rounded-full border px-4 py-1.5 text-sm font-medium transition ${
-                    activeTab === tab
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border text-muted-foreground hover:border-primary/50 hover:text-primary"
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-2">
+                {(["Basics", "Photos", "Company details", "Branding & Links", "Compliance", "Team", "Offers & pricing"] as const).map(tab => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setActiveTab(tab)}
+                    className={`rounded-full border px-4 py-1.5 text-sm font-medium transition ${
+                      activeTab === tab
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:border-primary/50 hover:text-primary"
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="submit"
+                disabled={saving}
+                className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
+              >
+                {saving ? "Creating…" : "Create lab"}
+              </button>
             </div>
 
             {activeTab === "Basics" && (
@@ -566,8 +575,12 @@ export default function NewLab() {
                   </Field>
                 </div>
 
+              </Section>
+            )}
+
+            {activeTab === "Team" && (
+              <Section title="Team members">
                 <div className="space-y-3">
-                  <p className="text-sm font-medium text-foreground">Team members</p>
                   <div className="grid gap-2 md:grid-cols-2">
                     <input
                       className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -869,13 +882,6 @@ export default function NewLab() {
             )}
 
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <button
-              type="submit"
-              disabled={saving}
-              className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
-            >
-              {saving ? "Creating…" : "Create lab"}
-            </button>
           </form>
         </motion.div>
       </div>

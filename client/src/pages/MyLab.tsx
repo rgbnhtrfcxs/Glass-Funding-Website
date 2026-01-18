@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import { FileDown, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import { offerOptions, type OfferOption, type MediaAsset } from "@shared/labs";
@@ -61,8 +62,11 @@ export default function MyLab({ params }: { params: { id: string } }) {
   const [isVisible, setIsVisible] = useState<boolean>(true);
   const [photos, setPhotos] = useState<MediaAsset[]>([]);
   const [photoUrlInput, setPhotoUrlInput] = useState("");
+  const [complianceDocs, setComplianceDocs] = useState<MediaAsset[]>([]);
+  const [complianceUploading, setComplianceUploading] = useState(false);
+  const [complianceError, setComplianceError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
-    "Basics" | "Branding" | "Company details" | "Compliance" | "Photos" | "Offers & pricing"
+    "Basics" | "Branding" | "Company details" | "Compliance" | "Photos" | "Offers & pricing" | "Team"
   >("Basics");
   const [form, setForm] = useState<Form>({
     name: "",
@@ -226,6 +230,33 @@ export default function MyLab({ params }: { params: { id: string } }) {
     }
   }
 
+  async function handleComplianceUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    if (!labId) return;
+    setComplianceError(null);
+    setComplianceUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        const ext = file.name.split(".").pop() || "pdf";
+        const filename =
+          (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`) + `.${ext}`;
+        const path = `labs/${labId}/compliance/${filename}`;
+        const { error: uploadError } = await supabase.storage
+          .from("lab-pdfs")
+          .upload(path, file, { upsert: true, contentType: file.type });
+        if (uploadError) throw uploadError;
+        const { data } = supabase.storage.from("lab-pdfs").getPublicUrl(path);
+        setComplianceDocs(prev => [...prev, { name: file.name, url: data.publicUrl }]);
+      }
+    } catch (err: any) {
+      setComplianceError(err?.message || "Unable to upload compliance documents");
+    } finally {
+      setComplianceUploading(false);
+      if (event.target) event.target.value = "";
+    }
+  }
+
   const addTag = (field: "complianceTags" | "equipmentTags" | "focusTags", raw: string) => {
     const value = raw.trim();
     if (!value) return;
@@ -336,6 +367,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
       });
       setPartnerLogos(lab.partnerLogos || []);
       setPhotos(lab.photos || []);
+      setComplianceDocs(lab.complianceDocs || []);
       setAnalytics(null);
       setAnalyticsError(null);
 
@@ -403,6 +435,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
           photos,
           partnerLogos: form.partnerLogos,
           compliance: form.complianceTags,
+          complianceDocs,
           halStructureId: form.halStructureId || null,
           halPersonId: form.halPersonId || null,
           teamMembers: form.teamMembers,
@@ -500,21 +533,30 @@ export default function MyLab({ params }: { params: { id: string } }) {
             className="mt-8 space-y-8"
             onSubmit={e => { e.preventDefault(); void save(); }}
           >
-            <div className="flex flex-wrap gap-2">
-              {(["Basics", "Branding", "Company details", "Compliance", "Photos", "Offers & pricing"] as const).map(tab => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setActiveTab(tab)}
-                  className={`rounded-full border px-4 py-1.5 text-sm font-medium transition ${
-                    activeTab === tab
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border text-muted-foreground hover:border-primary/50 hover:text-primary"
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-2">
+                {(["Basics", "Branding", "Company details", "Compliance", "Team", "Photos", "Offers & pricing"] as const).map(tab => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setActiveTab(tab)}
+                    className={`rounded-full border px-4 py-1.5 text-sm font-medium transition ${
+                      activeTab === tab
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:border-primary/50 hover:text-primary"
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+              <button
+                className="rounded-full bg-primary px-4 py-2 text-primary-foreground"
+                type="submit"
+                disabled={saving}
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
             </div>
 
             {activeTab === "Basics" && (
@@ -626,108 +668,111 @@ export default function MyLab({ params }: { params: { id: string } }) {
               <Field label="Country">
                 <input className="input" value={form.country} onChange={e => setForm({ ...form, country: e.target.value })} />
               </Field>
-              <Field label="Team members">
-                <div className="space-y-3">
-                  <div className="grid gap-2 md:grid-cols-2">
-                    <input
-                      className="input"
-                      placeholder="Full name"
-                      value={teamMemberInput.name}
-                      onChange={e => setTeamMemberInput(prev => ({ ...prev, name: e.target.value }))}
-                    />
-                    <input
-                      className="input"
-                      placeholder="Title"
-                      value={teamMemberInput.title}
-                      onChange={e => setTeamMemberInput(prev => ({ ...prev, title: e.target.value }))}
-                    />
-                  </div>
-                  <div className="grid gap-2 md:grid-cols-2">
-                    <input
-                      className="input"
-                      placeholder="Team / group (optional)"
-                      value={teamMemberInput.teamName}
-                      onChange={e => setTeamMemberInput(prev => ({ ...prev, teamName: e.target.value }))}
-                    />
-                    <input
-                      className="input"
-                      placeholder="Role rank (1-8)"
-                      value={teamMemberInput.roleRank}
-                      onChange={e => setTeamMemberInput(prev => ({ ...prev, roleRank: e.target.value }))}
-                    />
-                  </div>
-                  <div className="grid gap-2 md:grid-cols-2">
-                    <input
-                      className="input"
-                      placeholder="LinkedIn (optional)"
-                      value={teamMemberInput.linkedin}
-                      onChange={e => setTeamMemberInput(prev => ({ ...prev, linkedin: e.target.value }))}
-                    />
-                    <input
-                      className="input"
-                      placeholder="Website (optional)"
-                      value={teamMemberInput.website}
-                      onChange={e => setTeamMemberInput(prev => ({ ...prev, website: e.target.value }))}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={addTeamMember}
-                    className="inline-flex items-center rounded-full border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary"
-                  >
-                    Add team member
-                  </button>
-                  <div className="space-y-2">
-                    {form.teamMembers.map(member => (
-                      <div
-                        key={`${member.name}-${member.title}`}
-                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-foreground">
-                            {member.name}
-                            {member.isLead && <span className="ml-2 text-xs text-primary">Lead</span>}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {member.title}
-                            {member.roleRank ? ` • Rank ${member.roleRank}` : ""}
-                          </p>
-                          {member.teamName && (
-                            <p className="text-xs text-muted-foreground">Team: {member.teamName}</p>
-                          )}
-                          {(member.linkedin || member.website) && (
-                            <p className="text-xs text-muted-foreground">
-                              {member.linkedin || member.website}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setLeadMember(member.name, member.title)}
-                            className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
-                          >
-                            Set lead
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeTeamMember(member.name, member.title)}
-                            className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-destructive hover:text-destructive"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+            </Section>
+            )}
+
+            {activeTab === "Team" && (
+            <Section title="Team members">
+              <div className="space-y-3">
+                <div className="grid gap-2 md:grid-cols-2">
+                  <input
+                    className="input"
+                    placeholder="Full name"
+                    value={teamMemberInput.name}
+                    onChange={e => setTeamMemberInput(prev => ({ ...prev, name: e.target.value }))}
+                  />
+                  <input
+                    className="input"
+                    placeholder="Title"
+                    value={teamMemberInput.title}
+                    onChange={e => setTeamMemberInput(prev => ({ ...prev, title: e.target.value }))}
+                  />
                 </div>
-              </Field>
+                <div className="grid gap-2 md:grid-cols-2">
+                  <input
+                    className="input"
+                    placeholder="Team / group (optional)"
+                    value={teamMemberInput.teamName}
+                    onChange={e => setTeamMemberInput(prev => ({ ...prev, teamName: e.target.value }))}
+                  />
+                  <input
+                    className="input"
+                    placeholder="Role rank (1-8)"
+                    value={teamMemberInput.roleRank}
+                    onChange={e => setTeamMemberInput(prev => ({ ...prev, roleRank: e.target.value }))}
+                  />
+                </div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  <input
+                    className="input"
+                    placeholder="LinkedIn (optional)"
+                    value={teamMemberInput.linkedin}
+                    onChange={e => setTeamMemberInput(prev => ({ ...prev, linkedin: e.target.value }))}
+                  />
+                  <input
+                    className="input"
+                    placeholder="Website (optional)"
+                    value={teamMemberInput.website}
+                    onChange={e => setTeamMemberInput(prev => ({ ...prev, website: e.target.value }))}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={addTeamMember}
+                  className="inline-flex items-center rounded-full border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary"
+                >
+                  Add team member
+                </button>
+                <div className="space-y-2">
+                  {form.teamMembers.map(member => (
+                    <div
+                      key={`${member.name}-${member.title}`}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">
+                          {member.name}
+                          {member.isLead && <span className="ml-2 text-xs text-primary">Lead</span>}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {member.title}
+                          {member.roleRank ? ` • Rank ${member.roleRank}` : ""}
+                        </p>
+                        {member.teamName && (
+                          <p className="text-xs text-muted-foreground">Team: {member.teamName}</p>
+                        )}
+                        {(member.linkedin || member.website) && (
+                          <p className="text-xs text-muted-foreground">
+                            {member.linkedin || member.website}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setLeadMember(member.name, member.title)}
+                          className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+                        >
+                          Set lead
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeTeamMember(member.name, member.title)}
+                          className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-destructive hover:text-destructive"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </Section>
             )}
 
             {activeTab === "Compliance" && (
             <Section title="Compliance & capabilities">
-                <Field label="Compliance">
+              <Field label="Compliance">
                 <div className="space-y-2">
                   <input
                     className="input"
@@ -753,6 +798,39 @@ export default function MyLab({ params }: { params: { id: string } }) {
                       </span>
                     ))}
                   </div>
+                </div>
+              </Field>
+              <Field label="Compliance documents (PDF)">
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    {complianceDocs.map(asset => (
+                      <button
+                        key={asset.url}
+                        type="button"
+                        onClick={() => setComplianceDocs(prev => prev.filter(doc => doc.url !== asset.url))}
+                        className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-destructive hover:text-destructive"
+                      >
+                        <FileDown className="h-3 w-3 text-primary" />
+                        {asset.name}
+                        <X className="h-3 w-3" />
+                      </button>
+                    ))}
+                  </div>
+                  <label className="inline-flex items-center gap-3">
+                    <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
+                      Choose file
+                      <input
+                        type="file"
+                        accept="application/pdf"
+                        multiple
+                        onChange={handleComplianceUpload}
+                        className="hidden"
+                      />
+                    </span>
+                  </label>
+                  {complianceUploading && <p className="text-xs text-muted-foreground">Uploading…</p>}
+                  {complianceError && <p className="text-xs text-destructive">{complianceError}</p>}
+                  <p className="text-xs text-muted-foreground">Upload PDF compliance certificates.</p>
                 </div>
               </Field>
               <Field label="Equipment">
@@ -974,13 +1052,6 @@ export default function MyLab({ params }: { params: { id: string } }) {
             )}
 
             {message && <p className="text-sm text-emerald-600">{message}</p>}
-            <div className="flex gap-3">
-              {saving ? (
-                <button className="rounded-full bg-primary px-4 py-2 text-primary-foreground" disabled>Saving…</button>
-              ) : (
-                <button className="rounded-full bg-primary px-4 py-2 text-primary-foreground" type="submit">Save</button>
-              )}
-            </div>
           </motion.form>
         )}
       </div>

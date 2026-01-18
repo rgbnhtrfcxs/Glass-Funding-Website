@@ -866,12 +866,58 @@ export default function LabDetails({ params }: LabDetailsProps) {
                 </button>
               </div>
               <div className="mt-4 space-y-6 max-h-[60vh] overflow-y-auto pr-1">
+                {lab.teamMembers.find(member => member.isLead) && (
+                  <div className="rounded-2xl border border-primary/40 bg-primary/5 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      Lead
+                    </p>
+                    {lab.teamMembers
+                      .filter(member => member.isLead)
+                      .map(member => (
+                        <div key={`${member.name}-${member.title}`} className="mt-3 flex flex-wrap items-center gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-foreground">{member.name}</p>
+                            <span className="mt-1 inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
+                              {member.title}
+                            </span>
+                            {(member.linkedin || member.website) && (
+                              <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                {member.linkedin && (
+                                  <a
+                                    href={member.linkedin}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 hover:border-primary hover:text-primary"
+                                  >
+                                    LinkedIn
+                                    <ArrowUpRight className="h-3 w-3" />
+                                  </a>
+                                )}
+                                {member.website && (
+                                  <a
+                                    href={member.website}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 hover:border-primary hover:text-primary"
+                                  >
+                                    Website
+                                    <ArrowUpRight className="h-3 w-3" />
+                                  </a>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
                 {teamGroups.map(([groupName, members]) => (
                   <div key={groupName} className="space-y-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                      {groupName}
+                      {groupName} · {members.length}
                     </p>
                     {members.map(member => (
+                      member.isLead ? null : (
                       <div
                         key={`${member.name}-${member.title}`}
                         className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border px-4 py-3"
@@ -879,12 +925,10 @@ export default function LabDetails({ params }: LabDetailsProps) {
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-foreground">
                             {member.name}
-                            {member.isLead && <span className="ml-2 text-xs text-primary">Lead</span>}
                           </p>
-                          <p className="text-xs text-muted-foreground">
+                          <span className="mt-1 inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
                             {member.title}
-                            {member.roleRank ? ` • Rank ${member.roleRank}` : ""}
-                          </p>
+                          </span>
                           {(member.linkedin || member.website) && (
                             <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
                               {member.linkedin && (
@@ -913,6 +957,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
                           )}
                         </div>
                       </div>
+                      )
                     ))}
                   </div>
                 ))}
