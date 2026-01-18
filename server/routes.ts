@@ -691,13 +691,16 @@ export function registerRoutes(app: Express) {
         labName: lab.name,
       });
       // Also persist a simple contact record in Supabase for linkage by lab_id
-      await supabase.from("lab_contact_requests").insert({
+      const { error: contactError } = await supabase.from("lab_contact_requests").insert({
         lab_id: payload.labId,
         lab_name: lab.name,
         contact_name: payload.requesterName,
         contact_email: payload.requesterEmail,
         message: payload.projectSummary ?? "",
       });
+      if (contactError) {
+        throw contactError;
+      }
       await sendMail({
         to: process.env.ADMIN_INBOX ?? "contact@glass-funding.com",
         from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,

@@ -23,22 +23,26 @@ function parseFrom(from: string | undefined) {
  */
 export async function sendMail({ to, subject, text, html, from, templateId, params }: MailArgs) {
   const brevoKey = process.env.BREVO_API_KEY;
-  if (templateId && brevoKey) {
+  if (brevoKey) {
     try {
       const sender = parseFrom(from || process.env.MAIL_FROM || process.env.SMTP_USER || "no-reply@glass.demo");
-      console.log("[mailer] Sending via Brevo template", { to, templateId });
+      console.log("[mailer] Sending via Brevo", { to, templateId });
+      const body = templateId
+        ? { to: [{ email: to }], templateId, params, sender }
+        : {
+            to: [{ email: to }],
+            subject,
+            text,
+            html,
+            sender,
+          };
       const brevoRes = await fetch("https://api.brevo.com/v3/smtp/email", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "api-key": brevoKey,
         },
-        body: JSON.stringify({
-          to: [{ email: to }],
-          templateId,
-          params,
-          sender,
-        }),
+        body: JSON.stringify(body),
       });
       if (!brevoRes.ok) {
         const text = await brevoRes.text();
