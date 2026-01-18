@@ -88,7 +88,7 @@ import { Link } from "wouter";
 
 function BetaBanner() {
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 h-11 bg-primary/10 border-b border-primary/20 text-primary px-4 text-sm text-center flex items-center justify-center">
+    <div className="fixed top-0 left-0 right-0 z-50 h-11 bg-primary/10 border-b border-primary/20 text-primary px-4 text-sm text-center flex items-center justify-center backdrop-blur-md">
       Glass Connect beta is free for early adopters. If it’s helpful, you can support us with an optional donation.
       <Link href="/donate">
         <a className="ml-2 font-semibold underline">Donate here</a>

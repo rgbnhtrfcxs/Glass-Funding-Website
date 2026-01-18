@@ -286,20 +286,30 @@ export default function Labs() {
                     } bg-card/80 p-8`}
                   >
                     {lab.photos.length > 0 && (
-                      <div className="mb-6 overflow-hidden rounded-2xl border border-border/60 bg-background/40">
+                      <div className="relative mb-6 overflow-hidden rounded-2xl border border-border/60 bg-background/40">
                         <img
                           src={getImageUrl(lab.photos[0].url)}
                           alt={`${lab.name} preview - ${lab.photos[0].name}`}
                           className="h-48 w-full object-cover"
                           loading="lazy"
                         />
-                      </div>
-                    )}
-
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-center gap-3">
+                        <span
+                          className={`absolute right-3 top-3 inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${badgeClass}`}
+                        >
+                          {status === "verified" ? (
+                            <>
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              {badgeLabel}
+                            </>
+                          ) : (
+                            <>
+                              <ShieldAlert className="h-3.5 w-3.5" />
+                              {badgeLabel}
+                            </>
+                          )}
+                        </span>
                         {(lab.logoUrl || ["premier", "custom"].includes(tierLower)) && (
-                          <div className="h-12 w-12 overflow-hidden rounded-full border border-dashed border-border bg-muted/30 text-[11px] text-muted-foreground flex items-center justify-center flex-shrink-0">
+                          <div className="absolute bottom-3 left-3 h-12 w-12 overflow-hidden rounded-full border border-dashed border-border bg-muted/30 text-[11px] text-muted-foreground flex items-center justify-center">
                             {lab.logoUrl ? (
                               <img src={lab.logoUrl} alt={`${lab.name} logo`} className="h-full w-full object-cover" />
                             ) : (
@@ -307,63 +317,44 @@ export default function Labs() {
                             )}
                           </div>
                         )}
-                        <div>
-                          <h3 className="text-xl font-semibold text-foreground">{lab.name}</h3>
-                          <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-                            <MapPin className="h-4 w-4 text-primary" />
-                        <span>{formatLocation(lab) || "Location not set"}</span>
-                          </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <h3 className="text-xl font-semibold text-foreground">{lab.name}</h3>
+                        <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                          <MapPin className="h-4 w-4 text-primary" />
+                          <span>{formatLocation(lab) || "Location not set"}</span>
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-2 text-right">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${badgeClass}`}
+                        <button
+                          type="button"
+                          onClick={() => toggleFavorite(lab.id)}
+                          className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition ${
+                            favorites.has(lab.id)
+                              ? "border-red-500 bg-red-50 text-red-500"
+                              : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+                          }`}
+                          aria-label={favorites.has(lab.id) ? "Unfavorite lab" : "Favorite lab"}
+                          disabled={favoritesLoading}
                         >
-                          {status === "verified" ? (
-                            <>
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                              {badgeLabel}
-                              </>
-                            ) : status === "pending" ? (
-                              <>
-                                <ShieldAlert className="h-3.5 w-3.5" />
-                                {badgeLabel}
-                              </>
-                            ) : (
-                              <>
-                                <ShieldAlert className="h-3.5 w-3.5" />
-                                {badgeLabel}
-                              </>
-                            )}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => toggleFavorite(lab.id)}
-                            className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition ${
-                              favorites.has(lab.id)
-                                ? "border-red-500 bg-red-50 text-red-500"
-                                : "border-border text-muted-foreground hover:border-primary hover:text-primary"
-                            }`}
-                            aria-label={favorites.has(lab.id) ? "Unfavorite lab" : "Favorite lab"}
-                            disabled={favoritesLoading}
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill={favorites.has(lab.id) ? "currentColor" : "none"}
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            className="h-4 w-4"
                           >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              viewBox="0 0 24 24"
-                              fill={favorites.has(lab.id) ? "currentColor" : "none"}
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              className="h-4 w-4"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M12 21s-6.5-4.35-9-8.5C1 7.5 3.5 4 7 4c1.9 0 3.2 1.2 4 2.4C11.8 5.2 13.1 4 15 4c3.5 0 6 3.5 4 8.5-2.5 4.15-9 8.5-9 8.5Z"
-                              />
-                            </svg>
-                          </button>
-                        </div>
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M12 21s-6.5-4.35-9-8.5C1 7.5 3.5 4 7 4c1.9 0 3.2 1.2 4 2.4C11.8 5.2 13.1 4 15 4c3.5 0 6 3.5 4 8.5-2.5 4.15-9 8.5-9 8.5Z"
+                            />
+                          </svg>
+                        </button>
                         {offersLabSpace && (
                           <span className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-medium bg-primary/10 text-primary">
                             Offers lab space
