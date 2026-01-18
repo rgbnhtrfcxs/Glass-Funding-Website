@@ -804,7 +804,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
                   Close
                 </button>
               </div>
-              <div className="mt-4 space-y-3">
+              <div className="mt-4 space-y-3 max-h-[60vh] overflow-y-auto pr-1">
                 {halLoading && (
                   <p className="text-sm text-muted-foreground">
                     Loading {halModalType === "patents" ? "patents" : "publications"}…
