@@ -1546,6 +1546,52 @@ app.get("/api/profile", authenticate, async (req, res) => {
     }
   });
 
+  app.delete("/api/my-lab/:id", authenticate, async (req, res) => {
+    try {
+      const labId = Number(req.params.id);
+      if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
+      const userId = req.user?.id;
+      const email = req.user?.email;
+      if (!userId && !email) return res.status(400).json({ message: "No user on request" });
+
+      let labRow = null;
+      if (userId) {
+        const { data, error } = await supabase
+          .from("labs")
+          .select("id")
+          .eq("id", labId)
+          .eq("owner_user_id", userId)
+          .maybeSingle();
+        if (error) throw error;
+        if (data) labRow = data;
+      }
+      if (!labRow && email && userId) {
+        const { data, error } = await supabase
+          .from("labs")
+          .select("id, owner_user_id")
+          .eq("id", labId)
+          .eq("contact_email", email)
+          .maybeSingle();
+        if (error) throw error;
+        if (data) {
+          if (!data.owner_user_id) {
+            await supabase.from("labs").update({ owner_user_id: userId }).eq("id", data.id);
+          }
+          labRow = data;
+        }
+      }
+      if (!labRow) return res.status(404).json({ message: "No lab linked to this account" });
+
+      await labStore.delete(labId);
+      res.status(204).end();
+    } catch (err) {
+      if (err instanceof Error && err.message === "Lab not found") {
+        return res.status(404).json({ message: err.message });
+      }
+      res.status(500).json({ message: err instanceof Error ? err.message : "Unable to delete lab" });
+    }
+  });
+
   app.get("/api/my-lab/analytics", authenticate, async (req, res) => {
     try {
       const userId = req.user?.id;

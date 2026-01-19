@@ -9,6 +9,14 @@ export const offerOptions = [
 
 export type OfferOption = (typeof offerOptions)[number];
 
+const normalizeUrl = (value: unknown) => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+};
+
 export const mediaAssetSchema = z.object({
   name: z.string().min(1, "Asset name is required"),
   url: z.string().min(1, "Asset URL is required"),
@@ -40,7 +48,10 @@ export const labCoreSchema = z.object({
   country: z.string().min(1).optional().nullable(),
   siretNumber: z.string().min(4).optional().nullable(),
   logoUrl: z.string().url("Logo must be a valid URL").optional().nullable(),
-  website: z.string().url("Website must be a valid URL").optional().nullable(),
+  website: z.preprocess(
+    normalizeUrl,
+    z.string().url("Website must be a valid URL").optional().nullable(),
+  ),
   linkedin: z.string().url("LinkedIn must be a valid URL").optional().nullable(),
   partnerLogos: z.array(mediaAssetSchema).default([]),
   compliance: z.array(z.string().min(1)).default([]),

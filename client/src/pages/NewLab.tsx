@@ -18,6 +18,16 @@ const TAB_ORDER = [
   "Offers & pricing",
 ] as const;
 
+const ROLE_RANK_HELP = [
+  "1 = Lab Director",
+  "2 = Deputy Director",
+  "3 = Team Leader",
+  "4 = Researcher",
+  "5 = Postdoc",
+  "6 = PhD Student",
+  "7 = Research/Technical support",
+].join("\n");
+
 export default function NewLab() {
   const { addLab } = useLabs();
   const { user } = useAuth();
@@ -269,7 +279,7 @@ export default function NewLab() {
   return (
     <section className="bg-background min-h-screen">
       <div className="container mx-auto px-4 py-20 lg:py-24 max-w-3xl">
-        <Link href="/lab/manage" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-4">
+        <Link href="/lab/manage" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-4 rounded-full border border-border px-3 py-1">
           ← Back to manage labs
         </Link>
         <motion.div
@@ -649,19 +659,27 @@ export default function NewLab() {
                     />
                   </div>
                   <div className="grid gap-2 md:grid-cols-2">
+                  <input
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    placeholder="Team / group (optional)"
+                    value={teamMemberInput.teamName}
+                    onChange={e => setTeamMemberInput(prev => ({ ...prev, teamName: e.target.value }))}
+                  />
+                  <div className="flex items-center gap-2">
                     <input
                       className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="Team / group (optional)"
-                      value={teamMemberInput.teamName}
-                      onChange={e => setTeamMemberInput(prev => ({ ...prev, teamName: e.target.value }))}
-                    />
-                    <input
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="Role rank (1-8)"
+                      placeholder="Role rank (1-7)"
                       value={teamMemberInput.roleRank}
                       onChange={e => setTeamMemberInput(prev => ({ ...prev, roleRank: e.target.value }))}
                     />
+                    <span
+                      title={ROLE_RANK_HELP}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-xs font-semibold text-muted-foreground"
+                    >
+                      i
+                    </span>
                   </div>
+                </div>
                   <div className="grid gap-2 md:grid-cols-2">
                     <input
                       className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"

@@ -1,10 +1,33 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { FileDown, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import { offerOptions, type OfferOption, type MediaAsset } from "@shared/labs";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+
+const INPUT_CLASS =
+  "w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
+
+const ROLE_RANK_HELP = [
+  "1 = Lab Director",
+  "2 = Deputy Director",
+  "3 = Team Leader",
+  "4 = Researcher",
+  "5 = Postdoc",
+  "6 = PhD Student",
+  "7 = Research/Technical support",
+].join("\n");
+
+const TAB_ORDER = [
+  "Basics",
+  "Branding",
+  "Company details",
+  "Compliance",
+  "Team",
+  "Photos",
+  "Offers & pricing",
+] as const;
 
 type Form = {
   name: string;
@@ -46,6 +69,7 @@ type Form = {
 export default function MyLab({ params }: { params: { id: string } }) {
   const labIdParam = Number(params?.id);
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,9 +89,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
   const [complianceDocs, setComplianceDocs] = useState<MediaAsset[]>([]);
   const [complianceUploading, setComplianceUploading] = useState(false);
   const [complianceError, setComplianceError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<
-    "Basics" | "Branding" | "Company details" | "Compliance" | "Photos" | "Offers & pricing" | "Team"
-  >("Basics");
+  const [activeTab, setActiveTab] = useState<(typeof TAB_ORDER)[number]>("Basics");
   const [form, setForm] = useState<Form>({
     name: "",
     labManager: "",
@@ -113,6 +135,11 @@ export default function MyLab({ params }: { params: { id: string } }) {
   });
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const draftKey = useMemo(() => `my-lab-draft:${labIdParam || "unknown"}`, [labIdParam]);
 
   useEffect(() => {
     (async () => {
@@ -130,6 +157,46 @@ export default function MyLab({ params }: { params: { id: string } }) {
       }
     })();
   }, [user?.id, labId]);
+
+  useEffect(() => {
+    if (loading || draftLoaded || !labId) return;
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (!raw) {
+        setDraftLoaded(true);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (parsed?.form) {
+        setForm(prev => ({ ...prev, ...parsed.form }));
+      }
+      if (Array.isArray(parsed?.photos)) setPhotos(parsed.photos);
+      if (Array.isArray(parsed?.partnerLogos)) setPartnerLogos(parsed.partnerLogos);
+      if (Array.isArray(parsed?.complianceDocs)) setComplianceDocs(parsed.complianceDocs);
+      if (typeof parsed?.activeTab === "string" && (TAB_ORDER as readonly string[]).includes(parsed.activeTab)) {
+        setActiveTab(parsed.activeTab as (typeof TAB_ORDER)[number]);
+      }
+    } catch {
+      // Ignore invalid drafts.
+    } finally {
+      setDraftLoaded(true);
+    }
+  }, [draftKey, draftLoaded, labId, loading]);
+
+  useEffect(() => {
+    if (!draftLoaded || !labId) return;
+    const handle = window.setTimeout(() => {
+      const payload = {
+        form,
+        photos,
+        partnerLogos,
+        complianceDocs,
+        activeTab,
+      };
+      localStorage.setItem(draftKey, JSON.stringify(payload));
+    }, 250);
+    return () => window.clearTimeout(handle);
+  }, [draftKey, draftLoaded, form, photos, partnerLogos, complianceDocs, activeTab, labId]);
 
   function parseList(value: string) {
     return value
@@ -456,6 +523,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
         }
         throw new Error(msg);
       }
+      localStorage.removeItem(draftKey);
       setMessage("Saved");
     } catch (err: any) {
       setError(err.message || "Failed to save");
@@ -464,10 +532,40 @@ export default function MyLab({ params }: { params: { id: string } }) {
     }
   }
 
+  async function deleteLab() {
+    if (!labId) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const token = session.session?.access_token;
+      const res = await fetch(`/api/my-lab/${labId}`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        let msg = "Failed to delete lab";
+        const ct = res.headers.get("content-type") || "";
+        if (ct.includes("application/json")) {
+          try { msg = (await res.json()).message || msg; } catch {}
+        } else {
+          try { msg = await res.text(); } catch {}
+        }
+        throw new Error(msg);
+      }
+      localStorage.removeItem(draftKey);
+      setLocation("/lab/manage");
+    } catch (err: any) {
+      setDeleteError(err.message || "Failed to delete lab");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <section className="bg-background min-h-screen">
       <div className="container mx-auto px-4 py-20 lg:py-24 max-w-3xl">
-        <Link href="/lab/manage" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-4">
+        <Link href="/lab/manage" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-4 rounded-full border border-border px-3 py-1">
           ← Back to manage labs
         </Link>
         <h1 className="text-3xl font-semibold text-foreground">Manage my lab</h1>
@@ -535,7 +633,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap gap-2">
-                {(["Basics", "Branding", "Company details", "Compliance", "Team", "Photos", "Offers & pricing"] as const).map(tab => (
+                {TAB_ORDER.map(tab => (
                   <button
                     key={tab}
                     type="button"
@@ -550,26 +648,35 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   </button>
                 ))}
               </div>
-              <button
-                className="rounded-full bg-primary px-4 py-2 text-primary-foreground"
-                type="submit"
-                disabled={saving}
-              >
-                {saving ? "Saving…" : "Save"}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmOpen(true)}
+                  className="rounded-full border border-destructive/50 px-4 py-2 text-sm font-medium text-destructive hover:border-destructive"
+                >
+                  Delete lab
+                </button>
+                <button
+                  className="rounded-full bg-primary px-4 py-2 text-primary-foreground"
+                  type="submit"
+                  disabled={saving}
+                >
+                  {saving ? "Saving…" : "Save"}
+                </button>
+              </div>
             </div>
 
             {activeTab === "Basics" && (
               <Section title="Basics">
               <Field label="Lab name">
-                <input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+                <input className={INPUT_CLASS} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
               </Field>
               <Field label="Lab manager">
-                <input className="input" value={form.labManager} onChange={e => setForm({ ...form, labManager: e.target.value })} />
+                <input className={INPUT_CLASS} value={form.labManager} onChange={e => setForm({ ...form, labManager: e.target.value })} />
               </Field>
             <Field label="Contact email">
               <div className="flex items-center gap-2">
-                <input className="input" value={form.contactEmail} disabled />
+                <input className={INPUT_CLASS} value={form.contactEmail} disabled />
                 <span className="text-muted-foreground" aria-hidden="true">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
                     <rect x="5" y="11" width="14" height="9" rx="2" />
@@ -580,7 +687,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
             </Field>
               <Field label="Short description">
                 <textarea
-                  className="input"
+                  className={INPUT_CLASS}
                   rows={4}
                   value={form.descriptionShort}
                   onChange={e => setForm({ ...form, descriptionShort: e.target.value })}
@@ -589,7 +696,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
               </Field>
               <Field label="Long description (optional)">
                 <textarea
-                  className="input"
+                  className={INPUT_CLASS}
                   rows={6}
                   value={form.descriptionLong}
                   onChange={e => setForm({ ...form, descriptionLong: e.target.value })}
@@ -598,7 +705,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
               </Field>
               <Field label="HAL structure ID (optional)">
                 <input
-                  className="input"
+                  className={INPUT_CLASS}
                   value={form.halStructureId}
                   onChange={e => setForm({ ...form, halStructureId: e.target.value })}
                   placeholder="e.g., struct-123456"
@@ -606,7 +713,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
               </Field>
               <Field label="HAL person ID (optional)">
                 <input
-                  className="input"
+                  className={INPUT_CLASS}
                   value={form.halPersonId}
                   onChange={e => setForm({ ...form, halPersonId: e.target.value })}
                   placeholder="e.g., 123456"
@@ -628,7 +735,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
 
               <Field label="Website (optional)">
                 <input
-                  className="input"
+                  className={INPUT_CLASS}
                   value={form.website}
                   onChange={e => setForm({ ...form, website: e.target.value })}
                   placeholder="https://labs.example.com"
@@ -636,7 +743,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
               </Field>
               <Field label="LinkedIn (optional)">
                 <input
-                  className="input"
+                  className={INPUT_CLASS}
                   value={form.linkedin}
                   onChange={e => setForm({ ...form, linkedin: e.target.value })}
                   placeholder="https://www.linkedin.com/company/example"
@@ -648,25 +755,25 @@ export default function MyLab({ params }: { params: { id: string } }) {
             {activeTab === "Company details" && (
             <Section title="Company details">
               <Field label="Address line 1">
-                <input className="input" value={form.addressLine1} onChange={e => setForm({ ...form, addressLine1: e.target.value })} />
+                <input className={INPUT_CLASS} value={form.addressLine1} onChange={e => setForm({ ...form, addressLine1: e.target.value })} />
               </Field>
               <Field label="Address line 2">
-                <input className="input" value={form.addressLine2} onChange={e => setForm({ ...form, addressLine2: e.target.value })} />
+                <input className={INPUT_CLASS} value={form.addressLine2} onChange={e => setForm({ ...form, addressLine2: e.target.value })} />
               </Field>
               <Field label="SIRET">
-                <input className="input" value={form.siretNumber} onChange={e => setForm({ ...form, siretNumber: e.target.value })} />
+                <input className={INPUT_CLASS} value={form.siretNumber} onChange={e => setForm({ ...form, siretNumber: e.target.value })} />
               </Field>
               <Field label="City">
-                <input className="input" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} />
+                <input className={INPUT_CLASS} value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} />
               </Field>
               <Field label="State/Region">
-                <input className="input" value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} />
+                <input className={INPUT_CLASS} value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} />
               </Field>
               <Field label="Postal code">
-                <input className="input" value={form.postalCode} onChange={e => setForm({ ...form, postalCode: e.target.value })} />
+                <input className={INPUT_CLASS} value={form.postalCode} onChange={e => setForm({ ...form, postalCode: e.target.value })} />
               </Field>
               <Field label="Country">
-                <input className="input" value={form.country} onChange={e => setForm({ ...form, country: e.target.value })} />
+                <input className={INPUT_CLASS} value={form.country} onChange={e => setForm({ ...form, country: e.target.value })} />
               </Field>
             </Section>
             )}
@@ -676,13 +783,13 @@ export default function MyLab({ params }: { params: { id: string } }) {
               <div className="space-y-3">
                 <div className="grid gap-2 md:grid-cols-2">
                   <input
-                    className="input"
+                    className={INPUT_CLASS}
                     placeholder="Full name"
                     value={teamMemberInput.name}
                     onChange={e => setTeamMemberInput(prev => ({ ...prev, name: e.target.value }))}
                   />
                   <input
-                    className="input"
+                    className={INPUT_CLASS}
                     placeholder="Title"
                     value={teamMemberInput.title}
                     onChange={e => setTeamMemberInput(prev => ({ ...prev, title: e.target.value }))}
@@ -690,27 +797,35 @@ export default function MyLab({ params }: { params: { id: string } }) {
                 </div>
                 <div className="grid gap-2 md:grid-cols-2">
                   <input
-                    className="input"
+                    className={INPUT_CLASS}
                     placeholder="Team / group (optional)"
                     value={teamMemberInput.teamName}
                     onChange={e => setTeamMemberInput(prev => ({ ...prev, teamName: e.target.value }))}
                   />
-                  <input
-                    className="input"
-                    placeholder="Role rank (1-8)"
-                    value={teamMemberInput.roleRank}
-                    onChange={e => setTeamMemberInput(prev => ({ ...prev, roleRank: e.target.value }))}
-                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      className={`${INPUT_CLASS} flex-1`}
+                      placeholder="Role rank (1-7)"
+                      value={teamMemberInput.roleRank}
+                      onChange={e => setTeamMemberInput(prev => ({ ...prev, roleRank: e.target.value }))}
+                    />
+                    <span
+                      title={ROLE_RANK_HELP}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-xs font-semibold text-muted-foreground"
+                    >
+                      i
+                    </span>
+                  </div>
                 </div>
                 <div className="grid gap-2 md:grid-cols-2">
                   <input
-                    className="input"
+                    className={INPUT_CLASS}
                     placeholder="LinkedIn (optional)"
                     value={teamMemberInput.linkedin}
                     onChange={e => setTeamMemberInput(prev => ({ ...prev, linkedin: e.target.value }))}
                   />
                   <input
-                    className="input"
+                    className={INPUT_CLASS}
                     placeholder="Website (optional)"
                     value={teamMemberInput.website}
                     onChange={e => setTeamMemberInput(prev => ({ ...prev, website: e.target.value }))}
@@ -775,7 +890,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
               <Field label="Compliance">
                 <div className="space-y-2">
                   <input
-                    className="input"
+                    className={INPUT_CLASS}
                     placeholder="Add compliance and press Enter"
                     value={tagInput.field === "complianceTags" ? tagInput.value : ""}
                     onChange={e => setTagInput({ field: "complianceTags", value: e.target.value })}
@@ -836,7 +951,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
               <Field label="Equipment">
                 <div className="space-y-2">
                   <input
-                    className="input"
+                    className={INPUT_CLASS}
                     placeholder="Add equipment and press Enter"
                     value={tagInput.field === "equipmentTags" ? tagInput.value : ""}
                     onChange={e => setTagInput({ field: "equipmentTags", value: e.target.value })}
@@ -864,7 +979,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
               <Field label="Focus areas">
                 <div className="space-y-2">
                   <input
-                    className="input"
+                    className={INPUT_CLASS}
                     placeholder="Add focus area and press Enter"
                     value={tagInput.field === "focusTags" ? tagInput.value : ""}
                     onChange={e => setTagInput({ field: "focusTags", value: e.target.value })}
@@ -1042,7 +1157,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
                 </div>
               </Field>
               <Field label="Minimum stay">
-                <input className="input" value={form.minimumStay} onChange={e => setForm({ ...form, minimumStay: e.target.value })} />
+                <input className={INPUT_CLASS} value={form.minimumStay} onChange={e => setForm({ ...form, minimumStay: e.target.value })} />
               </Field>
               <label className="flex items-center gap-3 text-sm text-foreground">
                 <input type="checkbox" checked={form.pricePrivacy} onChange={e => setForm({ ...form, pricePrivacy: e.target.checked })} />
@@ -1054,8 +1169,39 @@ export default function MyLab({ params }: { params: { id: string } }) {
             {message && <p className="text-sm text-emerald-600">{message}</p>}
           </motion.form>
         )}
+        {deleteError && <p className="mt-4 text-sm text-destructive">{deleteError}</p>}
       </div>
-      <style>{`.input{width:100%;border:1px solid var(--border);background:var(--background);padding:.5rem .75rem;border-radius:12px;}`}</style>
+      {deleteConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8">
+          <div className="w-full max-w-md rounded-3xl border border-border bg-background p-6 shadow-xl">
+            <h2 className="text-lg font-semibold text-foreground">Delete this lab?</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              This permanently deletes the lab profile and its related data. This action cannot be undone.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmOpen(false)}
+                className="rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary"
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  void deleteLab();
+                }}
+                className="rounded-full bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground transition hover:bg-destructive/90 disabled:opacity-60"
+                disabled={deleting}
+              >
+                {deleting ? "Deleting…" : "Yes, delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
