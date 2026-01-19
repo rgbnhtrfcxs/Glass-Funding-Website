@@ -693,16 +693,25 @@ export function registerRoutes(app: Express) {
       });
       // Also persist a simple contact record in Supabase for linkage by lab_id
       console.log("[lab-requests] inserting contact record");
-      const { error: contactError } = await supabase.from("lab_contact_requests").insert({
+      const baseContact = {
         lab_id: payload.labId,
         lab_name: lab.name,
-        contact_name: payload.requesterName,
-        contact_email: payload.requesterEmail,
+        requester_name: payload.requesterName,
+        requester_email: payload.requesterEmail,
+        organization: payload.organization ?? "",
         message: payload.projectSummary ?? "",
-        preferred_contact_methods: payload.preferredContactMethods ?? [],
+        type: "request",
+      };
+      const { error: contactError } = await supabase.from("lab_contact_requests").insert({
+        ...baseContact,
+        preferred_contact_methods: payload.preferredContactMethods ?? ["email"],
       });
       if (contactError) {
-        throw contactError;
+        console.error("[lab-requests] contact insert failed, retrying without preferred_contact_methods", contactError);
+        const retry = await supabase.from("lab_contact_requests").insert(baseContact);
+        if (retry.error) {
+          throw retry.error;
+        }
       }
       console.log("[lab-requests] sending admin email");
       await sendMail({

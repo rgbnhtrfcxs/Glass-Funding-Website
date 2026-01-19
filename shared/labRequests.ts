@@ -15,7 +15,10 @@ export const labRequestCoreSchema = z.object({
   complianceNotes: z.string().optional().default(""),
   specialRequirements: z.string().optional().default(""),
   referencesOrLinks: z.string().optional().default(""),
-  preferredContactMethods: z.array(z.enum(["email", "video_call", "phone"])).min(1, "Select at least one contact method"),
+  preferredContactMethods: z
+    .array(z.enum(["email", "video_call", "phone"]))
+    .min(1, "Select at least one contact method")
+    .default(["email"]),
 });
 
 export const labRequestSchema = labRequestCoreSchema.extend({
