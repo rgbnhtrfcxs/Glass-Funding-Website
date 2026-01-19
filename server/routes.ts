@@ -686,11 +686,13 @@ export function registerRoutes(app: Express) {
       const lab = await labStore.findById(payload.labId);
       if (!lab) return res.status(404).json({ message: "Lab not found" });
 
+      console.log("[lab-requests] creating request", { labId: payload.labId, labName: lab.name });
       const created = await labRequestStore.create({
         ...payload,
         labName: lab.name,
       });
       // Also persist a simple contact record in Supabase for linkage by lab_id
+      console.log("[lab-requests] inserting contact record");
       const { error: contactError } = await supabase.from("lab_contact_requests").insert({
         lab_id: payload.labId,
         lab_name: lab.name,
@@ -702,6 +704,7 @@ export function registerRoutes(app: Express) {
       if (contactError) {
         throw contactError;
       }
+      console.log("[lab-requests] sending admin email");
       await sendMail({
         to: process.env.ADMIN_INBOX ?? "contact@glass-funding.com",
         from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
@@ -743,6 +746,7 @@ export function registerRoutes(app: Express) {
       });
       // Notify lab contact if available
       if (lab.contactEmail) {
+        console.log("[lab-requests] sending lab email");
         await sendMail({
           to: lab.contactEmail,
           from: process.env.MAIL_FROM_LAB || process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
@@ -785,13 +789,14 @@ export function registerRoutes(app: Express) {
       }
       res.status(201).json(created);
     } catch (error) {
+      console.error("[lab-requests] failed", error);
       if (error instanceof ZodError) {
         const issue = error.issues[0];
         return res
           .status(400)
           .json({ message: issue ? `${issue.path.join(".")}: ${issue.message}` : "Invalid lab request payload" });
       }
-      res.status(500).json({ message: "Unable to submit lab request" });
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to submit lab request" });
     }
   });
 
