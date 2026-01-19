@@ -9,7 +9,7 @@ import { Link, useLocation } from "wouter";
 const INPUT_CLASS =
   "w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
 
-const ROLE_RANK_HELP = [
+const ROLE_RANK_HELP_ITEMS = [
   "1 = Lab Director",
   "2 = Deputy Director",
   "3 = Team Leader",
@@ -17,7 +17,7 @@ const ROLE_RANK_HELP = [
   "5 = Postdoc",
   "6 = PhD Student",
   "7 = Research/Technical support",
-].join("\n");
+];
 
 const TAB_ORDER = [
   "Basics",
@@ -136,9 +136,12 @@ export default function MyLab({ params }: { params: { id: string } }) {
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [draftLoaded, setDraftLoaded] = useState(false);
+  const [showRoleHelp, setShowRoleHelp] = useState(false);
+  const [pinRoleHelp, setPinRoleHelp] = useState(false);
   const draftKey = useMemo(() => `my-lab-draft:${labIdParam || "unknown"}`, [labIdParam]);
 
   useEffect(() => {
@@ -470,7 +473,6 @@ export default function MyLab({ params }: { params: { id: string } }) {
   async function save() {
     setSaving(true);
     setError(null);
-    setMessage(null);
     try {
       const { data: session } = await supabase.auth.getSession();
       const token = session.session?.access_token;
@@ -524,11 +526,19 @@ export default function MyLab({ params }: { params: { id: string } }) {
         throw new Error(msg);
       }
       localStorage.removeItem(draftKey);
-      setMessage("Saved");
+      return true;
     } catch (err: any) {
       setError(err.message || "Failed to save");
+      return false;
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function confirmAndSave() {
+    const success = await save();
+    if (success) {
+      setLocation("/lab/manage");
     }
   }
 
@@ -629,7 +639,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
             className="mt-8 space-y-8"
-            onSubmit={e => { e.preventDefault(); void save(); }}
+            onSubmit={e => { e.preventDefault(); setSaveConfirmOpen(true); }}
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap gap-2">
@@ -658,7 +668,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
                 </button>
                 <button
                   className="rounded-full bg-primary px-4 py-2 text-primary-foreground"
-                  type="submit"
+                  type="button"
+                  onClick={() => setSaveConfirmOpen(true)}
                   disabled={saving}
                 >
                   {saving ? "Saving…" : "Save"}
@@ -809,12 +820,30 @@ export default function MyLab({ params }: { params: { id: string } }) {
                       value={teamMemberInput.roleRank}
                       onChange={e => setTeamMemberInput(prev => ({ ...prev, roleRank: e.target.value }))}
                     />
-                    <span
-                      title={ROLE_RANK_HELP}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-xs font-semibold text-muted-foreground"
-                    >
-                      i
-                    </span>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setPinRoleHelp(prev => !prev)}
+                        onMouseEnter={() => setShowRoleHelp(true)}
+                        onMouseLeave={() => setShowRoleHelp(false)}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary"
+                        aria-label="Role rank guidance"
+                      >
+                        i
+                      </button>
+                      {(pinRoleHelp || showRoleHelp) && (
+                        <div className="absolute right-0 top-full z-10 mt-2 w-56 rounded-2xl border border-border bg-background/95 p-3 text-xs text-muted-foreground shadow-lg">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                            Rank guide
+                          </p>
+                          <ul className="mt-2 space-y-1">
+                            {ROLE_RANK_HELP_ITEMS.map(item => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="grid gap-2 md:grid-cols-2">
@@ -836,7 +865,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   onClick={addTeamMember}
                   className="inline-flex items-center rounded-full border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary"
                 >
-                  Add team member
+                  Save team member
                 </button>
                 <div className="space-y-2">
                   {form.teamMembers.map(member => (
@@ -1082,7 +1111,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
                 <p className="text-xs text-muted-foreground">Partner logos are available on the premier plan.</p>
               )}
 
-              <Field label="Add photo">
+              <Field label="Lab photos">
                 <div className="flex flex-col gap-2">
                   <div className="flex flex-wrap gap-2">
                     <label className="inline-flex items-center gap-3">
@@ -1166,11 +1195,42 @@ export default function MyLab({ params }: { params: { id: string } }) {
             </Section>
             )}
 
-            {message && <p className="text-sm text-emerald-600">{message}</p>}
           </motion.form>
         )}
+        {message && <p className="mt-4 text-sm text-emerald-600">{message}</p>}
         {deleteError && <p className="mt-4 text-sm text-destructive">{deleteError}</p>}
       </div>
+      {saveConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8">
+          <div className="w-full max-w-md rounded-3xl border border-border bg-background p-6 shadow-xl">
+            <h2 className="text-lg font-semibold text-foreground">Save changes?</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              This will update the lab profile for everyone who can see it.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSaveConfirmOpen(false)}
+                className="rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary"
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSaveConfirmOpen(false);
+                  void confirmAndSave();
+                }}
+                className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
+                disabled={saving}
+              >
+                {saving ? "Saving…" : "Save now"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {deleteConfirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8">
           <div className="w-full max-w-md rounded-3xl border border-border bg-background p-6 shadow-xl">

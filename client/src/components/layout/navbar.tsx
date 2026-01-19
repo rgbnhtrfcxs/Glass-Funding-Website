@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAuth } from "@/context/AuthContext";
 
 export function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [location] = useLocation();
 
   const navItems = [
     { href: "/", label: "Home" },
@@ -17,6 +18,18 @@ export function Navbar() {
   const closeMenu = () => setIsMenuOpen(false);
 
   const { user, signOut } = useAuth();
+  const isActive = (href: string) => {
+    if (href === "/") return location === "/";
+    return location === href || location.startsWith(`${href}/`);
+  };
+  const navClass = (href: string) =>
+    `text-sm font-medium transition-colors ${
+      isActive(href) ? "text-primary" : "text-muted-foreground hover:text-primary"
+    }`;
+  const mobileNavClass = (href: string) =>
+    `rounded-md px-3 py-2 text-lg font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+      isActive(href) ? "text-primary bg-primary/10" : "text-muted-foreground hover:bg-muted hover:text-primary"
+    }`;
 
   return (
     <motion.nav
@@ -52,13 +65,13 @@ export function Navbar() {
 
           <div className="hidden md:flex items-center space-x-6">
             {navItems.map(item => (
-              <Link href={item.href} key={item.href} className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+              <Link href={item.href} key={item.href} className={navClass(item.href)}>
                 {item.label}
               </Link>
             ))}
             {!user ? (
               <>
-                <Link href="/login" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+                <Link href="/login" className={navClass("/login")}>
                   Sign in
                 </Link>
                 <Link href="/signup" className="inline-flex items-center rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90">
@@ -67,7 +80,7 @@ export function Navbar() {
               </>
             ) : (
               <>
-                <Link href="/account" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+                <Link href="/account" className={navClass("/account")}>
                   My profile
                 </Link>
                 <button
@@ -132,7 +145,7 @@ export function Navbar() {
                     href={item.href}
                     key={item.href}
                     onClick={closeMenu}
-                    className="rounded-md px-3 py-2 text-lg font-medium text-muted-foreground transition hover:bg-muted hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                    className={mobileNavClass(item.href)}
                   >
                     {item.label}
                   </Link>

@@ -26,7 +26,7 @@ const ROLE_RANK_HELP = [
   "5 = Postdoc",
   "6 = PhD Student",
   "7 = Research/Technical support",
-].join("\n");
+];
 
 export default function NewLab() {
   const { addLab } = useLabs();
@@ -102,6 +102,8 @@ export default function NewLab() {
   const isLastTab = currentTabIndex === tabOrder.length - 1;
   const [profileTier, setProfileTier] = useState<string>("base");
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showRoleHelp, setShowRoleHelp] = useState(false);
+  const [pinRoleHelp, setPinRoleHelp] = useState(false);
   const draftKey = useMemo(
     () => `new-lab-draft:${user?.id ?? "guest"}`,
     [user?.id],
@@ -659,27 +661,45 @@ export default function NewLab() {
                     />
                   </div>
                   <div className="grid gap-2 md:grid-cols-2">
-                  <input
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    placeholder="Team / group (optional)"
-                    value={teamMemberInput.teamName}
-                    onChange={e => setTeamMemberInput(prev => ({ ...prev, teamName: e.target.value }))}
-                  />
-                  <div className="flex items-center gap-2">
                     <input
                       className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="Role rank (1-7)"
-                      value={teamMemberInput.roleRank}
-                      onChange={e => setTeamMemberInput(prev => ({ ...prev, roleRank: e.target.value }))}
+                      placeholder="Team / group (optional)"
+                      value={teamMemberInput.teamName}
+                      onChange={e => setTeamMemberInput(prev => ({ ...prev, teamName: e.target.value }))}
                     />
-                    <span
-                      title={ROLE_RANK_HELP}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-xs font-semibold text-muted-foreground"
-                    >
-                      i
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        placeholder="Role rank (1-7)"
+                        value={teamMemberInput.roleRank}
+                        onChange={e => setTeamMemberInput(prev => ({ ...prev, roleRank: e.target.value }))}
+                      />
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setPinRoleHelp(prev => !prev)}
+                          onMouseEnter={() => setShowRoleHelp(true)}
+                          onMouseLeave={() => setShowRoleHelp(false)}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-xs font-semibold text-muted-foreground hover:border-primary hover:text-primary"
+                          aria-label="Role rank guidance"
+                        >
+                          i
+                        </button>
+                        {(pinRoleHelp || showRoleHelp) && (
+                          <div className="absolute right-0 top-full z-10 mt-2 w-56 rounded-2xl border border-border bg-background/95 p-3 text-xs text-muted-foreground shadow-lg">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                              Rank guide
+                            </p>
+                            <ul className="mt-2 space-y-1">
+                              {ROLE_RANK_HELP.map(item => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
                   <div className="grid gap-2 md:grid-cols-2">
                     <input
                       className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -699,7 +719,7 @@ export default function NewLab() {
                     onClick={addTeamMember}
                     className="inline-flex items-center rounded-full border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:border-primary"
                   >
-                    Add team member
+                    Save team member
                   </button>
                   <div className="space-y-2">
                     {form.teamMembers.map(member => (
