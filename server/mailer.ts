@@ -8,16 +8,21 @@ type MailArgs = {
   params?: Record<string, unknown>;
 };
 
+function stripQuotes(value: string) {
+  return value.trim().replace(/^['"]+|['"]+$/g, "");
+}
+
 function parseFrom(from: string | undefined) {
   if (!from) return {};
-  const match = from.match(/^(.*)<(.+@.+)>$/);
+  const normalized = stripQuotes(from);
+  const match = normalized.match(/^(.*?)<\s*([^>]+)\s*>$/);
   if (match) {
-    return { email: match[2].trim(), name: match[1].trim() };
+    return { email: stripQuotes(match[2]), name: stripQuotes(match[1]) };
   }
-  if (from.includes("@")) {
-    return { email: from.trim() };
+  if (normalized.includes("@")) {
+    return { email: stripQuotes(normalized) };
   }
-  return { name: from.trim() };
+  return { name: stripQuotes(normalized) };
 }
 
 function resolveSender(from?: string) {
