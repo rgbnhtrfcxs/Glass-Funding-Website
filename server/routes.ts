@@ -168,39 +168,166 @@ export function registerRoutes(app: Express) {
       const stripeKey = process.env.STRIPE_SECRET_KEY;
       if (!stripeKey) return res.status(500).json({ message: "Stripe not configured" });
 
-      const params = new URLSearchParams();
-      params.append("amount", Math.round(amountNumber * 100).toString());
-      params.append("currency", "eur");
-      params.append("receipt_email", email.trim());
-      params.append("description", "Glass Connect donation");
-      params.append("automatic_payment_methods[enabled]", "true");
-
+      const recurringFlag =
+        recurring === true || recurring === "true" || recurring === 1 || recurring === "1";
       const metaEntries = {
         donorType: donorType || "",
-        recurring: recurring ? "true" : "false",
+        recurring: recurringFlag ? "true" : "false",
         ...meta,
       };
-      Object.entries(metaEntries).forEach(([key, val]) => {
-        if (val !== undefined && val !== null) {
-          params.append(`metadata[${key}]`, String(val));
+      const donorName =
+        (meta.fullName || "").trim() ||
+        (meta.companyName || "").trim() ||
+        (meta.contactName || "").trim() ||
+        email.trim();
+      let clientSecret: string | undefined;
+      let paymentIntentId: string | undefined;
+      let subscriptionId: string | undefined;
+      let status: string | undefined;
+      const billingMode = recurringFlag ? "subscription" : "payment_intent";
+
+      if (recurringFlag) {
+        const customerParams = new URLSearchParams();
+        customerParams.append("email", email.trim());
+        customerParams.append("name", donorName);
+        Object.entries(metaEntries).forEach(([key, val]) => {
+          if (val !== undefined && val !== null && val !== "") {
+            customerParams.append(`metadata[${key}]`, String(val));
+          }
+        });
+        const customerRes = await fetch("https://api.stripe.com/v1/customers", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${stripeKey}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: customerParams.toString(),
+        });
+        if (!customerRes.ok) {
+          const errorText = await customerRes.text();
+          return res.status(500).json({ message: "Stripe error", detail: errorText });
         }
-      });
+        const customer = await customerRes.json();
 
-      const response = await fetch("https://api.stripe.com/v1/payment_intents", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${stripeKey}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: params.toString(),
-      });
+        const params = new URLSearchParams();
+        params.append("customer", customer.id);
+        params.append("items[0][price_data][currency]", "eur");
+        params.append("items[0][price_data][unit_amount]", Math.round(amountNumber * 100).toString());
+        params.append("items[0][price_data][recurring][interval]", "month");
+        params.append("items[0][price_data][product_data][name]", "Glass Connect donation");
+        params.append("payment_behavior", "default_incomplete");
+        params.append("payment_settings[save_default_payment_method]", "on_subscription");
+        params.append("expand[]", "latest_invoice.payment_intent");
+        Object.entries(metaEntries).forEach(([key, val]) => {
+          if (val !== undefined && val !== null && val !== "") {
+            params.append(`metadata[${key}]`, String(val));
+          }
+        });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        return res.status(500).json({ message: "Stripe error", detail: errorText });
+        const response = await fetch("https://api.stripe.com/v1/subscriptions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${stripeKey}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: params.toString(),
+        });
+        if (!response.ok) {
+          const errorText = await response.text();
+          return res.status(500).json({ message: "Stripe error", detail: errorText });
+        }
+        const subscription = await response.json();
+        subscriptionId = subscription?.id;
+        status = subscription?.status;
+        const paymentIntent = subscription?.latest_invoice?.payment_intent;
+        clientSecret = paymentIntent?.client_secret;
+        paymentIntentId = paymentIntent?.id;
+        console.info("[donations] created subscription", {
+          subscriptionId,
+          paymentIntentId,
+          status,
+        });
+      } else {
+        const params = new URLSearchParams();
+        params.append("amount", Math.round(amountNumber * 100).toString());
+        params.append("currency", "eur");
+        params.append("receipt_email", email.trim());
+        params.append("description", "Glass Connect donation");
+        params.append("automatic_payment_methods[enabled]", "true");
+        Object.entries(metaEntries).forEach(([key, val]) => {
+          if (val !== undefined && val !== null && val !== "") {
+            params.append(`metadata[${key}]`, String(val));
+          }
+        });
+
+        const response = await fetch("https://api.stripe.com/v1/payment_intents", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${stripeKey}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: params.toString(),
+        });
+        if (!response.ok) {
+          const errorText = await response.text();
+          return res.status(500).json({ message: "Stripe error", detail: errorText });
+        }
+        const intent = await response.json();
+        clientSecret = intent?.client_secret;
+        paymentIntentId = intent?.id;
+        status = intent?.status;
+        console.info("[donations] created payment intent", {
+          paymentIntentId,
+          status,
+        });
       }
-      const intent = await response.json();
-      return res.status(200).json({ client_secret: intent.client_secret });
+
+      if (!clientSecret) {
+        return res.status(500).json({ message: "Stripe error", detail: "Missing client secret" });
+      }
+
+      const donationAmountRaw = Number(meta.donationAmount);
+      const feeAmountRaw = Number(meta.feeAmount);
+      const donationAmount = Number.isFinite(donationAmountRaw) ? donationAmountRaw : null;
+      const feeAmount = Number.isFinite(feeAmountRaw) ? feeAmountRaw : null;
+
+      try {
+        const { error: insertError } = await supabase.from("donations").insert({
+          name: donorName,
+          email: email.trim(),
+          amount: amountNumber,
+          message: meta.message || null,
+          donor_type: donorType || null,
+          recurring: recurringFlag,
+          full_name: meta.fullName || null,
+          company_name: meta.companyName || null,
+          siret: meta.siret || null,
+          contact_name: meta.contactName || null,
+          address_line1: meta.addressLine1 || null,
+          address_line2: meta.addressLine2 || null,
+          city: meta.city || null,
+          postal_code: meta.postalCode || null,
+          country: meta.country || null,
+          donation_amount: donationAmount,
+          fee_amount: feeAmount,
+          stripe_payment_intent_id: paymentIntentId || null,
+          stripe_subscription_id: subscriptionId || null,
+          status: status || null,
+        });
+        if (insertError) {
+          console.warn("[donations] Failed to store donation", insertError.message);
+        }
+      } catch (err) {
+        console.warn("[donations] Failed to store donation", err);
+      }
+
+      return res.status(200).json({
+        client_secret: clientSecret,
+        mode: billingMode,
+        subscription_id: subscriptionId ?? null,
+        payment_intent_id: paymentIntentId ?? null,
+        status: status ?? null,
+      });
     } catch (error) {
       res
         .status(500)

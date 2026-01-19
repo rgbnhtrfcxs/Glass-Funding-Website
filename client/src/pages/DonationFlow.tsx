@@ -226,6 +226,8 @@ export default function DonateFlow() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             amount: total,
+            donationAmount: amount,
+            feeAmount: fee,
             email: emailValue,
             donorType,
             recurring,

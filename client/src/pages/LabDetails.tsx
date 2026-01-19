@@ -32,6 +32,8 @@ interface LabDetailsProps {
 export default function LabDetails({ params }: LabDetailsProps) {
   const { labs, isLoading } = useLabs();
   const { user } = useAuth();
+  const lab = labs.find(item => item.id === Number(params.id));
+  const labId = lab?.id;
   const [canCollaborate, setCanCollaborate] = useState(false);
   useEffect(() => {
     let mounted = true;
@@ -58,64 +60,6 @@ export default function LabDetails({ params }: LabDetailsProps) {
       mounted = false;
     };
   }, [user?.id]);
-  const lab = labs.find(item => item.id === Number(params.id));
-
-  if (isLoading && !lab) {
-    return (
-      <section className="bg-background min-h-screen">
-        <div className="container mx-auto px-4 py-12">
-          <div className="rounded-3xl border border-border bg-card/80 p-8 text-muted-foreground">Loading lab…</div>
-        </div>
-      </section>
-    );
-  }
-
-  if (!lab) {
-    return (
-      <section className="bg-background min-h-screen">
-        <div className="container mx-auto px-4 py-12">
-          <div className="rounded-3xl border border-border bg-card/80 p-8 text-muted-foreground">Lab not found.</div>
-        </div>
-      </section>
-    );
-  }
-  const getImageUrl = (url: string, width = 1600) =>
-    url.startsWith("data:")
-      ? url
-      : `${url}${url.includes("?") ? "&" : "?"}auto=format&fit=crop&w=${width}&q=80`;
-  const tier = (lab as any)?.subscriptionTier ?? (lab as any)?.subscription_tier ?? "base";
-  const logoUrl = (lab as any)?.logoUrl ?? (lab as any)?.logo_url ?? null;
-  const tierLower = (tier as string).toLowerCase?.() ?? (typeof tier === "string" ? tier.toLowerCase() : "base");
-  const status = lab.isVerified ? "verified" : tierLower === "base" ? "unverified" : "pending";
-  const offersLabSpace =
-    lab.offersLabSpace === true ||
-    lab.offersLabSpace === "true" ||
-    lab.offersLabSpace === 1 ||
-    lab.offersLabSpace === "1";
-  const teamGroups = (() => {
-    const groups = new Map<string, typeof lab.teamMembers>();
-    for (const member of lab.teamMembers) {
-      const key = member.teamName?.trim() || "Team";
-      const bucket = groups.get(key) ?? [];
-      bucket.push(member);
-      groups.set(key, bucket);
-    }
-    return Array.from(groups.entries()).sort(([a], [b]) => {
-      if (a === "Team") return 1;
-      if (b === "Team") return -1;
-      return a.localeCompare(b);
-    });
-  })();
-  const badgeClass =
-    status === "verified"
-      ? "bg-emerald-50 text-emerald-700"
-      : status === "pending"
-        ? "bg-amber-50 text-amber-700"
-        : "bg-slate-100 text-slate-700";
-  const badgeLabel = status === "verified" ? "Verified by Glass" : status === "pending" ? "Verification pending" : "Unverified";
-  const partnerLogos = lab.partnerLogos ?? [];
-  const website = lab.website || null;
-  const linkedin = lab.linkedin || null;
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [favoriteError, setFavoriteError] = useState<string | null>(null);
@@ -164,13 +108,31 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const [collabForm, setCollabForm] = useState({
     contactName: "",
     contactEmail: user?.email || "",
-    targetLabs: lab.name,
+    targetLabs: lab?.name || "",
     collaborationFocus: "",
     resourcesOffered: "",
     desiredTimeline: "",
     additionalNotes: "",
     preferredContact: "email" as "email" | "video_call" | "in_person",
   });
+
+  useEffect(() => {
+    if (!user?.email) return;
+    setInvestorEmail(prev => prev || user.email);
+    setRequestForm(prev =>
+      prev.requesterEmail ? prev : { ...prev, requesterEmail: user.email }
+    );
+    setCollabForm(prev =>
+      prev.contactEmail ? prev : { ...prev, contactEmail: user.email }
+    );
+  }, [user?.email]);
+
+  useEffect(() => {
+    if (!lab?.name) return;
+    setCollabForm(prev =>
+      prev.targetLabs ? prev : { ...prev, targetLabs: lab.name }
+    );
+  }, [lab?.name]);
 
   const toggleFavorite = async () => {
     if (!user) {
@@ -207,7 +169,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   useEffect(() => {
     let active = true;
     async function loadFavorite() {
-      if (!user) {
+      if (!user || !labId) {
         setIsFavorite(false);
         return;
       }
@@ -215,7 +177,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
         const { data: session } = await supabase.auth.getSession();
         const token = session.session?.access_token;
         if (!token) return;
-        const res = await fetch(`/api/labs/${lab.id}/favorite`, {
+        const res = await fetch(`/api/labs/${labId}/favorite`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) return;
@@ -229,15 +191,15 @@ export default function LabDetails({ params }: LabDetailsProps) {
     return () => {
       active = false;
     };
-  }, [lab.id, user?.id]);
+  }, [labId, user?.id]);
 
   useEffect(() => {
-    if (!showHalModal || !lab?.id) return;
+    if (!showHalModal || !labId) return;
     let active = true;
     setHalLoading(true);
     setHalError(null);
     const endpoint =
-      halModalType === "patents" ? `/api/labs/${lab.id}/hal-patents` : `/api/labs/${lab.id}/hal-publications`;
+      halModalType === "patents" ? `/api/labs/${labId}/hal-patents` : `/api/labs/${labId}/hal-publications`;
     fetch(endpoint)
       .then(async res => {
         if (!res.ok) {
@@ -258,17 +220,17 @@ export default function LabDetails({ params }: LabDetailsProps) {
     return () => {
       active = false;
     };
-  }, [showHalModal, halModalType, lab?.id]);
+  }, [showHalModal, halModalType, labId]);
 
   useEffect(() => {
-    if (viewRecorded) return;
+    if (viewRecorded || !labId) return;
     const sessionKey = "glass-view-session";
     let sessionId = localStorage.getItem(sessionKey);
     if (!sessionId) {
       sessionId = nanoid();
       localStorage.setItem(sessionKey, sessionId);
     }
-    const lastKey = `glass-view-${lab.id}`;
+    const lastKey = `glass-view-${labId}`;
     const lastTs = localStorage.getItem(lastKey);
     const now = Date.now();
     if (lastTs && now - Number(lastTs) < 60 * 60 * 1000) {
@@ -279,14 +241,14 @@ export default function LabDetails({ params }: LabDetailsProps) {
       try {
         const { data: session } = await supabase.auth.getSession();
         const token = session.session?.access_token;
-        await fetch(`/api/labs/${lab.id}/view`, {
+        await fetch(`/api/labs/${labId}/view`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify({
-            labId: lab.id,
+            labId,
             sessionId,
             referrer: document.referrer || null,
           }),
@@ -297,7 +259,65 @@ export default function LabDetails({ params }: LabDetailsProps) {
         // ignore
       }
     })();
-  }, [lab.id, viewRecorded]);
+  }, [labId, viewRecorded]);
+
+  if (isLoading && !lab) {
+    return (
+      <section className="bg-background min-h-screen">
+        <div className="container mx-auto px-4 py-12">
+          <div className="rounded-3xl border border-border bg-card/80 p-8 text-muted-foreground">Loading lab…</div>
+        </div>
+      </section>
+    );
+  }
+
+  if (!lab) {
+    return (
+      <section className="bg-background min-h-screen">
+        <div className="container mx-auto px-4 py-12">
+          <div className="rounded-3xl border border-border bg-card/80 p-8 text-muted-foreground">Lab not found.</div>
+        </div>
+      </section>
+    );
+  }
+
+  const getImageUrl = (url: string, width = 1600) =>
+    url.startsWith("data:")
+      ? url
+      : `${url}${url.includes("?") ? "&" : "?"}auto=format&fit=crop&w=${width}&q=80`;
+  const tier = (lab as any)?.subscriptionTier ?? (lab as any)?.subscription_tier ?? "base";
+  const logoUrl = (lab as any)?.logoUrl ?? (lab as any)?.logo_url ?? null;
+  const tierLower = (tier as string).toLowerCase?.() ?? (typeof tier === "string" ? tier.toLowerCase() : "base");
+  const status = lab.isVerified ? "verified" : tierLower === "base" ? "unverified" : "pending";
+  const offersLabSpace =
+    lab.offersLabSpace === true ||
+    lab.offersLabSpace === "true" ||
+    lab.offersLabSpace === 1 ||
+    lab.offersLabSpace === "1";
+  const teamGroups = (() => {
+    const groups = new Map<string, typeof lab.teamMembers>();
+    for (const member of lab.teamMembers) {
+      const key = member.teamName?.trim() || "Team";
+      const bucket = groups.get(key) ?? [];
+      bucket.push(member);
+      groups.set(key, bucket);
+    }
+    return Array.from(groups.entries()).sort(([a], [b]) => {
+      if (a === "Team") return 1;
+      if (b === "Team") return -1;
+      return a.localeCompare(b);
+    });
+  })();
+  const badgeClass =
+    status === "verified"
+      ? "bg-emerald-50 text-emerald-700"
+      : status === "pending"
+        ? "bg-amber-50 text-amber-700"
+        : "bg-slate-100 text-slate-700";
+  const badgeLabel = status === "verified" ? "Verified by Glass" : status === "pending" ? "Verification pending" : "Unverified";
+  const partnerLogos = lab.partnerLogos ?? [];
+  const website = lab.website || null;
+  const linkedin = lab.linkedin || null;
 
   const submitRequest = async () => {
     if (!requestForm.requesterName.trim() || !requestForm.requesterEmail.trim() || !requestForm.projectSummary.trim()) {
