@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useLocation } from "wouter";
 import { useLabs } from "@/context/LabsContext";
@@ -7,6 +7,16 @@ import { offerOptions, type OfferOption } from "@shared/labs";
 import type { MediaAsset } from "@shared/labs";
 import { supabase } from "@/lib/supabaseClient";
 import { Link } from "wouter";
+
+const TAB_ORDER = [
+  "Basics",
+  "Photos",
+  "Company details",
+  "Branding & Links",
+  "Compliance",
+  "Team",
+  "Offers & pricing",
+] as const;
 
 export default function NewLab() {
   const { addLab } = useLabs();
@@ -75,10 +85,17 @@ export default function NewLab() {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<
-    "Basics" | "Photos" | "Company details" | "Branding & Links" | "Compliance" | "Offers & pricing" | "Team"
-  >("Basics");
+  const [activeTab, setActiveTab] = useState<(typeof TAB_ORDER)[number]>("Basics");
+  const tabOrder = TAB_ORDER;
+  const currentTabIndex = tabOrder.indexOf(activeTab);
+  const isFirstTab = currentTabIndex <= 0;
+  const isLastTab = currentTabIndex === tabOrder.length - 1;
   const [profileTier, setProfileTier] = useState<string>("base");
+  const [showConfirm, setShowConfirm] = useState(false);
+  const draftKey = useMemo(
+    () => `new-lab-draft:${user?.id ?? "guest"}`,
+    [user?.id],
+  );
 
   const canUseLogo = profileTier === "premier" || profileTier === "custom" || profileTier === "verified";
   const canUsePartnerLogos = profileTier === "premier" || profileTier === "custom";
@@ -98,6 +115,39 @@ export default function NewLab() {
       .catch(() => {});
   }, [user?.id]);
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.form) {
+        setForm(prev => ({ ...prev, ...parsed.form }));
+      }
+      if (Array.isArray(parsed?.photos)) setPhotos(parsed.photos);
+      if (Array.isArray(parsed?.partnerLogos)) setPartnerLogos(parsed.partnerLogos);
+      if (Array.isArray(parsed?.complianceDocs)) setComplianceDocs(parsed.complianceDocs);
+      if (typeof parsed?.activeTab === "string" && (tabOrder as readonly string[]).includes(parsed.activeTab)) {
+        setActiveTab(parsed.activeTab as (typeof TAB_ORDER)[number]);
+      }
+    } catch {
+      // Ignore invalid drafts.
+    }
+  }, [draftKey, tabOrder]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      const payload = {
+        form,
+        photos,
+        partnerLogos,
+        complianceDocs,
+        activeTab,
+      };
+      localStorage.setItem(draftKey, JSON.stringify(payload));
+    }, 250);
+    return () => window.clearTimeout(handle);
+  }, [draftKey, form, photos, partnerLogos, complianceDocs, activeTab]);
+
   const handleChange = (field: keyof typeof form, value: string | boolean | OfferOption[] | string[]) => {
     setForm(prev => ({ ...prev, [field]: value }));
   };
@@ -109,8 +159,8 @@ export default function NewLab() {
     const linkedin = teamMemberInput.linkedin.trim();
     const website = teamMemberInput.website.trim();
     const teamName = teamMemberInput.teamName.trim();
-    const roleRank = teamMemberInput.roleRank.trim();
-    const parsedRank = roleRank ? Number(roleRank) : null;
+    const roleRankValue = teamMemberInput.roleRank.trim();
+    const parsedRank = roleRankValue ? Number(roleRankValue) : null;
     setForm(prev => ({
       ...prev,
       teamMembers: [
@@ -121,7 +171,7 @@ export default function NewLab() {
           linkedin: linkedin || null,
           website: website || null,
           teamName: teamName || null,
-          roleRank: parsedRank && !Number.isNaN(parsedRank) ? parsedRank : null,
+          roleRank: parsedRank && Number.isFinite(parsedRank) && parsedRank > 0 ? parsedRank : null,
           isLead: prev.teamMembers.length === 0,
         },
       ],
@@ -168,8 +218,7 @@ export default function NewLab() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     setSaving(true);
     setError(null);
     try {
@@ -208,6 +257,7 @@ export default function NewLab() {
         halPersonId: form.halPersonId.trim() || null,
         teamMembers: form.teamMembers,
       });
+      localStorage.removeItem(draftKey);
       setLocation(`/lab/manage/${created.id}`);
     } catch (err: any) {
       setError(err?.message || "Unable to create lab");
@@ -232,10 +282,20 @@ export default function NewLab() {
           <h1 className="text-3xl font-semibold text-foreground mt-1">Add a new lab</h1>
           <p className="mt-2 text-sm text-muted-foreground">Start with the basics. You can add photos, equipment, and pricing later.</p>
 
-          <form className="mt-8 space-y-8" onSubmit={handleSubmit}>
+          <form
+            className="mt-8 space-y-8"
+            onSubmit={event => event.preventDefault()}
+            onKeyDown={event => {
+              if (event.defaultPrevented || event.key !== "Enter") return;
+              const target = event.target as HTMLElement;
+              if (target instanceof HTMLTextAreaElement) return;
+              if (target instanceof HTMLButtonElement) return;
+              event.preventDefault();
+            }}
+          >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap gap-2">
-                {(["Basics", "Photos", "Company details", "Branding & Links", "Compliance", "Team", "Offers & pricing"] as const).map(tab => (
+                {tabOrder.map(tab => (
                   <button
                     key={tab}
                     type="button"
@@ -250,13 +310,6 @@ export default function NewLab() {
                   </button>
                 ))}
               </div>
-              <button
-                type="submit"
-                disabled={saving}
-                className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
-              >
-                {saving ? "Creating…" : "Create lab"}
-              </button>
             </div>
 
             {activeTab === "Basics" && (
@@ -881,10 +934,72 @@ export default function NewLab() {
               </Section>
             )}
 
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/70 pt-4">
+              <button
+                type="button"
+                onClick={() => setActiveTab(tabOrder[Math.max(0, currentTabIndex - 1)])}
+                className="rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary disabled:opacity-50"
+                disabled={isFirstTab}
+              >
+                Back
+              </button>
+              <div className="flex items-center gap-2">
+                {!isLastTab && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(tabOrder[Math.min(tabOrder.length - 1, currentTabIndex + 1)])}
+                    className="rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                  >
+                    Next
+                  </button>
+                )}
+                {isLastTab && (
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirm(true)}
+                    disabled={saving}
+                    className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
+                  >
+                    {saving ? "Creating…" : "Create lab"}
+                  </button>
+                )}
+              </div>
+            </div>
+
             {error && <p className="text-sm text-destructive">{error}</p>}
           </form>
         </motion.div>
       </div>
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8">
+          <div className="w-full max-w-md rounded-3xl border border-border bg-background p-6 shadow-xl">
+            <h2 className="text-lg font-semibold text-foreground">Create this lab?</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              We&apos;ll publish this lab profile using the details you entered. You can update it anytime in Manage labs.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowConfirm(false)}
+                className="rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConfirm(false);
+                  void handleSubmit();
+                }}
+                disabled={saving}
+                className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
+              >
+                {saving ? "Creating…" : "Yes, create"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
