@@ -10,6 +10,7 @@ import { sendMail } from "./mailer";
 import jwt from "jsonwebtoken";
 import { supabasePublic } from "./supabasePublicClient.js";
 import { Buffer } from "node:buffer";
+import crypto from "node:crypto";
 
 import { z, ZodError } from "zod";
 
@@ -29,6 +30,84 @@ import { insertDonationSchema } from "@shared/donations";
 
 // Avoid duplicate "viewed" notifications during a single server runtime
 const viewedNotifyCache = new Set<string>();
+const stripePricingCache: {
+  data: null | {
+    verified: { monthly: number | null; yearly: number | null; currency: string | null };
+    premier: { monthly: number | null; yearly: number | null; currency: string | null };
+  };
+  expiresAt: number;
+} = {
+  data: null,
+  expiresAt: 0,
+};
+
+const stripePriceMap = () => {
+  const mapping: Record<string, { tier: "verified" | "premier"; interval: string }> = {};
+  const add = (priceId: string | undefined, tier: "verified" | "premier", interval: string) => {
+    if (priceId) mapping[priceId] = { tier, interval };
+  };
+  add(process.env.STRIPE_PRICE_VERIFIED_MONTHLY, "verified", "monthly");
+  add(process.env.STRIPE_PRICE_VERIFIED_YEARLY, "verified", "yearly");
+  add(process.env.STRIPE_PRICE_PREMIER_MONTHLY, "premier", "monthly");
+  add(process.env.STRIPE_PRICE_PREMIER_YEARLY, "premier", "yearly");
+  return mapping;
+};
+
+const timingSafeEqual = (a: string, b: string) => {
+  const aBuf = Buffer.from(a, "utf8");
+  const bBuf = Buffer.from(b, "utf8");
+  if (aBuf.length !== bBuf.length) return false;
+  return crypto.timingSafeEqual(aBuf, bBuf);
+};
+
+const fetchStripePrice = async (stripeKey: string, priceId?: string) => {
+  if (!priceId) return null;
+  const res = await fetch(`https://api.stripe.com/v1/prices/${priceId}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${stripeKey}`,
+    },
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(errorText || "Stripe price lookup failed");
+  }
+  const price = await res.json();
+  const unitAmount = typeof price.unit_amount === "number" ? price.unit_amount / 100 : null;
+  return { amount: unitAmount, currency: price.currency || null };
+};
+
+const getStripePricing = async () => {
+  const now = Date.now();
+  if (stripePricingCache.data && now < stripePricingCache.expiresAt) {
+    return stripePricingCache.data;
+  }
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeKey) return null;
+
+  const [verifiedMonthly, verifiedYearly, premierMonthly, premierYearly] = await Promise.all([
+    fetchStripePrice(stripeKey, process.env.STRIPE_PRICE_VERIFIED_MONTHLY),
+    fetchStripePrice(stripeKey, process.env.STRIPE_PRICE_VERIFIED_YEARLY),
+    fetchStripePrice(stripeKey, process.env.STRIPE_PRICE_PREMIER_MONTHLY),
+    fetchStripePrice(stripeKey, process.env.STRIPE_PRICE_PREMIER_YEARLY),
+  ]);
+
+  const data = {
+    verified: {
+      monthly: verifiedMonthly?.amount ?? null,
+      yearly: verifiedYearly?.amount ?? null,
+      currency: verifiedMonthly?.currency ?? verifiedYearly?.currency ?? null,
+    },
+    premier: {
+      monthly: premierMonthly?.amount ?? null,
+      yearly: premierYearly?.amount ?? null,
+      currency: premierMonthly?.currency ?? premierYearly?.currency ?? null,
+    },
+  };
+  stripePricingCache.data = data;
+  stripePricingCache.expiresAt = now + 5 * 60 * 1000;
+  return data;
+};
 
 const defaultPricing = [
   {
@@ -110,10 +189,185 @@ const insertLegalAssistSchema = z.object({
   details: z.string().min(10, "Please add a short description"),
 });
 
+const resolveSubscriptionTier = (subscription: any) => {
+  const metadataPlan = (subscription?.metadata?.plan as string | undefined)?.toLowerCase();
+  if (metadataPlan === "verified" || metadataPlan === "premier") {
+    return metadataPlan;
+  }
+  const priceId = subscription?.items?.data?.[0]?.price?.id as string | undefined;
+  const mapping = stripePriceMap();
+  return priceId && mapping[priceId] ? mapping[priceId].tier : null;
+};
+
+const mapSubscriptionStatus = (status?: string | null) => {
+  const value = (status || "").toLowerCase();
+  if (value === "active" || value === "trialing") return "active";
+  if (value === "past_due" || value === "unpaid") return "past_due";
+  if (value === "canceled" || value === "incomplete_expired") return "canceled";
+  return "none";
+};
+
+const fetchStripeCustomer = async (stripeKey: string, customerId: string) => {
+  const res = await fetch(`https://api.stripe.com/v1/customers/${customerId}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${stripeKey}`,
+    },
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(errorText || "Stripe customer lookup failed");
+  }
+  return res.json();
+};
+
+const getProfileSubscription = async (userId: string) => {
+  const { data } = await supabase
+    .from("profiles")
+    .select("subscription_tier, subscription_status")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const tier = (data?.subscription_tier || "base").toLowerCase();
+  const status = (data?.subscription_status || "none").toLowerCase();
+  return { tier, status };
+};
+
+const isActiveSubscriptionStatus = (status: string) =>
+  status === "active" || status === "past_due" || status === "trialing";
+
+const authenticate = async (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ message: "Missing token" });
+
+  const { data, error } = await supabasePublic.auth.getUser(token);
+  if (error || !data?.user) return res.status(401).json({ message: "Invalid token" });
+
+  req.user = data.user;
+  next();
+};
+
 export function registerRoutes(app: Express) {
   // Middleware
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+
+  // --------- Stripe Webhook ----------
+  app.post("/api/stripe/webhook", async (req, res) => {
+    const stripeSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const signature = req.headers["stripe-signature"];
+    const rawBody = (req as any).rawBody as Buffer | undefined;
+
+    if (!stripeSecret) {
+      return res.status(500).json({ message: "Stripe webhook secret not configured" });
+    }
+    if (!rawBody || typeof signature !== "string") {
+      return res.status(400).json({ message: "Missing Stripe signature" });
+    }
+
+    const parts = signature.split(",").map(part => part.trim());
+    const timestampPart = parts.find(part => part.startsWith("t="));
+    const signatureParts = parts.filter(part => part.startsWith("v1=")).map(part => part.replace("v1=", ""));
+    if (!timestampPart || signatureParts.length === 0) {
+      return res.status(400).json({ message: "Invalid Stripe signature" });
+    }
+    const timestamp = timestampPart.replace("t=", "");
+    const signedPayload = `${timestamp}.${rawBody.toString("utf8")}`;
+    const expected = crypto
+      .createHmac("sha256", stripeSecret)
+      .update(signedPayload, "utf8")
+      .digest("hex");
+    const valid = signatureParts.some(sig => timingSafeEqual(sig, expected));
+    if (!valid) {
+      return res.status(400).json({ message: "Stripe signature verification failed" });
+    }
+
+    const event = JSON.parse(rawBody.toString("utf8"));
+
+    const updateProfileForSubscription = async (subscription: any) => {
+      const customerId = subscription?.customer as string | undefined;
+      if (!customerId) return;
+      let userId: string | null = subscription?.metadata?.user_id ?? null;
+      let customerEmail: string | null = null;
+
+      try {
+        const stripeKey = process.env.STRIPE_SECRET_KEY;
+        if (!stripeKey) {
+          console.warn("[stripe] missing STRIPE_SECRET_KEY for customer lookup");
+          return;
+        }
+        const customer = await fetchStripeCustomer(stripeKey, customerId);
+        userId = userId || customer?.metadata?.user_id || null;
+        customerEmail = customer?.email || null;
+      } catch (error) {
+        console.warn("[stripe] customer lookup failed", error);
+      }
+
+      if (!userId && customerEmail) {
+        const { data } = await supabase
+          .from("profiles")
+          .select("user_id")
+          .eq("email", customerEmail)
+          .maybeSingle();
+        userId = data?.user_id ?? null;
+      }
+
+      if (!userId) {
+        console.warn("[stripe] unable to map subscription to user");
+        return;
+      }
+
+      const tier = resolveSubscriptionTier(subscription) || "base";
+      const status = mapSubscriptionStatus(subscription?.status);
+      const tierToSave = status === "active" || status === "past_due" ? tier : "base";
+
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({
+          subscription_tier: tierToSave,
+          subscription_status: status,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", userId);
+      if (updateError) {
+        console.warn("[stripe] failed to update profile", updateError.message);
+      }
+
+      const { error: labError } = await supabase
+        .from("labs")
+        .update({ subscription_tier: tierToSave })
+        .eq("owner_user_id", userId);
+      if (labError) {
+        console.warn("[stripe] failed to update labs", labError.message);
+      }
+    };
+
+    try {
+      if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated") {
+        await updateProfileForSubscription(event.data.object);
+      }
+      if (event.type === "customer.subscription.deleted") {
+        await updateProfileForSubscription({ ...event.data.object, status: "canceled" });
+      }
+      if (event.type === "invoice.payment_failed") {
+        const subscriptionId = event.data.object?.subscription;
+        if (subscriptionId && process.env.STRIPE_SECRET_KEY) {
+          const subRes = await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
+            method: "GET",
+            headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}` },
+          });
+          if (subRes.ok) {
+            const subscription = await subRes.json();
+            await updateProfileForSubscription({ ...subscription, status: "past_due" });
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[stripe] webhook handler failed", error);
+      return res.status(500).json({ message: "Webhook handler failed" });
+    }
+
+    return res.json({ received: true });
+  });
 
   // --------- Donations ----------
   app.post("/api/donations", async (req, res) => {
@@ -336,7 +590,7 @@ export function registerRoutes(app: Express) {
   });
 
   // --------- Stripe Checkout for subscriptions ----------
-  app.post("/api/subscriptions/checkout", async (req, res) => {
+  app.post("/api/subscriptions/checkout", authenticate, async (req, res) => {
     try {
       const { plan, interval } = req.body ?? {};
       const planKey = typeof plan === "string" ? plan.toLowerCase() : "";
@@ -346,6 +600,19 @@ export function registerRoutes(app: Express) {
       }
       if (!["monthly", "yearly"].includes(intervalKey)) {
         return res.status(400).json({ message: "Invalid interval" });
+      }
+
+      const { tier: currentTier, status: currentStatus } = await getProfileSubscription(req.user.id);
+      if (isActiveSubscriptionStatus(currentStatus)) {
+        if (currentTier === "premier") {
+          return res.status(409).json({ message: "Your account is already Premier." });
+        }
+        if (currentTier === "verified" && planKey === "verified") {
+          return res.status(409).json({ message: "Your account is already Verified." });
+        }
+        if (currentTier === "premier" && planKey === "verified") {
+          return res.status(409).json({ message: "Premier accounts cannot subscribe to Verified." });
+        }
       }
 
       const stripeKey = process.env.STRIPE_SECRET_KEY;
@@ -407,7 +674,7 @@ export function registerRoutes(app: Express) {
   });
 
   // --------- Stripe embedded subscription intent ----------
-  app.post("/api/subscriptions/intent", async (req, res) => {
+  app.post("/api/subscriptions/intent", authenticate, async (req, res) => {
     try {
       const { plan, interval, email } = req.body ?? {};
       const planKey = typeof plan === "string" ? plan.toLowerCase() : "";
@@ -422,6 +689,19 @@ export function registerRoutes(app: Express) {
       }
       if (!emailValue) {
         return res.status(400).json({ message: "Email is required" });
+      }
+
+      const { tier: currentTier, status: currentStatus } = await getProfileSubscription(req.user.id);
+      if (isActiveSubscriptionStatus(currentStatus)) {
+        if (currentTier === "premier") {
+          return res.status(409).json({ message: "Your account is already Premier." });
+        }
+        if (currentTier === "verified" && planKey === "verified") {
+          return res.status(409).json({ message: "Your account is already Verified." });
+        }
+        if (currentTier === "premier" && planKey === "verified") {
+          return res.status(409).json({ message: "Premier accounts cannot subscribe to Verified." });
+        }
       }
 
       const stripeKey = process.env.STRIPE_SECRET_KEY;
@@ -459,14 +739,123 @@ export function registerRoutes(app: Express) {
       }
       const customer = await customerRes.json();
 
+      const setupParams = new URLSearchParams();
+      setupParams.append("customer", customer.id);
+      setupParams.append("payment_method_types[]", "card");
+      setupParams.append("usage", "off_session");
+      setupParams.append("metadata[plan]", planKey);
+      setupParams.append("metadata[interval]", intervalKey);
+      if (req.user?.id) {
+        setupParams.append("metadata[user_id]", req.user.id);
+      }
+
+      const setupRes = await fetch("https://api.stripe.com/v1/setup_intents", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${stripeKey}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: setupParams.toString(),
+      });
+      if (!setupRes.ok) {
+        const errorText = await setupRes.text();
+        return res.status(500).json({ message: "Stripe error", detail: errorText });
+      }
+      const setupIntent = await setupRes.json();
+      const clientSecret = setupIntent?.client_secret;
+      if (!clientSecret) {
+        return res.status(500).json({ message: "Missing setup intent client secret" });
+      }
+      return res.status(200).json({ client_secret: clientSecret, setup_intent_id: setupIntent.id });
+    } catch (error) {
+      res.status(500).json({
+        message: error instanceof Error ? error.message : "Unable to create subscription intent",
+      });
+    }
+  });
+
+  // --------- Stripe subscription activation ----------
+  app.post("/api/subscriptions/activate", authenticate, async (req, res) => {
+    try {
+      const schema = z.object({
+        plan: z.string(),
+        interval: z.string(),
+        setupIntentId: z.string(),
+      });
+      const payload = schema.parse(req.body);
+      const planKey = payload.plan.toLowerCase();
+      const intervalKey = payload.interval.toLowerCase();
+      if (!["verified", "premier"].includes(planKey)) {
+        return res.status(400).json({ message: "Invalid plan" });
+      }
+      if (!["monthly", "yearly"].includes(intervalKey)) {
+        return res.status(400).json({ message: "Invalid interval" });
+      }
+
+      const { tier: currentTier, status: currentStatus } = await getProfileSubscription(req.user.id);
+      if (isActiveSubscriptionStatus(currentStatus)) {
+        if (currentTier === "premier") {
+          return res.status(409).json({ message: "Your account is already Premier." });
+        }
+        if (currentTier === "verified" && planKey === "verified") {
+          return res.status(409).json({ message: "Your account is already Verified." });
+        }
+        if (currentTier === "premier" && planKey === "verified") {
+          return res.status(409).json({ message: "Premier accounts cannot subscribe to Verified." });
+        }
+      }
+
+      const stripeKey = process.env.STRIPE_SECRET_KEY;
+      if (!stripeKey) return res.status(500).json({ message: "Stripe not configured" });
+
+      const priceId =
+        planKey === "verified"
+          ? intervalKey === "yearly"
+            ? process.env.STRIPE_PRICE_VERIFIED_YEARLY
+            : process.env.STRIPE_PRICE_VERIFIED_MONTHLY
+          : intervalKey === "yearly"
+            ? process.env.STRIPE_PRICE_PREMIER_YEARLY
+            : process.env.STRIPE_PRICE_PREMIER_MONTHLY;
+
+      if (!priceId) {
+        return res.status(500).json({ message: "Stripe price not configured" });
+      }
+
+      const setupRes = await fetch(`https://api.stripe.com/v1/setup_intents/${payload.setupIntentId}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${stripeKey}`,
+        },
+      });
+      if (!setupRes.ok) {
+        const errorText = await setupRes.text();
+        return res.status(500).json({ message: "Stripe error", detail: errorText });
+      }
+      const setupIntent = await setupRes.json();
+      const paymentMethod = setupIntent?.payment_method;
+      const customerId = setupIntent?.customer;
+      const setupUserId = setupIntent?.metadata?.user_id;
+      if (!paymentMethod || !customerId) {
+        return res.status(400).json({ message: "Setup intent incomplete" });
+      }
+      if (setupUserId && setupUserId !== req.user.id) {
+        return res.status(403).json({ message: "Setup intent does not belong to this user" });
+      }
+
       const params = new URLSearchParams();
-      params.append("customer", customer.id);
+      params.append("customer", customerId);
       params.append("items[0][price]", priceId);
-      params.append("payment_behavior", "default_incomplete");
+      params.append("default_payment_method", paymentMethod);
       params.append("collection_method", "charge_automatically");
+      params.append("payment_behavior", "default_incomplete");
+      params.append("payment_settings[payment_method_types][]", "card");
+      params.append("payment_settings[save_default_payment_method]", "on_subscription");
       params.append("expand[]", "latest_invoice.payment_intent");
       params.append("metadata[plan]", planKey);
       params.append("metadata[interval]", intervalKey);
+      if (req.user?.id) {
+        params.append("metadata[user_id]", req.user.id);
+      }
 
       const subRes = await fetch("https://api.stripe.com/v1/subscriptions", {
         method: "POST",
@@ -481,14 +870,83 @@ export function registerRoutes(app: Express) {
         return res.status(500).json({ message: "Stripe error", detail: errorText });
       }
       const subscription = await subRes.json();
-      const clientSecret = subscription?.latest_invoice?.payment_intent?.client_secret;
-      if (!clientSecret) {
-        return res.status(500).json({ message: "Missing payment intent" });
+      const latestInvoice = subscription?.latest_invoice ?? null;
+      let invoiceId: string | null = null;
+      let invoiceStatus: string | null = null;
+      let paymentIntent: any = null;
+
+      if (typeof latestInvoice === "string") {
+        invoiceId = latestInvoice;
+      } else if (latestInvoice && typeof latestInvoice === "object") {
+        invoiceId = latestInvoice.id ?? null;
+        invoiceStatus = latestInvoice.status ?? null;
+        paymentIntent = latestInvoice.payment_intent ?? null;
       }
-      return res.status(200).json({ client_secret: clientSecret });
+
+      const fetchInvoice = async (id: string) => {
+        const invoiceRes = await fetch(`https://api.stripe.com/v1/invoices/${id}`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${stripeKey}`,
+          },
+        });
+        if (!invoiceRes.ok) return null;
+        return invoiceRes.json();
+      };
+
+      const fetchPaymentIntent = async (id: string) => {
+        const piRes = await fetch(`https://api.stripe.com/v1/payment_intents/${id}`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${stripeKey}`,
+          },
+        });
+        if (!piRes.ok) return null;
+        return piRes.json();
+      };
+
+      if (!paymentIntent && invoiceId) {
+        const invoice = await fetchInvoice(invoiceId);
+        if (invoice) {
+          invoiceStatus = invoice.status ?? invoiceStatus;
+          paymentIntent = invoice.payment_intent ?? paymentIntent;
+        }
+        if (!paymentIntent && invoiceStatus === "draft") {
+          const finalizeRes = await fetch(`https://api.stripe.com/v1/invoices/${invoiceId}/finalize`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${stripeKey}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+          });
+          if (finalizeRes.ok) {
+            const invoice = await finalizeRes.json();
+            paymentIntent = invoice?.payment_intent ?? paymentIntent;
+          }
+        }
+      }
+
+      if (paymentIntent && typeof paymentIntent === "string") {
+        const fetchedIntent = await fetchPaymentIntent(paymentIntent);
+        if (fetchedIntent) {
+          paymentIntent = fetchedIntent;
+        }
+      }
+
+      const clientSecret = paymentIntent?.client_secret || null;
+
+      return res.status(200).json({
+        subscription_id: subscription?.id ?? null,
+        status: subscription?.status ?? null,
+        payment_intent_client_secret: clientSecret,
+      });
     } catch (error) {
+      if (error instanceof ZodError) {
+        const issue = error.issues[0];
+        return res.status(400).json({ message: issue?.message ?? "Invalid subscription payload" });
+      }
       res.status(500).json({
-        message: error instanceof Error ? error.message : "Unable to create subscription intent",
+        message: error instanceof Error ? error.message : "Unable to activate subscription",
       });
     }
   });
@@ -1038,17 +1496,6 @@ app.post("/api/signup", async (req, res) => {
 
 
 
-const authenticate = async (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ message: "Missing token" });
-
-  const { data, error } = await supabasePublic.auth.getUser(token);
-  if (error || !data?.user) return res.status(401).json({ message: "Invalid token" });
-
-  req.user = data.user;
-  next();
-};
-
 // Example of a protected route
 app.get("/api/profile", authenticate, async (req, res) => {
   res.json({ message: "Authenticated!", user: req.user });
@@ -1292,6 +1739,18 @@ app.get("/api/profile", authenticate, async (req, res) => {
 
   // --------- Pricing ----------
   app.get("/api/pricing", async (_req, res) => {
+    const baseList = defaultPricing.map(tier => ({
+      name: tier.name,
+      monthly_price: tier.monthly_price ?? null,
+      yearly_price: null as number | null,
+      currency: null as string | null,
+      description: tier.description,
+      highlights: tier.highlights,
+      featured: tier.featured ?? false,
+      sort_order: tier.sort_order ?? 999,
+    }));
+
+    let list = baseList;
     try {
       const { data, error } = await supabase
         .from("pricing_tiers")
@@ -1316,10 +1775,12 @@ app.get("/api/profile", authenticate, async (req, res) => {
         // ignore if table is missing or RLS blocks
       }
 
-      const list = (data ?? []).map(row => ({
+      const mapped = (data ?? []).map(row => ({
         name: row.name,
-        monthly_price: row.monthly_price,
-        description: row.description,
+        monthly_price: row.monthly_price ?? null,
+        yearly_price: null as number | null,
+        currency: null as string | null,
+        description: row.description ?? defaultPricing.find(d => d.name === row.name)?.description ?? "",
         highlights:
           featuresByTier[row.name] && featuresByTier[row.name].length
             ? featuresByTier[row.name]
@@ -1329,10 +1790,40 @@ app.get("/api/profile", authenticate, async (req, res) => {
         featured: row.featured ?? false,
         sort_order: row.sort_order ?? 999,
       }));
-      res.json({ tiers: list.length ? list : defaultPricing });
-    } catch (error) {
-      res.json({ tiers: defaultPricing });
+      list = mapped.length ? mapped : list;
+    } catch {
+      // keep defaults
     }
+
+    try {
+      const stripePricing = await getStripePricing();
+      if (stripePricing) {
+        list = list.map(tier => {
+          const key = (tier.name || "").toLowerCase().trim();
+          if (key === "verified") {
+            return {
+              ...tier,
+              monthly_price: stripePricing.verified.monthly ?? tier.monthly_price,
+              yearly_price: stripePricing.verified.yearly ?? tier.yearly_price,
+              currency: stripePricing.verified.currency,
+            };
+          }
+          if (key === "premier") {
+            return {
+              ...tier,
+              monthly_price: stripePricing.premier.monthly ?? tier.monthly_price,
+              yearly_price: stripePricing.premier.yearly ?? tier.yearly_price,
+              currency: stripePricing.premier.currency,
+            };
+          }
+          return tier;
+        });
+      }
+    } catch (error) {
+      console.warn("[pricing] stripe pricing lookup failed", error);
+    }
+
+    res.json({ tiers: list });
   });
 
   // --------- Verification Requests ----------

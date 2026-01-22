@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 export type PricingTier = {
   name: string;
   monthly_price: number | null;
+  yearly_price?: number | null;
+  currency?: string | null;
   description: string;
   highlights: string[];
   featured?: boolean;
@@ -12,6 +14,7 @@ const defaultTiers: PricingTier[] = [
   {
     name: "Base",
     monthly_price: 0,
+    yearly_price: 0,
     description: "Launch on GLASS-Connect with the essentials.",
     highlights: ["Profile page", "Equipment showcase", "Inbound contact form"],
     featured: false,
@@ -19,6 +22,7 @@ const defaultTiers: PricingTier[] = [
   {
     name: "Verified",
     monthly_price: 99,
+    yearly_price: 999,
     description: "Add the badge researchers trust.",
     highlights: ["Remote/on-site verification", "Badge on listing", "Priority placement"],
     featured: false,
@@ -26,6 +30,7 @@ const defaultTiers: PricingTier[] = [
   {
     name: "Premier",
     monthly_price: 199,
+    yearly_price: 1990,
     description: "Flagship placement plus media support.",
     highlights: ["Free verification", "Direct collaboration management", "Seminar access"],
     featured: true,
@@ -33,6 +38,7 @@ const defaultTiers: PricingTier[] = [
   {
     name: "Custom",
     monthly_price: null,
+    yearly_price: null,
     description: "For networks or operators managing multiple labs.",
     highlights: ["Central billing", "Dedicated partner manager", "API & tooling access"],
     featured: false,
@@ -60,6 +66,8 @@ export function usePricing() {
             payload.tiers.map((t: any) => ({
               name: t.name,
               monthly_price: t.monthly_price === undefined ? null : t.monthly_price,
+              yearly_price: t.yearly_price === undefined ? null : t.yearly_price,
+              currency: t.currency ?? null,
               description: t.description,
               highlights: Array.isArray(t.highlights) ? t.highlights : [],
               featured: Boolean(t.featured),

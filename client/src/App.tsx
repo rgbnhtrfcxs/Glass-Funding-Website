@@ -118,7 +118,7 @@ function Router() {
       <Route path="/stripe" component={StripeCheckout} />
       <Route path="/donate" component={DonationFlow} />
       <Route path="/donate-confirmation" component={DonationConfirmation} />
-      <Route path="/subscribe" component={Subscribe} />
+      <ProtectedRoute path="/subscribe" component={Subscribe} />
       <Route path="/logout" component={Logout} />
 
       {/* Auth Pages */}

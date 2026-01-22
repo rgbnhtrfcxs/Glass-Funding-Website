@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import { useLabs } from "@/context/LabsContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useToast } from "@/hooks/use-toast";
 
 type Profile = {
   user_id: string;
@@ -19,9 +20,30 @@ type Profile = {
   updated_at?: string;
 };
 
+type TeamMember = {
+  name: string;
+  title: string;
+  linkedin?: string | null;
+  website?: string | null;
+  teamName?: string | null;
+  roleRank?: number | null;
+  isLead?: boolean;
+};
+
+type TeamMemberForm = {
+  name: string;
+  title: string;
+  linkedin: string;
+  website: string;
+  teamName: string;
+  roleRank: string;
+  isLead: boolean;
+};
+
 export default function Account() {
   const { user, loading: authLoading } = useAuth();
-  const { labs: allLabs } = useLabs();
+  const { labs: allLabs, updateLab } = useLabs();
+  const { toast } = useToast();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +109,16 @@ export default function Account() {
   const [legalError, setLegalError] = useState<string | null>(null);
   const [legalSuccess, setLegalSuccess] = useState<string | null>(null);
   const [legalSubmitting, setLegalSubmitting] = useState(false);
+  const [activeTab, setActiveTab] = useState<"overview" | "labs" | "equipment" | "team" | "activity">("overview");
+  const [equipmentDrafts, setEquipmentDrafts] = useState<Record<number, string[]>>({});
+  const [equipmentInput, setEquipmentInput] = useState<Record<number, string>>({});
+  const [equipmentSaving, setEquipmentSaving] = useState<Record<number, boolean>>({});
+  const [equipmentError, setEquipmentError] = useState<Record<number, string | null>>({});
+  const [teamDrafts, setTeamDrafts] = useState<Record<number, TeamMember[]>>({});
+  const [teamForms, setTeamForms] = useState<Record<number, TeamMemberForm>>({});
+  const [teamEditingIndex, setTeamEditingIndex] = useState<Record<number, number | null>>({});
+  const [teamSaving, setTeamSaving] = useState<Record<number, boolean>>({});
+  const [teamError, setTeamError] = useState<Record<number, string | null>>({});
 
   const displayLabel = useMemo(() => {
     return profile?.display_name || profile?.name || user?.email || "Your Account";
@@ -225,12 +257,64 @@ export default function Account() {
     );
   }, [allLabs, labStats, user?.id]);
   const ownedUnverifiedLabs = useMemo(() => ownedLabs.filter(l => !isLabVerified(l.id)), [ownedLabs]);
+  const canManageLabs =
+    profile && (profile.role === "lab" || profile.role === "admin" || profile.role === "multi-lab");
+  const emptyTeamForm: TeamMemberForm = {
+    name: "",
+    title: "",
+    linkedin: "",
+    website: "",
+    teamName: "",
+    roleRank: "",
+    isLead: false,
+  };
+
+  const normalizeUrl = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
+  };
 
   useEffect(() => {
     if (premierLabs.length && !newsLabId) {
       setNewsLabId(premierLabs[0].id);
     }
   }, [premierLabs, newsLabId]);
+
+  useEffect(() => {
+    if (!ownedLabs.length) {
+      setEquipmentDrafts({});
+      setTeamDrafts({});
+      return;
+    }
+    setEquipmentDrafts(
+      ownedLabs.reduce((acc: Record<number, string[]>, lab) => {
+        acc[lab.id] = Array.isArray((lab as any).equipment) ? (lab as any).equipment : [];
+        return acc;
+      }, {}),
+    );
+    setTeamDrafts(
+      ownedLabs.reduce((acc: Record<number, TeamMember[]>, lab) => {
+        acc[lab.id] = Array.isArray((lab as any).teamMembers) ? (lab as any).teamMembers : [];
+        return acc;
+      }, {}),
+    );
+    setTeamForms(prev => {
+      const next = { ...prev };
+      ownedLabs.forEach(lab => {
+        if (!next[lab.id]) next[lab.id] = { ...emptyTeamForm };
+      });
+      return next;
+    });
+    setTeamEditingIndex(prev => {
+      const next = { ...prev };
+      ownedLabs.forEach(lab => {
+        if (next[lab.id] === undefined) next[lab.id] = null;
+      });
+      return next;
+    });
+  }, [ownedLabs]);
 
   async function uploadNewsFiles(files: FileList | null) {
     if (!files || !files.length) return;
@@ -304,6 +388,154 @@ export default function Account() {
       setNewsSubmitting(false);
     }
   }
+
+  const saveEquipment = async (labId: number, items: string[]) => {
+    if (!canManageLabs) return;
+    setEquipmentSaving(prev => ({ ...prev, [labId]: true }));
+    setEquipmentError(prev => ({ ...prev, [labId]: null }));
+    try {
+      const updated = await updateLab(labId, { equipment: items });
+      setEquipmentDrafts(prev => ({
+        ...prev,
+        [labId]: Array.isArray((updated as any).equipment) ? (updated as any).equipment : items,
+      }));
+    } catch (err: any) {
+      setEquipmentError(prev => ({
+        ...prev,
+        [labId]: err?.message || "Unable to update equipment",
+      }));
+    } finally {
+      setEquipmentSaving(prev => ({ ...prev, [labId]: false }));
+    }
+  };
+
+  const addEquipment = async (labId: number) => {
+    const value = (equipmentInput[labId] ?? "").trim();
+    if (!value) return;
+    const current = equipmentDrafts[labId] ?? [];
+    const next = Array.from(new Set([...current, value]));
+    setEquipmentInput(prev => ({ ...prev, [labId]: "" }));
+    setEquipmentDrafts(prev => ({ ...prev, [labId]: next }));
+    await saveEquipment(labId, next);
+  };
+
+  const removeEquipment = async (labId: number, item: string) => {
+    const current = equipmentDrafts[labId] ?? [];
+    const next = current.filter(entry => entry !== item);
+    setEquipmentDrafts(prev => ({ ...prev, [labId]: next }));
+    await saveEquipment(labId, next);
+  };
+
+  const saveTeamMembers = async (labId: number, members: TeamMember[]) => {
+    if (!canManageLabs) return;
+    setTeamSaving(prev => ({ ...prev, [labId]: true }));
+    setTeamError(prev => ({ ...prev, [labId]: null }));
+    try {
+      const updated = await updateLab(labId, { teamMembers: members });
+      setTeamDrafts(prev => ({
+        ...prev,
+        [labId]: Array.isArray((updated as any).teamMembers) ? (updated as any).teamMembers : members,
+      }));
+    } catch (err: any) {
+      setTeamError(prev => ({ ...prev, [labId]: err?.message || "Unable to update team members" }));
+    } finally {
+      setTeamSaving(prev => ({ ...prev, [labId]: false }));
+    }
+  };
+
+  const updateTeamForm = (labId: number, updates: Partial<TeamMemberForm>) => {
+    setTeamForms(prev => ({
+      ...prev,
+      [labId]: {
+        ...(prev[labId] ?? emptyTeamForm),
+        ...updates,
+      },
+    }));
+  };
+
+  const resetTeamForm = (labId: number) => {
+    setTeamForms(prev => ({ ...prev, [labId]: { ...emptyTeamForm } }));
+    setTeamEditingIndex(prev => ({ ...prev, [labId]: null }));
+  };
+
+  const submitTeamMember = async (labId: number) => {
+    const form = teamForms[labId] ?? emptyTeamForm;
+    if (!form.name.trim() || !form.title.trim()) {
+      setTeamError(prev => ({ ...prev, [labId]: "Name and title are required." }));
+      return;
+    }
+
+    const parsedRank = form.roleRank.trim() ? Number(form.roleRank) : null;
+    if (form.roleRank.trim() && Number.isNaN(parsedRank)) {
+      setTeamError(prev => ({ ...prev, [labId]: "Role rank must be a number." }));
+      return;
+    }
+
+    const member: TeamMember = {
+      name: form.name.trim(),
+      title: form.title.trim(),
+      teamName: form.teamName.trim() ? form.teamName.trim() : null,
+      roleRank: parsedRank ?? null,
+      linkedin: normalizeUrl(form.linkedin) ?? null,
+      website: normalizeUrl(form.website) ?? null,
+      isLead: form.isLead,
+    };
+
+    const current = teamDrafts[labId] ?? [];
+    const editingIndex = teamEditingIndex[labId];
+    let next = [...current];
+    if (editingIndex !== null && editingIndex !== undefined && editingIndex >= 0) {
+      next[editingIndex] = member;
+    } else {
+      next = [...next];
+      next.push(member);
+    }
+    if (member.isLead) {
+      next = next.map((item, idx) => ({ ...item, isLead: idx === (editingIndex ?? next.length - 1) }));
+    }
+    next = next
+      .map(item => ({ ...item }))
+      .sort((a, b) => {
+        if (a.isLead !== b.isLead) return Number(b.isLead) - Number(a.isLead);
+        const rankA = a.roleRank ?? 999;
+        const rankB = b.roleRank ?? 999;
+        if (rankA !== rankB) return rankA - rankB;
+        return a.name.localeCompare(b.name);
+      });
+
+    setTeamDrafts(prev => ({ ...prev, [labId]: next }));
+    await saveTeamMembers(labId, next);
+    resetTeamForm(labId);
+  };
+
+  const editTeamMember = (labId: number, index: number) => {
+    const member = (teamDrafts[labId] ?? [])[index];
+    if (!member) return;
+    updateTeamForm(labId, {
+      name: member.name,
+      title: member.title,
+      teamName: member.teamName ?? "",
+      roleRank: member.roleRank ? String(member.roleRank) : "",
+      linkedin: member.linkedin ?? "",
+      website: member.website ?? "",
+      isLead: Boolean(member.isLead),
+    });
+    setTeamEditingIndex(prev => ({ ...prev, [labId]: index }));
+  };
+
+  const removeTeamMember = async (labId: number, index: number) => {
+    const current = teamDrafts[labId] ?? [];
+    const next = current.filter((_, idx) => idx !== index);
+    setTeamDrafts(prev => ({ ...prev, [labId]: next }));
+    await saveTeamMembers(labId, next);
+  };
+
+  const setLeadMember = async (labId: number, index: number) => {
+    const current = teamDrafts[labId] ?? [];
+    const next = current.map((member, idx) => ({ ...member, isLead: idx === index }));
+    setTeamDrafts(prev => ({ ...prev, [labId]: next }));
+    await saveTeamMembers(labId, next);
+  };
 
   async function submitVerificationRequest() {
     if (!verifyLabId) {
@@ -383,6 +615,14 @@ export default function Account() {
     }
     if (!authLoading) loadNews();
   }, [authLoading, user?.id]);
+
+  const tabs = [
+    { id: "overview", label: "Overview" },
+    { id: "labs", label: "Labs" },
+    { id: "equipment", label: "Equipment" },
+    { id: "team", label: "Team" },
+    { id: "activity", label: "Activity" },
+  ] as const;
 
   return (
     <section className="bg-background min-h-screen">
@@ -841,180 +1081,564 @@ export default function Account() {
           </div>
         )}
 
-        {canPostNews && (
-        <div className="mt-10 rounded-3xl border border-border bg-card/80 p-6 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">News</p>
-              <h3 className="text-lg font-semibold text-foreground">Recent updates from your labs</h3>
-            </div>
-          </div>
+        <div className="mt-10 flex flex-wrap gap-2 border-b border-border pb-4">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                activeTab === tab.id
+                  ? "bg-primary text-primary-foreground"
+                  : "border border-border text-muted-foreground hover:border-primary hover:text-primary"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-          {newsLoading && (
-            <div className="rounded-2xl border border-border bg-background/70 px-4 py-3 text-sm text-muted-foreground">Loading news…</div>
-          )}
-          {newsFeedError && (
-            <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              {newsFeedError}. You can still post a new update below.
-            </div>
-          )}
-
-          {!newsLoading && (
-            <div className="overflow-x-auto">
-              <div className="flex gap-4 min-w-full">
-                <div className="min-w-[260px] rounded-2xl border border-dashed border-border bg-background/60 px-4 py-4 flex flex-col justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-foreground mb-1">Share an update</p>
-                    <p className="text-xs text-muted-foreground">Post equipment arrivals, collaborations, or milestones.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowNewsModal(true);
-                      setNewsError(null);
-                    }}
-                    className="mt-3 inline-flex items-center justify-center rounded-full bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90"
+        <div className="mt-8 space-y-8">
+          {activeTab === "overview" && (
+            <>
+              {canSeeDashboard ? (
+                <div className="flex flex-col gap-6 lg:flex-row">
+                  <motion.div
+                    initial={{ opacity: 0, y: 18 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5 }}
+                    className="flex-1 rounded-3xl border border-border bg-card/80 p-8 shadow-sm"
                   >
-                    Create post
-                  </button>
-                </div>
+                    <div
+                      className="flex items-center justify-between gap-3 cursor-pointer select-none"
+                      onClick={() => setShowDashboard(prev => !prev)}
+                    >
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Dashboard</p>
+                        <h2 className="text-xl font-semibold text-foreground">Your activity at a glance</h2>
+                      </div>
+                      <span className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
+                        {showDashboard ? "Collapse" : "Expand"}
+                      </span>
+                    </div>
 
-                {newsFeed.length > 0 &&
-                  newsFeed.map(item => {
-                    const labName = item.labs?.name || `Lab ${item.lab_id}`;
-                    const created = item.created_at ? new Date(item.created_at).toLocaleDateString() : "";
-                    return (
-                      <div key={item.id} className="min-w-[260px] max-w-[280px] rounded-2xl border border-border bg-background/70 p-4 flex flex-col gap-3">
-                        <div className="flex items-center text-xs text-muted-foreground">
-                          <span className="rounded-full bg-muted/60 px-2 py-1 text-[11px] capitalize">{item.category || "update"}</span>
+                    {showDashboard && (
+                      <>
+                        <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                          <CardStat label="Tier" value={tierLabel} hint={profile?.subscription_status || ""} />
+                          <CardStat label="Labs linked" value={labStats.length.toString()} hint={labsHiddenCount ? `${labsHiddenCount} hidden` : ""} />
+                          <CardStat label="Views (7d total)" value={totalViews7d.toString()} />
+                          <CardStat label="Views (30d total)" value={totalViews30d.toString()} />
+                          <CardStat label="Favorites total" value={totalFavorites.toString()} />
+                          <CardStat label="Collab requests" value={collabCount.toString()} />
+                          <CardStat label="Rent/contact requests" value={contactCount.toString()} />
+                          {analyticsError && (
+                            <div className="col-span-full rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                              {analyticsError}
+                            </div>
+                          )}
                         </div>
+
+                        {labStats.length > 0 && (
+                          <div className="mt-8 grid gap-4 md:grid-cols-2">
+                            {bestViewLab && (
+                              <HighlightCard
+                                title="Best performing"
+                                subtitle="Most views (30d)"
+                                primary={`${bestViewLab.views30d} views`}
+                                secondary={bestViewLab.name}
+                                badge={(bestViewLab.subscriptionTier || "").toLowerCase() === "premier" ? "Premium" : undefined}
+                              />
+                            )}
+                            {bestFavoriteLab && (
+                              <HighlightCard
+                                title="Most favorited"
+                                subtitle="Total favorites"
+                                primary={`${bestFavoriteLab.favorites} favorites`}
+                                secondary={bestFavoriteLab.name}
+                                badge={(bestFavoriteLab.subscriptionTier || "").toLowerCase() === "premier" ? "Premium" : undefined}
+                              />
+                            )}
+                          </div>
+                        )}
+
+                        {labStats.length > 0 && (
+                          <div className="mt-8">
+                            <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Linked labs</p>
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                              {labStats.map(lab => {
+                                const tier = (lab.subscriptionTier || "").toLowerCase();
+                                const premium = tier === "premier" || tier === "custom";
+                                return (
+                                  <div
+                                    key={lab.id}
+                                    className="rounded-2xl border border-border bg-background/60 px-4 py-3 text-sm flex flex-col gap-2"
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div>
+                                        <p className="font-semibold text-foreground">{lab.name}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                          {premium ? "Premier/Custom" : tier ? tier : "Base"} • {lab.isVisible === false ? "Hidden" : "Visible"}
+                                        </p>
+                                      </div>
+                                      <Link href={`/lab/manage/${lab.id}`} className="text-xs font-medium text-primary hover:underline">
+                                        Manage
+                                      </Link>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                                      <span className="rounded-full border border-border px-2 py-1">7d views: {lab.views7d}</span>
+                                      <span className="rounded-full border border-border px-2 py-1">30d views: {lab.views30d}</span>
+                                      <span className="rounded-full border border-border px-2 py-1">Favorites: {lab.favorites}</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </motion.div>
+                </div>
+              ) : (
+                <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground">
+                  Your dashboard unlocks once you have a premier lab or a multi-lab account.
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === "labs" && (
+            <div className="space-y-6">
+              {ownedLabs.length === 0 ? (
+                <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground">
+                  You don’t have any labs linked yet. Create your first lab to unlock equipment, team, and verification tools.
+                  <div className="mt-4">
+                    <Link
+                      href="/lab/manage"
+                      className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+                    >
+                      Create a lab profile
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                ownedLabs.map(lab => {
+                  const location = [lab.city, lab.country].filter(Boolean).join(", ");
+                  const tier = (lab.subscriptionTier || "").toLowerCase();
+                  const verified = isLabVerified(lab.id);
+                  return (
+                    <div key={lab.id} className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm space-y-4">
+                      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                         <div>
-                          <p className="text-sm font-semibold text-foreground line-clamp-2">{item.title}</p>
-                          <p className="mt-1 text-xs text-muted-foreground line-clamp-3">{item.summary}</p>
+                          <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Lab</p>
+                          <h3 className="text-lg font-semibold text-foreground">{lab.name}</h3>
+                          {location && <p className="text-sm text-muted-foreground">{location}</p>}
+                          {lab.descriptionShort && (
+                            <p className="mt-2 text-sm text-muted-foreground">{lab.descriptionShort}</p>
+                          )}
                         </div>
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span className="truncate">{labName}</span>
-                          <span className="text-[11px]">{created}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {item.images?.slice(0, 2).map(img => (
-                            <img
-                              key={img.url}
-                              src={img.url}
-                              alt={img.name || "news"}
-                              className="h-14 w-14 rounded-lg object-cover border border-border"
-                            />
-                          ))}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
+                            {tier ? tier : "base"}
+                          </span>
+                          {verified && (
+                            <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                              Verified by GLASS
+                            </span>
+                          )}
+                          <Link
+                            href={`/lab/manage/${lab.id}`}
+                            className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                          >
+                            Manage lab
+                          </Link>
                         </div>
                       </div>
-                    );
-                  })}
-              </div>
+                      {verified ? (
+                        <div className="flex flex-wrap items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              toast({
+                                title: "Verification PDF coming soon",
+                                description: `We’ll enable verified PDF downloads for ${lab.name} shortly.`,
+                              })
+                            }
+                            className="inline-flex items-center justify-center rounded-full bg-foreground px-4 py-2 text-xs font-medium text-background transition hover:bg-foreground/90"
+                          >
+                            Download verified PDF
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              toast({
+                                title: "Badge assets coming soon",
+                                description: `Email and website badges for ${lab.name} will be available soon.`,
+                              })
+                            }
+                            className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                          >
+                            Get badge assets
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Verification assets unlock once GLASS verifies this lab.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
           )}
-        </div>
-        )}
-        {canSeeDashboard && (
-        <div className="mt-8 flex flex-col gap-6 lg:flex-row">
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="flex-1 rounded-3xl border border-border bg-card/80 p-8 shadow-sm"
-          >
-            <div
-              className="flex items-center justify-between gap-3 cursor-pointer select-none"
-              onClick={() => setShowDashboard(prev => !prev)}
-            >
-              <div>
-                <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Dashboard</p>
-                <h2 className="text-xl font-semibold text-foreground">Your activity at a glance</h2>
-              </div>
-              <span className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                {showDashboard ? "Collapse" : "Expand"}
-              </span>
-            </div>
 
-            {showDashboard && (
-              <>
-                <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  <CardStat label="Tier" value={tierLabel} hint={profile?.subscription_status || ""} />
-                  <CardStat label="Labs linked" value={labStats.length.toString()} hint={labsHiddenCount ? `${labsHiddenCount} hidden` : ""} />
-                  <CardStat label="Views (7d total)" value={totalViews7d.toString()} />
-                  <CardStat label="Views (30d total)" value={totalViews30d.toString()} />
-                  <CardStat label="Favorites total" value={totalFavorites.toString()} />
-                  <CardStat label="Collab requests" value={collabCount.toString()} />
-                  <CardStat label="Rent/contact requests" value={contactCount.toString()} />
-                  {analyticsError && (
-                    <div className="col-span-full rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                      {analyticsError}
+          {activeTab === "equipment" && (
+            <div className="space-y-6">
+              {ownedLabs.length === 0 ? (
+                <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground">
+                  Add a lab profile to start listing equipment and capabilities.
+                </div>
+              ) : (
+                ownedLabs.map(lab => {
+                  const equipment = equipmentDrafts[lab.id] ?? [];
+                  return (
+                    <div key={lab.id} className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm space-y-4">
+                      <div className="flex flex-col gap-2">
+                        <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Equipment</p>
+                        <h3 className="text-lg font-semibold text-foreground">{lab.name}</h3>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {equipment.length ? (
+                          equipment.map(item => (
+                            <span
+                              key={item}
+                              className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground"
+                            >
+                              {item}
+                              {canManageLabs && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeEquipment(lab.id, item)}
+                                  className="text-muted-foreground hover:text-destructive"
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </span>
+                          ))
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No equipment listed yet.</p>
+                        )}
+                      </div>
+                      {canManageLabs && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            className="w-full max-w-sm rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                            placeholder="Add equipment and press Enter"
+                            value={equipmentInput[lab.id] ?? ""}
+                            onChange={e =>
+                              setEquipmentInput(prev => ({ ...prev, [lab.id]: e.target.value }))
+                            }
+                            onKeyDown={e => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                addEquipment(lab.id);
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => addEquipment(lab.id)}
+                            className="rounded-full bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90"
+                          >
+                            Add equipment
+                          </button>
+                          {equipmentSaving[lab.id] && (
+                            <span className="text-xs text-muted-foreground">Saving…</span>
+                          )}
+                        </div>
+                      )}
+                      {equipmentError[lab.id] && (
+                        <p className="text-xs text-destructive">{equipmentError[lab.id]}</p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {activeTab === "team" && (
+            <div className="space-y-6">
+              {ownedLabs.length === 0 ? (
+                <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground">
+                  Add a lab profile to build your team directory.
+                </div>
+              ) : (
+                ownedLabs.map(lab => {
+                  const members = teamDrafts[lab.id] ?? [];
+                  const form = teamForms[lab.id] ?? emptyTeamForm;
+                  const editing = teamEditingIndex[lab.id];
+                  return (
+                    <div key={lab.id} className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm space-y-6">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Team</p>
+                        <h3 className="text-lg font-semibold text-foreground">{lab.name}</h3>
+                      </div>
+
+                      <div className="space-y-3">
+                        {members.length ? (
+                          members.map((member, index) => (
+                            <div
+                              key={`${member.name}-${index}`}
+                              className="flex flex-col gap-2 rounded-2xl border border-border bg-background/60 px-4 py-3 text-sm md:flex-row md:items-center md:justify-between"
+                            >
+                              <div className="space-y-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="font-semibold text-foreground">{member.name}</p>
+                                  {member.isLead && (
+                                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                                      Lead
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground">{member.title}</p>
+                                {member.teamName && (
+                                  <p className="text-xs text-muted-foreground">Team: {member.teamName}</p>
+                                )}
+                                {(member.linkedin || member.website) && (
+                                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                                    {member.linkedin && (
+                                      <a
+                                        href={member.linkedin}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="hover:text-primary"
+                                      >
+                                        LinkedIn
+                                      </a>
+                                    )}
+                                    {member.website && (
+                                      <a
+                                        href={member.website}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="hover:text-primary"
+                                      >
+                                        Website
+                                      </a>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              {canManageLabs && (
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {!member.isLead && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setLeadMember(lab.id, index)}
+                                      className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-primary hover:text-primary"
+                                    >
+                                      Make lead
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => editTeamMember(lab.id, index)}
+                                    className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-primary hover:text-primary"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeTeamMember(lab.id, index)}
+                                    className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-destructive hover:text-destructive"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No team members added yet.</p>
+                        )}
+                      </div>
+
+                      {canManageLabs && (
+                        <div className="rounded-2xl border border-border bg-background/70 p-4 space-y-4">
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div className="grid gap-1">
+                              <label className="text-xs font-medium text-muted-foreground">Name</label>
+                              <input
+                                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                                value={form.name}
+                                onChange={e => updateTeamForm(lab.id, { name: e.target.value })}
+                              />
+                            </div>
+                            <div className="grid gap-1">
+                              <label className="text-xs font-medium text-muted-foreground">Title</label>
+                              <input
+                                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                                value={form.title}
+                                onChange={e => updateTeamForm(lab.id, { title: e.target.value })}
+                              />
+                            </div>
+                            <div className="grid gap-1">
+                              <label className="text-xs font-medium text-muted-foreground">Team name</label>
+                              <input
+                                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                                value={form.teamName}
+                                onChange={e => updateTeamForm(lab.id, { teamName: e.target.value })}
+                              />
+                            </div>
+                            <div className="grid gap-1">
+                              <label className="text-xs font-medium text-muted-foreground">Role rank (1-8)</label>
+                              <input
+                                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                                value={form.roleRank}
+                                onChange={e => updateTeamForm(lab.id, { roleRank: e.target.value })}
+                              />
+                            </div>
+                            <div className="grid gap-1">
+                              <label className="text-xs font-medium text-muted-foreground">LinkedIn (optional)</label>
+                              <input
+                                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                                value={form.linkedin}
+                                onChange={e => updateTeamForm(lab.id, { linkedin: e.target.value })}
+                                placeholder="linkedin.com/in/..."
+                              />
+                            </div>
+                            <div className="grid gap-1">
+                              <label className="text-xs font-medium text-muted-foreground">Website (optional)</label>
+                              <input
+                                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                                value={form.website}
+                                onChange={e => updateTeamForm(lab.id, { website: e.target.value })}
+                                placeholder="labsite.com"
+                              />
+                            </div>
+                          </div>
+                          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <input
+                              type="checkbox"
+                              checked={form.isLead}
+                              onChange={e => updateTeamForm(lab.id, { isLead: e.target.checked })}
+                            />
+                            Mark as lead
+                          </label>
+                          {teamError[lab.id] && <p className="text-xs text-destructive">{teamError[lab.id]}</p>}
+                          <div className="flex flex-wrap items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => submitTeamMember(lab.id)}
+                              disabled={teamSaving[lab.id]}
+                              className="rounded-full bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-70"
+                            >
+                              {editing !== null && editing !== undefined ? "Update team member" : "Save team member"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => resetTeamForm(lab.id)}
+                              className="rounded-full border border-border px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                            >
+                              Clear form
+                            </button>
+                            {teamSaving[lab.id] && <span className="text-xs text-muted-foreground">Saving…</span>}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {activeTab === "activity" && (
+            <>
+              {canPostNews ? (
+                <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">News</p>
+                      <h3 className="text-lg font-semibold text-foreground">Recent updates from your labs</h3>
+                    </div>
+                  </div>
+
+                  {newsLoading && (
+                    <div className="rounded-2xl border border-border bg-background/70 px-4 py-3 text-sm text-muted-foreground">Loading news…</div>
+                  )}
+                  {newsFeedError && (
+                    <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      {newsFeedError}. You can still post a new update below.
+                    </div>
+                  )}
+
+                  {!newsLoading && (
+                    <div className="overflow-x-auto">
+                      <div className="flex gap-4 min-w-full">
+                        <div className="min-w-[260px] rounded-2xl border border-dashed border-border bg-background/60 px-4 py-4 flex flex-col justify-between">
+                          <div>
+                            <p className="text-sm font-semibold text-foreground mb-1">Share an update</p>
+                            <p className="text-xs text-muted-foreground">Post equipment arrivals, collaborations, or milestones.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowNewsModal(true);
+                              setNewsError(null);
+                            }}
+                            className="mt-3 inline-flex items-center justify-center rounded-full bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90"
+                          >
+                            Create post
+                          </button>
+                        </div>
+
+                        {newsFeed.length > 0 &&
+                          newsFeed.map(item => {
+                            const labName = item.labs?.name || `Lab ${item.lab_id}`;
+                            const created = item.created_at ? new Date(item.created_at).toLocaleDateString() : "";
+                            return (
+                              <div key={item.id} className="min-w-[260px] max-w-[280px] rounded-2xl border border-border bg-background/70 p-4 flex flex-col gap-3">
+                                <div className="flex items-center text-xs text-muted-foreground">
+                                  <span className="rounded-full bg-muted/60 px-2 py-1 text-[11px] capitalize">{item.category || "update"}</span>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-semibold text-foreground line-clamp-2">{item.title}</p>
+                                  <p className="mt-1 text-xs text-muted-foreground line-clamp-3">{item.summary}</p>
+                                </div>
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                  <span className="truncate">{labName}</span>
+                                  <span className="text-[11px]">{created}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {item.images?.slice(0, 2).map(img => (
+                                    <img
+                                      key={img.url}
+                                      src={img.url}
+                                      alt={img.name || "news"}
+                                      className="h-14 w-14 rounded-lg object-cover border border-border"
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
                     </div>
                   )}
                 </div>
-
-                {labStats.length > 0 && (
-                  <div className="mt-8 grid gap-4 md:grid-cols-2">
-                    {bestViewLab && (
-                      <HighlightCard
-                        title="Best performing"
-                        subtitle="Most views (30d)"
-                        primary={`${bestViewLab.views30d} views`}
-                        secondary={bestViewLab.name}
-                        badge={(bestViewLab.subscriptionTier || "").toLowerCase() === "premier" ? "Premium" : undefined}
-                      />
-                    )}
-                    {bestFavoriteLab && (
-                      <HighlightCard
-                        title="Most favorited"
-                        subtitle="Total favorites"
-                        primary={`${bestFavoriteLab.favorites} favorites`}
-                        secondary={bestFavoriteLab.name}
-                        badge={(bestFavoriteLab.subscriptionTier || "").toLowerCase() === "premier" ? "Premium" : undefined}
-                      />
-                    )}
-                  </div>
-                )}
-
-                {labStats.length > 0 && (
-                  <div className="mt-8">
-                    <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Linked labs</p>
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      {labStats.map(lab => {
-                        const tier = (lab.subscriptionTier || "").toLowerCase();
-                        const premium = tier === "premier" || tier === "custom";
-                        return (
-                          <div
-                            key={lab.id}
-                            className="rounded-2xl border border-border bg-background/60 px-4 py-3 text-sm flex flex-col gap-2"
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div>
-                                <p className="font-semibold text-foreground">{lab.name}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {premium ? "Premier/Custom" : tier ? tier : "Base"} • {lab.isVisible === false ? "Hidden" : "Visible"}
-                                </p>
-                              </div>
-                              <Link href={`/lab/manage/${lab.id}`} className="text-xs font-medium text-primary hover:underline">
-                                Manage
-                              </Link>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                              <span className="rounded-full border border-border px-2 py-1">7d views: {lab.views7d}</span>
-                              <span className="rounded-full border border-border px-2 py-1">30d views: {lab.views30d}</span>
-                              <span className="rounded-full border border-border px-2 py-1">Favorites: {lab.favorites}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </motion.div>
-
+              ) : (
+                <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground">
+                  News updates are available for premier and multi-lab accounts.
+                </div>
+              )}
+            </>
+          )}
         </div>
-        )}
       </div>
     </section>
   );

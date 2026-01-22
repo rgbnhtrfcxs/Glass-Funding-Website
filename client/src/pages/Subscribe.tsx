@@ -1,23 +1,40 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/context/AuthContext";
+import { usePricing } from "@/hooks/usePricing";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function Subscribe() {
   const { user } = useAuth();
+  const { tiers } = usePricing();
   const [location] = useLocation();
-  const searchParams = useMemo(() => new URLSearchParams(location.split("?")[1] ?? ""), [location]);
-  const plan = (searchParams.get("plan") || "verified").toLowerCase();
-  const [interval, setInterval] = useState<"monthly" | "yearly">(
-    (searchParams.get("interval") as "monthly" | "yearly") || "yearly",
-  );
+  const locationSearch = location.includes("?") ? location.slice(location.indexOf("?")) : "";
+  const search =
+    typeof window !== "undefined" && window.location.search
+      ? window.location.search
+      : locationSearch;
+  const searchParams = useMemo(() => new URLSearchParams(search), [search]);
+  const rawPlan = (searchParams.get("plan") || "verified").toLowerCase().trim();
+  const plan = rawPlan === "premier" ? "premier" : "verified";
+  const normalizeInterval = (value: string | null) => {
+    if (!value) return "yearly";
+    const cleaned = value.toLowerCase();
+    if (cleaned === "monthly" || cleaned === "yearly") return cleaned;
+    return "yearly";
+  };
+  const [interval, setInterval] = useState<"monthly" | "yearly">(normalizeInterval(searchParams.get("interval")));
   const [email, setEmail] = useState(user?.email || "");
   const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [setupIntentId, setSetupIntentId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stripeReady, setStripeReady] = useState(false);
+  const [currentTier, setCurrentTier] = useState("base");
+  const [currentStatus, setCurrentStatus] = useState("none");
   const paymentElementRef = useRef<HTMLDivElement | null>(null);
   const stripeInstance = useRef<any>(null);
   const stripeElements = useRef<any>(null);
+  const redirectHandled = useRef(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -33,6 +50,21 @@ export default function Subscribe() {
     script.onload = () => setStripeReady(true);
     document.body.appendChild(script);
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from("profiles")
+      .select("subscription_tier, subscription_status")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data) return;
+        setCurrentTier((data.subscription_tier || "base").toLowerCase());
+        setCurrentStatus((data.subscription_status || "none").toLowerCase());
+      })
+      .catch(() => {});
+  }, [user?.id]);
 
   useEffect(() => {
     if (!stripeReady || !clientSecret) return;
@@ -59,20 +91,39 @@ export default function Subscribe() {
 
   useEffect(() => {
     setClientSecret(null);
+    setSetupIntentId(null);
     setError(null);
   }, [interval, plan]);
+
+  const getAuthHeaders = async () => {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
 
   const createIntent = async () => {
     if (!email.trim()) {
       setError("Email is required.");
       return;
     }
+    if (
+      ["active", "past_due", "trialing"].includes(currentStatus) &&
+      (currentTier === "premier" || currentTier === plan)
+    ) {
+      setError(
+        currentTier === "premier"
+          ? "Your account is already on Premier."
+          : "Your account is already on this plan.",
+      );
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch("/api/subscriptions/intent", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ plan, interval, email }),
       });
       if (!res.ok) {
@@ -82,6 +133,7 @@ export default function Subscribe() {
       const payload = await res.json();
       if (!payload?.client_secret) throw new Error("No client secret returned");
       setClientSecret(payload.client_secret);
+      setSetupIntentId(payload.setup_intent_id || null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to start checkout");
     } finally {
@@ -89,30 +141,93 @@ export default function Subscribe() {
     }
   };
 
-  const confirmPayment = async () => {
+  const confirmSubscription = async () => {
     if (!stripeInstance.current || !stripeElements.current) return;
     setLoading(true);
     setError(null);
     try {
-      const result = await stripeInstance.current.confirmPayment({
+      const result = await stripeInstance.current.confirmSetup({
         elements: stripeElements.current,
         confirmParams: {
-          return_url: `${window.location.origin}/account?status=subscription_success&plan=${plan}`,
+          return_url: `${window.location.origin}/subscribe?plan=${plan}&interval=${interval}`,
         },
         redirect: "if_required",
       });
       if (result.error) {
-        throw new Error(result.error.message || "Payment failed");
+        throw new Error(result.error.message || "Payment method setup failed");
+      }
+      const intentId = result.setupIntent?.id || setupIntentId;
+      if (!intentId) throw new Error("Setup intent missing");
+
+      const headers = await getAuthHeaders();
+      const activateRes = await fetch("/api/subscriptions/activate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ plan, interval, setupIntentId: intentId }),
+      });
+      if (!activateRes.ok) {
+        const txt = await activateRes.text();
+        throw new Error(txt || "Unable to activate subscription");
+      }
+      const activation = await activateRes.json();
+      if (activation?.payment_intent_client_secret) {
+        const paymentResult = await stripeInstance.current.confirmCardPayment(
+          activation.payment_intent_client_secret,
+        );
+        if (paymentResult.error) {
+          throw new Error(paymentResult.error.message || "Payment confirmation failed");
+        }
       }
       window.location.href = `/account?status=subscription_success&plan=${plan}`;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Payment failed");
+      setError(err instanceof Error ? err.message : "Unable to finalize subscription");
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    const redirectSetupIntent = searchParams.get("setup_intent");
+    if (!redirectSetupIntent || redirectHandled.current) return;
+    redirectHandled.current = true;
+    setSetupIntentId(redirectSetupIntent);
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const headers = await getAuthHeaders();
+        const activateRes = await fetch("/api/subscriptions/activate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...headers },
+          body: JSON.stringify({ plan, interval, setupIntentId: redirectSetupIntent }),
+        });
+        if (!activateRes.ok) {
+          const txt = await activateRes.text();
+          throw new Error(txt || "Unable to activate subscription");
+        }
+        const activation = await activateRes.json();
+        if (activation?.payment_intent_client_secret && stripeInstance.current) {
+          const paymentResult = await stripeInstance.current.confirmCardPayment(
+            activation.payment_intent_client_secret,
+          );
+          if (paymentResult.error) {
+            throw new Error(paymentResult.error.message || "Payment confirmation failed");
+          }
+        }
+        window.location.href = `/account?status=subscription_success&plan=${plan}`;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to finalize subscription");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [plan, interval, searchParams, stripeReady]);
+
   const planLabel = plan === "premier" ? "Premier" : "Verified";
+  const tier = tiers.find(t => t.name.toLowerCase().trim() === plan);
+  const displayPrice =
+    interval === "yearly" ? tier?.yearly_price ?? null : tier?.monthly_price ?? null;
+  const priceSuffix = interval === "yearly" ? "/ year" : "/ month";
 
   return (
     <section className="bg-background min-h-screen">
@@ -127,6 +242,11 @@ export default function Subscribe() {
             <p className="text-sm text-muted-foreground">
               Choose billing and add your payment method below. You can switch or cancel anytime.
             </p>
+            {displayPrice !== null && displayPrice !== undefined && (
+              <p className="text-lg font-semibold text-foreground">
+                €{displayPrice} <span className="text-sm text-muted-foreground">{priceSuffix}</span>
+              </p>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -185,7 +305,7 @@ export default function Subscribe() {
               </div>
               <button
                 type="button"
-                onClick={confirmPayment}
+                onClick={confirmSubscription}
                 disabled={loading}
                 className="inline-flex w-full items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
               >

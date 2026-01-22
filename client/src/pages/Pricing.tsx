@@ -83,9 +83,11 @@ export default function Pricing() {
           </div>
           <div className="grid gap-6 lg:grid-cols-3">
             {tiers.map(tier => {
-              const plan = tier.name.toLowerCase();
+              const plan = tier.name.toLowerCase().trim();
               const paymentHref = tier.name === "Custom" ? `/payments?plan=${plan}#custom` : `/payments?plan=${plan}`;
-              const priceVal: any = (tier as any).monthly_price ?? (tier as any).monthlyPrice;
+              const monthlyPrice: any = (tier as any).monthly_price ?? (tier as any).monthlyPrice;
+              const yearlyPrice: any = (tier as any).yearly_price ?? (tier as any).yearlyPrice;
+              const priceVal = interval === "yearly" ? yearlyPrice : monthlyPrice;
               const isFree = priceVal === 0 || priceVal === "0";
               const hasPrice = priceVal !== null && priceVal !== undefined && !isFree;
               const priceLabel = isFree ? "Free" : hasPrice ? `€${priceVal}` : "Custom";
@@ -107,7 +109,11 @@ export default function Pricing() {
                     <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">{tier.name}</p>
                     <div className="flex items-end gap-2">
                       <span className="text-4xl font-semibold text-foreground">{priceLabel}</span>
-                      {hasPrice && <span className="text-sm text-muted-foreground">/ month</span>}
+                      {hasPrice && (
+                        <span className="text-sm text-muted-foreground">
+                          {interval === "yearly" ? "/ year" : "/ month"}
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground">{tier.description}</p>
                   </div>
