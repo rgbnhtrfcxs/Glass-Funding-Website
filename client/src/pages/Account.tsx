@@ -119,6 +119,7 @@ export default function Account() {
   const [teamEditingIndex, setTeamEditingIndex] = useState<Record<number, number | null>>({});
   const [teamSaving, setTeamSaving] = useState<Record<number, boolean>>({});
   const [teamError, setTeamError] = useState<Record<number, string | null>>({});
+  const [resettingPassword, setResettingPassword] = useState(false);
 
   const displayLabel = useMemo(() => {
     return profile?.display_name || profile?.name || user?.email || "Your Account";
@@ -219,6 +220,35 @@ export default function Account() {
     if (tier === "custom") return "Custom";
     return "Base";
   })();
+
+  const sendPasswordReset = async () => {
+    const email = profile?.email || user?.email;
+    if (!email) {
+      toast({
+        title: "No email on file",
+        description: "Add an email to your account before resetting your password.",
+      });
+      return;
+    }
+    setResettingPassword(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) throw error;
+      toast({
+        title: "Reset email sent",
+        description: `Check ${email} for a reset link.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Unable to send reset email",
+        description: err?.message || "Please try again in a moment.",
+      });
+    } finally {
+      setResettingPassword(false);
+    }
+  };
 
   const labsVisibleCount = labStats.filter(l => l.isVisible !== false).length;
   const labsHiddenCount = labStats.filter(l => l.isVisible === false).length;
@@ -652,6 +682,14 @@ export default function Account() {
             >
               Edit account
             </Link>
+            <button
+              type="button"
+              onClick={sendPasswordReset}
+              disabled={resettingPassword}
+              className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:text-primary hover:border-primary disabled:opacity-60"
+            >
+              {resettingPassword ? "Sending reset…" : "Reset password"}
+            </button>
             {profile && profile.role !== "user" && (
               <Link
                 href="/requests"

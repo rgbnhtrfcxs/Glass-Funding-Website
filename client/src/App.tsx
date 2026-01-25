@@ -13,6 +13,7 @@ import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ForgotPasswordConfirmation from "@/pages/ForgotPasswordConfirmation";
+import ResetPassword from "@/pages/ResetPassword";
 
 import Labs from "@/pages/Labs";
 import Terms from "@/pages/terms";
@@ -136,6 +137,7 @@ function Router() {
       <Route path="/signup" component={Signup} />
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/forgot-password/confirmation" component={ForgotPasswordConfirmation} />
+      <Route path="/reset-password" component={ResetPassword} />
 
       {/* Base Pages */}
       <Route path="/" component={Home} />

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
+import { supabase } from "@/lib/supabaseClient";
 
 function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -8,9 +9,10 @@ function isValidEmail(value: string) {
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [, navigate] = useLocation();
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!isValidEmail(email)) {
       setError("Enter the email address linked to your account.");
@@ -18,7 +20,18 @@ export default function ForgotPassword() {
     }
 
     setError(null);
-    navigate("/forgot-password/confirmation");
+    setLoading(true);
+    try {
+      const { error: sendError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (sendError) throw sendError;
+      navigate("/forgot-password/confirmation");
+    } catch (err: any) {
+      setError(err?.message || "Unable to send reset email. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -71,9 +84,10 @@ export default function ForgotPassword() {
 
               <button
                 type="submit"
-                className="w-full rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition"
+                className="w-full rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition disabled:opacity-60"
+                disabled={loading}
               >
-                Send reset link
+                {loading ? "Sending..." : "Send reset link"}
               </button>
             </form>
 
