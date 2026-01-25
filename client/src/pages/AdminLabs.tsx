@@ -22,6 +22,7 @@ import {
   offerOptions,
   type LabPartner,
   type MediaAsset,
+  type PartnerLogo,
   type OfferOption,
 } from "@shared/labs";
 
@@ -45,7 +46,7 @@ interface LabFormState {
   country: string;
   website: string;
   linkedin: string;
-  partnerLogos: MediaAsset[];
+  partnerLogos: PartnerLogo[];
   compliance: string;
   verification: VerificationOption;
   pricePrivacy: PricePrivacyOption;
@@ -166,7 +167,7 @@ function formToPayload(
   form: LabFormState,
   photos: MediaAsset[],
   complianceDocs: MediaAsset[],
-  partnerLogos: MediaAsset[],
+  partnerLogos: PartnerLogo[],
 ) {
   const ratingValue = form.rating.trim() === "" ? 0 : Number(form.rating);
   if (form.rating.trim() !== "" && (Number.isNaN(ratingValue) || ratingValue < 0 || ratingValue > 5)) {
@@ -225,7 +226,7 @@ export default function AdminLabs() {
   const [statusMessage, setStatusMessage] = useState<StatusMessage>(null);
   const [photoAssets, setPhotoAssets] = useState<MediaAsset[]>([]);
   const [complianceAssets, setComplianceAssets] = useState<MediaAsset[]>([]);
-  const [partnerLogos, setPartnerLogos] = useState<MediaAsset[]>([]);
+  const [partnerLogos, setPartnerLogos] = useState<PartnerLogo[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
@@ -346,7 +347,7 @@ export default function AdminLabs() {
       if (uploadError) throw uploadError;
       const { data } = supabase.storage.from("lab-logos").getPublicUrl(filePath);
       const publicUrl = data.publicUrl;
-      setPartnerLogos(prev => [...prev, { name: file.name, url: publicUrl }]);
+      setPartnerLogos(prev => [...prev, { name: file.name, url: publicUrl, website: null }]);
       setStatusMessage({ type: "success", text: "Partner logo uploaded" });
     } catch (err: any) {
       setStatusMessage({ type: "error", text: err?.message || "Unable to upload partner logo" });
@@ -836,6 +837,19 @@ export default function AdminLabs() {
                             className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 flex-shrink-0"
                           >
                             <img src={logo.url} alt={logo.name} className="h-10 w-10 rounded object-cover" />
+                            <input
+                              className="w-48 rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              placeholder="Partner website"
+                              value={logo.website ?? ""}
+                              onChange={event => {
+                                const website = event.target.value;
+                                setPartnerLogos(prev =>
+                                  prev.map(item =>
+                                    item.url === logo.url ? { ...item, website } : item,
+                                  ),
+                                );
+                              }}
+                            />
                             <button
                               type="button"
                               onClick={() => removePartnerLogo(logo)}

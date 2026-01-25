@@ -22,6 +22,13 @@ export const mediaAssetSchema = z.object({
   url: z.string().min(1, "Asset URL is required"),
 });
 
+export const partnerLogoSchema = mediaAssetSchema.extend({
+  website: z.preprocess(
+    normalizeUrl,
+    z.string().url("Partner website must be a valid URL").optional().nullable(),
+  ),
+});
+
 export const teamMemberSchema = z.object({
   name: z.string().min(1, "Name is required"),
   title: z.string().min(1, "Title is required"),
@@ -37,7 +44,7 @@ export const labCoreSchema = z.object({
   labManager: z.string().min(1, "Lab manager name is required"),
   contactEmail: z.string().email("Valid contact email is required"),
   ownerUserId: z.string().uuid().optional().nullable(),
-  descriptionShort: z.string().max(280).optional().nullable(),
+  descriptionShort: z.string().max(350).optional().nullable(),
   descriptionLong: z.string().max(8000).optional().nullable(),
   offersLabSpace: z.boolean().default(false),
   addressLine1: z.string().min(1).optional().nullable(),
@@ -53,7 +60,7 @@ export const labCoreSchema = z.object({
     z.string().url("Website must be a valid URL").optional().nullable(),
   ),
   linkedin: z.string().url("LinkedIn must be a valid URL").optional().nullable(),
-  partnerLogos: z.array(mediaAssetSchema).default([]),
+  partnerLogos: z.array(partnerLogoSchema).default([]),
   compliance: z.array(z.string().min(1)).default([]),
   complianceDocs: z.array(mediaAssetSchema).default([]),
   halStructureId: z.string().min(1).optional().nullable(),
@@ -86,6 +93,7 @@ export const updateLabSchema = labCoreSchema.partial().refine(
 export const labListSchema = z.array(labSchema);
 
 export type MediaAsset = z.infer<typeof mediaAssetSchema>;
+export type PartnerLogo = z.infer<typeof partnerLogoSchema>;
 export type LabPartner = z.infer<typeof labSchema>;
 export type InsertLab = z.infer<typeof insertLabSchema>;
 export type UpdateLab = z.infer<typeof updateLabSchema>;

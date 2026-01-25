@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { FileDown, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
-import { offerOptions, type OfferOption, type MediaAsset } from "@shared/labs";
+import { offerOptions, type OfferOption, type MediaAsset, type PartnerLogo } from "@shared/labs";
 import { Link, useLocation } from "wouter";
 
 const INPUT_CLASS =
@@ -46,7 +46,7 @@ type Form = {
   country: string;
   website: string;
   linkedin: string;
-  partnerLogos: { name: string; url: string }[];
+  partnerLogos: PartnerLogo[];
   complianceTags: string[];
   halStructureId: string;
   halPersonId: string;
@@ -75,6 +75,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [subscriptionTier, setSubscriptionTier] = useState<string>("base");
+  const [profileRole, setProfileRole] = useState<string>("user");
   const [analytics, setAnalytics] = useState<{
     views7d: number;
     views30d: number;
@@ -120,7 +121,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
   });
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
-  const [partnerLogos, setPartnerLogos] = useState<{ name: string; url: string }[]>([]);
+  const [partnerLogos, setPartnerLogos] = useState<PartnerLogo[]>([]);
   const [teamMemberInput, setTeamMemberInput] = useState({
     name: "",
     title: "",
@@ -142,7 +143,18 @@ export default function MyLab({ params }: { params: { id: string } }) {
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [showRoleHelp, setShowRoleHelp] = useState(false);
   const [pinRoleHelp, setPinRoleHelp] = useState(false);
+  const [teamLinkRequests, setTeamLinkRequests] = useState<Array<{
+    id: number;
+    team_id: number;
+    status: string;
+    created_at: string;
+    teams?: { id: number; name: string; description_short?: string | null; logo_url?: string | null } | null;
+  }>>([]);
+  const [teamLinkLoading, setTeamLinkLoading] = useState(false);
+  const [teamLinkError, setTeamLinkError] = useState<string | null>(null);
   const draftKey = useMemo(() => `my-lab-draft:${labIdParam || "unknown"}`, [labIdParam]);
+  const canUsePartnerLogos =
+    subscriptionTier === "premier" || subscriptionTier === "custom" || profileRole === "multi-lab" || profileRole === "admin";
 
   useEffect(() => {
     (async () => {
@@ -160,6 +172,62 @@ export default function MyLab({ params }: { params: { id: string } }) {
       }
     })();
   }, [user?.id, labId]);
+
+  useEffect(() => {
+    if (!labId) return;
+    let active = true;
+    async function loadTeamLinkRequests() {
+      setTeamLinkLoading(true);
+      setTeamLinkError(null);
+      try {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+        const res = await fetch(`/api/labs/${labId}/team-link-requests`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({}));
+          throw new Error(payload?.message || "Unable to load team link requests");
+        }
+        const data = await res.json();
+        if (active) setTeamLinkRequests(data ?? []);
+      } catch (err: any) {
+        if (active) setTeamLinkError(err.message || "Unable to load team link requests");
+      } finally {
+        if (active) setTeamLinkLoading(false);
+      }
+    }
+    loadTeamLinkRequests();
+    return () => {
+      active = false;
+    };
+  }, [labId]);
+
+  const respondToTeamRequest = async (requestId: number, status: "approved" | "declined") => {
+    if (!labId) return;
+    setTeamLinkError(null);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const token = session.session?.access_token;
+      const res = await fetch(`/api/labs/${labId}/team-link-requests/${requestId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload?.message || "Unable to update request");
+      }
+      setTeamLinkRequests(prev =>
+        prev.map(item => (item.id === requestId ? { ...item, status } : item)),
+      );
+    } catch (err: any) {
+      setTeamLinkError(err.message || "Unable to update request");
+    }
+  };
 
   useEffect(() => {
     if (loading || draftLoaded || !labId) return;
@@ -249,8 +317,9 @@ export default function MyLab({ params }: { params: { id: string } }) {
       if (uploadError) throw uploadError;
       const { data } = supabase.storage.from("lab-logos").getPublicUrl(filePath);
       const publicUrl = data.publicUrl;
-      setPartnerLogos(prev => [...prev, { name: file.name, url: publicUrl }]);
-      setForm(prev => ({ ...prev, partnerLogos: [...prev.partnerLogos, { name: file.name, url: publicUrl }] }));
+      const logo = { name: file.name, url: publicUrl, website: null };
+      setPartnerLogos(prev => [...prev, logo]);
+      setForm(prev => ({ ...prev, partnerLogos: [...prev.partnerLogos, logo] }));
       setMessage("Partner logo uploaded");
     } catch (err: any) {
       setMessage(err?.message || "Unable to upload partner logo");
@@ -260,6 +329,14 @@ export default function MyLab({ params }: { params: { id: string } }) {
   const removePartnerLogo = (url: string) => {
     setPartnerLogos(prev => prev.filter(item => item.url !== url));
     setForm(prev => ({ ...prev, partnerLogos: prev.partnerLogos.filter(item => item.url !== url) }));
+  };
+
+  const updatePartnerLogo = (url: string, updates: Partial<PartnerLogo>) => {
+    setPartnerLogos(prev => prev.map(item => (item.url === url ? { ...item, ...updates } : item)));
+    setForm(prev => ({
+      ...prev,
+      partnerLogos: prev.partnerLogos.map(item => (item.url === url ? { ...item, ...updates } : item)),
+    }));
   };
 
   const addPhotoFromUrl = () => {
@@ -469,6 +546,19 @@ export default function MyLab({ params }: { params: { id: string } }) {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from("profiles")
+      .select("role")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        setProfileRole((data?.role || "user").toLowerCase());
+      })
+      .catch(() => {});
+  }, [user?.id]);
 
   async function save() {
     setSaving(true);
@@ -790,6 +880,50 @@ export default function MyLab({ params }: { params: { id: string } }) {
             )}
 
             {activeTab === "Team" && (
+            <>
+            <Section title="Team link requests">
+              {teamLinkLoading && <p className="text-sm text-muted-foreground">Loading requests...</p>}
+              {teamLinkError && <p className="text-sm text-destructive">{teamLinkError}</p>}
+              {!teamLinkLoading && teamLinkRequests.length === 0 && (
+                <p className="text-sm text-muted-foreground">No pending team link requests.</p>
+              )}
+              <div className="space-y-3">
+                {teamLinkRequests.map(request => (
+                  <div
+                    key={request.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-3 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">
+                        {request.teams?.name || `Team #${request.team_id}`}
+                      </p>
+                      {request.teams?.description_short && (
+                        <p className="text-xs text-muted-foreground">{request.teams.description_short}</p>
+                      )}
+                      <p className="mt-1 text-xs text-muted-foreground">Status: {request.status}</p>
+                    </div>
+                    {request.status === "pending" && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => respondToTeamRequest(request.id, "approved")}
+                          className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => respondToTeamRequest(request.id, "declined")}
+                          className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-destructive hover:text-destructive"
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Section>
             <Section title="Team members">
               <div className="space-y-3">
                 <div className="grid gap-2 md:grid-cols-2">
@@ -912,6 +1046,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
                 </div>
               </div>
             </Section>
+            </>
             )}
 
             {activeTab === "Compliance" && (
@@ -1074,8 +1209,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
                 </Field>
               )}
 
-              {subscriptionTier === "premier" ? (
-                <Field label="Partner logos (premier feature)">
+              {canUsePartnerLogos ? (
+                <Field label="Partner logos (premier or multi-lab feature)">
                   <div className="flex flex-col gap-2">
                     <label className="inline-flex items-center gap-3">
                       <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
@@ -1093,6 +1228,12 @@ export default function MyLab({ params }: { params: { id: string } }) {
                         {partnerLogos.map(logo => (
                           <div key={logo.url} className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 flex-shrink-0">
                             <img src={logo.url} alt={logo.name} className="h-10 w-10 rounded object-cover" />
+                            <input
+                              className="w-48 rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              placeholder="Partner website"
+                              value={logo.website ?? ""}
+                              onChange={e => updatePartnerLogo(logo.url, { website: e.target.value })}
+                            />
                             <button
                               type="button"
                               onClick={() => removePartnerLogo(logo.url)}
@@ -1108,7 +1249,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   </div>
                 </Field>
               ) : (
-                <p className="text-xs text-muted-foreground">Partner logos are available on the premier plan.</p>
+                <p className="text-xs text-muted-foreground">Partner logos are available on the premier plan or multi-lab accounts.</p>
               )}
 
               <Field label="Lab photos">

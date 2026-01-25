@@ -6,6 +6,7 @@ import {
   type InsertLab,
   type LabPartner,
   type MediaAsset,
+  type PartnerLogo,
   type OfferOption,
   type UpdateLab,
 } from "@shared/labs";
@@ -31,7 +32,7 @@ const LAB_SELECT = `
   country,
   website,
   linkedin,
-  lab_partner_logos (name, url),
+  lab_partner_logos (name, url, website),
   is_verified,
   is_visible,
   price_privacy,
@@ -68,7 +69,7 @@ type LabRow = {
   country: string | null;
   website: string | null;
   linkedin: string | null;
-  lab_partner_logos: Array<{ name: string; url: string }> | null;
+  lab_partner_logos: Array<{ name: string; url: string; website: string | null }> | null;
   is_verified: boolean | string | null;
   is_visible: boolean | string | null;
   price_privacy: boolean;
@@ -147,7 +148,11 @@ function mapLabRow(row: LabRow): LabPartner {
   }));
   const partnerLogos = (row.lab_partner_logos ?? [])
     .filter(logo => (logo?.url || "").trim().length > 0)
-    .map(logo => ({ name: logo.name, url: logo.url }));
+    .map(logo => ({
+      name: logo.name,
+      url: logo.url,
+      website: logo.website ?? null,
+    }));
   const mapped = {
     id: Number(row.id),
     name: row.name,
@@ -294,13 +299,20 @@ async function replaceLabOffers(labId: number, offers: OfferOption[]) {
   if (ins.error) throw ins.error;
 }
 
-async function replaceLabPartnerLogos(labId: number, logos: MediaAsset[]) {
+async function replaceLabPartnerLogos(labId: number, logos: PartnerLogo[]) {
   const del = await supabase.from("lab_partner_logos").delete().eq("lab_id", labId);
   if (del.error) throw del.error;
   if (!logos.length) return;
   const ins = await supabase
     .from("lab_partner_logos")
-    .insert(logos.map(logo => ({ lab_id: labId, name: logo.name, url: logo.url })));
+    .insert(
+      logos.map(logo => ({
+        lab_id: labId,
+        name: logo.name,
+        url: logo.url,
+        website: logo.website ?? null,
+      })),
+    );
   if (ins.error) throw ins.error;
 }
 

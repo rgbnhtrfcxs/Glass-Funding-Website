@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { useLocation } from "wouter";
 import { useLabs } from "@/context/LabsContext";
 import { useAuth } from "@/context/AuthContext";
-import { offerOptions, type OfferOption } from "@shared/labs";
+import { offerOptions, type OfferOption, type PartnerLogo } from "@shared/labs";
 import type { MediaAsset } from "@shared/labs";
 import { supabase } from "@/lib/supabaseClient";
 import { Link } from "wouter";
@@ -69,7 +69,7 @@ export default function NewLab() {
     }>,
   });
   const [photos, setPhotos] = useState<MediaAsset[]>([]);
-  const [partnerLogos, setPartnerLogos] = useState<MediaAsset[]>([]);
+  const [partnerLogos, setPartnerLogos] = useState<PartnerLogo[]>([]);
   const [photoUrlInput, setPhotoUrlInput] = useState("");
   const [partnerUrlInput, setPartnerUrlInput] = useState("");
   const [logoUploading, setLogoUploading] = useState(false);
@@ -101,6 +101,7 @@ export default function NewLab() {
   const isFirstTab = currentTabIndex <= 0;
   const isLastTab = currentTabIndex === tabOrder.length - 1;
   const [profileTier, setProfileTier] = useState<string>("base");
+  const [profileRole, setProfileRole] = useState<string>("user");
   const [showConfirm, setShowConfirm] = useState(false);
   const [showRoleHelp, setShowRoleHelp] = useState(false);
   const [pinRoleHelp, setPinRoleHelp] = useState(false);
@@ -110,19 +111,21 @@ export default function NewLab() {
   );
 
   const canUseLogo = profileTier === "premier" || profileTier === "custom" || profileTier === "verified";
-  const canUsePartnerLogos = profileTier === "premier" || profileTier === "custom";
+  const canUsePartnerLogos =
+    profileTier === "premier" || profileTier === "custom" || profileRole === "multi-lab" || profileRole === "admin";
   const maxPhotos = profileTier === "base" ? 2 : Number.POSITIVE_INFINITY;
 
   useEffect(() => {
     if (!user?.id) return;
     supabase
       .from("profiles")
-      .select("subscription_tier")
+      .select("subscription_tier, role")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
         const tier = (data?.subscription_tier || "base").toLowerCase();
         setProfileTier(tier);
+        setProfileRole((data?.role || "user").toLowerCase());
       })
       .catch(() => {});
   }, [user?.id]);
@@ -528,6 +531,18 @@ export default function NewLab() {
                       {partnerLogos.map(asset => (
                         <div key={asset.url} className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
                           <span className="text-xs text-foreground break-all max-w-[200px] truncate">{asset.name || asset.url}</span>
+                          <input
+                            className="w-48 rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            placeholder="Partner website"
+                            value={asset.website ?? ""}
+                            onChange={e =>
+                              setPartnerLogos(prev =>
+                                prev.map(item =>
+                                  item.url === asset.url ? { ...item, website: e.target.value } : item,
+                                ),
+                              )
+                            }
+                          />
                           <button
                             type="button"
                             className="text-xs text-muted-foreground hover:text-destructive"
@@ -552,7 +567,7 @@ export default function NewLab() {
                           const url = partnerUrlInput.trim();
                           if (!url) return;
                           const name = url.split("/").pop() || `Logo ${partnerLogos.length + 1}`;
-                          setPartnerLogos(prev => [...prev, { name, url }]);
+                          setPartnerLogos(prev => [...prev, { name, url, website: null }]);
                           setPartnerUrlInput("");
                         }}
                       >
@@ -576,7 +591,7 @@ export default function NewLab() {
                                 "lab-logos",
                                 file,
                                 "new/partners",
-                                (url, name) => setPartnerLogos(prev => [...prev, { name, url }]),
+                                (url, name) => setPartnerLogos(prev => [...prev, { name, url, website: null }]),
                                 msg => setPartnerError(msg),
                               );
                               setPartnerUploading(false);

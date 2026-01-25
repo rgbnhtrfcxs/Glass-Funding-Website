@@ -22,6 +22,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { nanoid } from "nanoid";
+import type { Team } from "@shared/teams";
 
 interface LabDetailsProps {
   params: {
@@ -35,11 +36,13 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const lab = labs.find(item => item.id === Number(params.id));
   const labId = lab?.id;
   const [canCollaborate, setCanCollaborate] = useState(false);
+  const [currentUserRole, setCurrentUserRole] = useState("user");
   useEffect(() => {
     let mounted = true;
     async function checkRole() {
       if (!user) {
         setCanCollaborate(false);
+        setCurrentUserRole("user");
         return;
       }
       const { data, error } = await supabase
@@ -50,10 +53,12 @@ export default function LabDetails({ params }: LabDetailsProps) {
       if (!mounted) return;
       if (error) {
         setCanCollaborate(false);
+        setCurrentUserRole("user");
         return;
       }
       const role = (data?.role as string)?.toLowerCase?.() || "";
       setCanCollaborate(role === "lab" || role === "admin" || role === "multi-lab");
+      setCurrentUserRole(role || "user");
     }
     checkRole();
     return () => {
@@ -67,6 +72,8 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const [showHalModal, setShowHalModal] = useState(false);
   const [halModalType, setHalModalType] = useState<"publications" | "patents">("publications");
   const [showTeamModal, setShowTeamModal] = useState(false);
+  const [showTeamsModal, setShowTeamsModal] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState<{ url: string; alt: string } | null>(null);
   const [halItems, setHalItems] = useState<
     Array<{ title: string; url: string; year?: number | null; doi?: string | null }>
   >([]);
@@ -115,6 +122,9 @@ export default function LabDetails({ params }: LabDetailsProps) {
     additionalNotes: "",
     preferredContact: "email" as "email" | "video_call" | "in_person",
   });
+  const [linkedTeams, setLinkedTeams] = useState<Team[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(false);
+  const [teamsError, setTeamsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user?.email) return;
@@ -133,6 +143,34 @@ export default function LabDetails({ params }: LabDetailsProps) {
       prev.targetLabs ? prev : { ...prev, targetLabs: lab.name }
     );
   }, [lab?.name]);
+
+  useEffect(() => {
+    if (!labId) return;
+    let active = true;
+    async function loadTeams() {
+      setTeamsLoading(true);
+      try {
+        const res = await fetch(`/api/labs/${labId}/teams`);
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({}));
+          throw new Error(payload?.message || "Unable to load teams");
+        }
+        const data = (await res.json()) as Team[];
+        if (active) {
+          setLinkedTeams(data ?? []);
+          setTeamsError(null);
+        }
+      } catch (err) {
+        if (active) setTeamsError(err instanceof Error ? err.message : "Unable to load teams");
+      } finally {
+        if (active) setTeamsLoading(false);
+      }
+    }
+    loadTeams();
+    return () => {
+      active = false;
+    };
+  }, [labId]);
 
   const toggleFavorite = async () => {
     if (!user) {
@@ -584,19 +622,25 @@ export default function LabDetails({ params }: LabDetailsProps) {
           {lab.photos.length > 0 && (
             <div className="mt-2 overflow-x-auto pb-2">
               <div className="flex gap-4 min-w-full">
-                {lab.photos.map((photo, index) => (
-                  <div
-                    key={photo.url}
-                    className="min-w-[320px] max-w-[420px] h-64 overflow-hidden rounded-3xl border border-border/80 bg-background/40 flex-shrink-0"
-                  >
-                    <img
-                      src={getImageUrl(photo.url, 1200)}
-                      alt={`${lab.name} photo ${index + 1} - ${photo.name}`}
-                      className="h-full w-full object-cover"
-                      loading={index === 0 ? "eager" : "lazy"}
-                    />
-                  </div>
-                ))}
+                {lab.photos.map((photo, index) => {
+                  const alt = `${lab.name} photo ${index + 1} - ${photo.name}`;
+                  return (
+                    <button
+                      key={photo.url}
+                      type="button"
+                      onClick={() => setPhotoPreview({ url: getImageUrl(photo.url, 2000), alt })}
+                      className="min-w-[320px] max-w-[420px] h-64 overflow-hidden rounded-3xl border border-border/80 bg-background/40 flex-shrink-0 cursor-zoom-in"
+                      aria-label={`Open ${alt}`}
+                    >
+                      <img
+                        src={getImageUrl(photo.url, 1200)}
+                        alt={alt}
+                        className="h-full w-full object-cover"
+                        loading={index === 0 ? "eager" : "lazy"}
+                      />
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -781,6 +825,45 @@ export default function LabDetails({ params }: LabDetailsProps) {
             </section>
           )}
 
+          {linkedTeams.length > 0 && (
+            <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Research teams</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Teams linked to this lab and their scientific focus.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowTeamsModal(true)}
+                  className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                >
+                  View teams
+                  <ArrowUpRight className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {linkedTeams.slice(0, 3).map(team => (
+                  <span
+                    key={team.id}
+                    className="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs text-muted-foreground"
+                  >
+                    {team.name}
+                  </span>
+                ))}
+                {linkedTeams.length > 3 && (
+                  <span className="text-xs text-muted-foreground">
+                    +{linkedTeams.length - 3} more
+                  </span>
+                )}
+              </div>
+            </section>
+          )}
+          {teamsError && (
+            <p className="text-sm text-destructive">{teamsError}</p>
+          )}
+
           {(lab.halStructureId || lab.halPersonId) && (
             <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -818,22 +901,38 @@ export default function LabDetails({ params }: LabDetailsProps) {
             </section>
           )}
 
-        {tierLower === "premier" && partnerLogos.length > 0 && (
+          {(partnerLogos.length > 0 &&
+            (tierLower === "premier" ||
+              currentUserRole === "admin" ||
+              (currentUserRole === "multi-lab" && lab.ownerUserId && lab.ownerUserId === user?.id))) && (
             <div className="mt-8 rounded-2xl border border-primary/40 bg-primary/5 p-4">
               <h3 className="text-sm font-semibold text-foreground mb-3">Featured partners</h3>
               <div className="flex gap-3 overflow-x-auto pb-2">
-                {partnerLogos.map((logo, idx) => (
-                  <div
-                    key={`${logo.url}-${idx}`}
-                    className="h-16 w-24 overflow-hidden rounded-xl border border-primary/40 bg-background flex-shrink-0"
-                    title={logo.name}
-                  >
-                    <img src={logo.url} alt={logo.name} className="h-full w-full object-cover" />
-                  </div>
-                ))}
+                {partnerLogos.map((logo, idx) => {
+                  const card = (
+                    <div
+                      className="h-20 w-32 overflow-hidden rounded-xl border border-primary/40 bg-background flex-shrink-0"
+                      title={logo.name}
+                    >
+                      <img src={logo.url} alt={logo.name} className="h-full w-full object-cover" />
+                    </div>
+                  );
+                  if (!logo.website) return <div key={`${logo.url}-${idx}`}>{card}</div>;
+                  return (
+                    <a
+                      key={`${logo.url}-${idx}`}
+                      href={logo.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex"
+                    >
+                      {card}
+                    </a>
+                  );
+                })}
               </div>
             </div>
-        )}
+          )}
 
         {showHalModal && (
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4 py-8">
@@ -992,6 +1091,77 @@ export default function LabDetails({ params }: LabDetailsProps) {
                       )
                     ))}
                   </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+      {showTeamsModal && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4 py-8">
+            <div className="w-full max-w-3xl rounded-3xl border border-border bg-background p-6 shadow-xl">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-foreground">Research teams</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowTeamsModal(false)}
+                  className="rounded-full border border-border px-3 py-1 text-sm text-muted-foreground hover:border-primary hover:text-primary"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="mt-4 space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                {teamsLoading && (
+                  <p className="text-sm text-muted-foreground">Loading teams…</p>
+      )}
+
+      {photoPreview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8"
+          onClick={() => setPhotoPreview(null)}
+        >
+          <div
+            className="relative w-full max-w-5xl overflow-hidden rounded-3xl border border-border bg-background shadow-2xl"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <p className="text-sm font-medium text-foreground">Lab photo</p>
+              <button
+                type="button"
+                onClick={() => setPhotoPreview(null)}
+                className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-primary hover:text-primary"
+              >
+                Close
+              </button>
+            </div>
+            <div className="flex items-center justify-center bg-black/90 p-4">
+              <img
+                src={photoPreview.url}
+                alt={photoPreview.alt}
+                className="max-h-[75vh] w-auto max-w-full object-contain"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+                {teamsError && <p className="text-sm text-destructive">{teamsError}</p>}
+                {!teamsLoading && !teamsError && linkedTeams.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No teams linked to this lab yet.</p>
+                )}
+                {linkedTeams.map(team => (
+                  <Link
+                    key={team.id}
+                    href={`/teams/${team.id}`}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary transition"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-foreground">{team.name}</p>
+                      {team.descriptionShort && (
+                        <p className="text-xs text-muted-foreground line-clamp-2">{team.descriptionShort}</p>
+                      )}
+                    </div>
+                    <ArrowUpRight className="h-4 w-4 flex-shrink-0" />
+                  </Link>
                 ))}
               </div>
             </div>

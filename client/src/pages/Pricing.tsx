@@ -6,14 +6,14 @@ import { usePricing } from "@/hooks/usePricing";
 
 export default function Pricing() {
   const { tiers } = usePricing();
-  const [interval, setInterval] = useState<"monthly" | "yearly">("yearly");
+  const [interval, setInterval] = useState<"monthly" | "yearly">("monthly");
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   const startCheckout = (plan: string) => {
     setCheckoutError(null);
     setCheckoutLoading(plan);
-    window.location.href = `/subscribe?plan=${plan}&interval=${interval}`;
+    window.location.href = `/subscribe?plan=${plan}`;
   };
 
   return (
@@ -88,7 +88,8 @@ export default function Pricing() {
               const monthlyPrice: any = (tier as any).monthly_price ?? (tier as any).monthlyPrice;
               const yearlyPrice: any = (tier as any).yearly_price ?? (tier as any).yearlyPrice;
               const priceVal = interval === "yearly" ? yearlyPrice : monthlyPrice;
-              const isFree = priceVal === 0 || priceVal === "0";
+              const isBase = tier.name.toLowerCase().trim() === "base";
+              const isFree = isBase || priceVal === 0 || priceVal === "0";
               const hasPrice = priceVal !== null && priceVal !== undefined && !isFree;
               const priceLabel = isFree ? "Free" : hasPrice ? `€${priceVal}` : "Custom";
               const isFeatured = tier.name.toLowerCase() === "verified";

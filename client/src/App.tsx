@@ -31,6 +31,10 @@ import Pricing from "@/pages/Pricing";
 import LabProfile from "@/pages/LabProfile";
 import ProfilePortal from "@/pages/ProfilePortal";
 import Account from "@/pages/Account";
+import Teams from "@/pages/Teams";
+import TeamDetails from "@/pages/TeamDetails";
+import ManageTeams from "@/pages/ManageTeams";
+import TeamEditor from "@/pages/TeamEditor";
 import Requests from "@/pages/Requests";
 import MyLab from "@/pages/MyLab";
 import Logout from "@/pages/Logout";
@@ -45,6 +49,7 @@ import PricingArchived from "@/pages/PricingArchived";
 import DonationDisabled from "@/pages/DonationDisabled";
 import Subscribe from "@/pages/Subscribe";
 import { LabsProvider } from "@/context/LabsContext";
+import { TeamsProvider } from "@/context/TeamsContext";
 import { AuthProvider } from "@/context/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LabRoute from "@/components/LabRoute";
@@ -102,6 +107,8 @@ function Router() {
     <Switch>
       <Route path="/labs" component={Labs} />
       <Route path="/labs/:id" component={LabDetails} />
+      <Route path="/teams" component={Teams} />
+      <Route path="/teams/:id" component={TeamDetails} />
       <Route path="/labs/:id/request" component={LabRequest} />
       <LabRoute path="/labs/:id/collaborate" component={LabCollaboration} />
       <AdminRoute path="/admin/labs" component={AdminLabs} />
@@ -114,6 +121,9 @@ function Router() {
       <LabRoute path="/lab/manage" component={ManageSelect} />
       <LabRoute path="/lab/manage/new" component={NewLab} />
       <LabRoute path="/lab/manage/:id" component={MyLab} />
+      <ProtectedRoute path="/team/manage" component={ManageTeams} />
+      <ProtectedRoute path="/team/manage/new" component={TeamEditor} />
+      <ProtectedRoute path="/team/manage/:id" component={TeamEditor} />
       <Route path="/payments" component={PaymentFlow} />
       <Route path="/stripe" component={StripeCheckout} />
       <Route path="/donate" component={DonationFlow} />
@@ -150,16 +160,18 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <LabsProvider>
-          <BetaBanner />
-          <Navbar />
-          <ScrollToTop />
-          <div className="pt-28">
-            <PageTransition>
-              <Router />
-            </PageTransition>
-          </div>
-          <Footer />
-          <Toaster />
+          <TeamsProvider>
+            <BetaBanner />
+            <Navbar />
+            <ScrollToTop />
+            <div className="pt-28">
+              <PageTransition>
+                <Router />
+              </PageTransition>
+            </div>
+            <Footer />
+            <Toaster />
+          </TeamsProvider>
         </LabsProvider>
       </AuthProvider>
     </QueryClientProvider>
