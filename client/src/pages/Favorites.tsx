@@ -80,8 +80,8 @@ export default function Favorites() {
           {favoriteLabs.length > 0 && (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {favoriteLabs.map(lab => {
-                const tier = (lab.subscriptionTier || lab.subscription_tier || "").toLowerCase();
-                const premium = tier === "premier" || tier === "custom";
+                const status = (lab.labStatus || "listed").toLowerCase();
+                const premium = status === "premier";
                 return (
                   <div key={lab.id} className="rounded-2xl border border-border bg-card/80 p-4 shadow-sm flex flex-col gap-3">
                     <div className="flex items-start justify-between gap-2">
@@ -97,7 +97,7 @@ export default function Favorites() {
                     </div>
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>{lab.isVisible === false ? "Hidden" : "Visible"}</span>
-                      <span className="font-medium text-primary">{tier ? tier : "base"}</span>
+                      <span className="font-medium text-primary">{status}</span>
                     </div>
                     <Link
                       href={`/labs/${lab.id}`}

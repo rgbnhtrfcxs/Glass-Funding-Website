@@ -15,7 +15,7 @@ const TAB_ORDER = [
   "Branding & Links",
   "Compliance",
   "Team",
-  "Offers & pricing",
+  "Offers",
 ] as const;
 
 const ROLE_RANK_HELP = [
@@ -49,8 +49,6 @@ export default function NewLab() {
     website: "",
     linkedin: "",
     siretNumber: "",
-    minimumStay: "",
-    pricePrivacy: false,
     equipmentTags: [] as string[],
     focusTags: [] as string[],
     complianceTags: [] as string[],
@@ -100,8 +98,24 @@ export default function NewLab() {
   const currentTabIndex = tabOrder.indexOf(activeTab);
   const isFirstTab = currentTabIndex <= 0;
   const isLastTab = currentTabIndex === tabOrder.length - 1;
-  const [profileTier, setProfileTier] = useState<string>("base");
   const [profileRole, setProfileRole] = useState<string>("user");
+  const [profileCaps, setProfileCaps] = useState<{
+    canCreateLab: boolean;
+    canManageMultipleLabs: boolean;
+    canManageTeams: boolean;
+    canManageMultipleTeams: boolean;
+    canPostNews: boolean;
+    canBrokerRequests: boolean;
+    canReceiveInvestor: boolean;
+  }>({
+    canCreateLab: false,
+    canManageMultipleLabs: false,
+    canManageTeams: false,
+    canManageMultipleTeams: false,
+    canPostNews: false,
+    canBrokerRequests: false,
+    canReceiveInvestor: false,
+  });
   const [showConfirm, setShowConfirm] = useState(false);
   const [showRoleHelp, setShowRoleHelp] = useState(false);
   const [pinRoleHelp, setPinRoleHelp] = useState(false);
@@ -110,22 +124,39 @@ export default function NewLab() {
     [user?.id],
   );
 
-  const canUseLogo = profileTier === "premier" || profileTier === "custom" || profileTier === "verified";
-  const canUsePartnerLogos =
-    profileTier === "premier" || profileTier === "custom" || profileRole === "multi-lab" || profileRole === "admin";
-  const maxPhotos = profileTier === "base" ? 2 : Number.POSITIVE_INFINITY;
+  const canUseLogo = true;
+  const canUsePartnerLogos = profileRole === "admin" || profileCaps.canManageMultipleLabs;
+  const maxPhotos = profileCaps.canManageMultipleLabs ? Number.POSITIVE_INFINITY : 2;
 
   useEffect(() => {
     if (!user?.id) return;
     supabase
       .from("profiles")
-      .select("subscription_tier, role")
+      .select(
+        [
+          "role",
+          "can_create_lab",
+          "can_manage_multiple_labs",
+          "can_manage_teams",
+          "can_manage_multiple_teams",
+          "can_post_news",
+          "can_broker_requests",
+          "can_receive_investor",
+        ].join(","),
+      )
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
-        const tier = (data?.subscription_tier || "base").toLowerCase();
-        setProfileTier(tier);
         setProfileRole((data?.role || "user").toLowerCase());
+        setProfileCaps({
+          canCreateLab: Boolean((data as any)?.can_create_lab),
+          canManageMultipleLabs: Boolean((data as any)?.can_manage_multiple_labs),
+          canManageTeams: Boolean((data as any)?.can_manage_teams),
+          canManageMultipleTeams: Boolean((data as any)?.can_manage_multiple_teams),
+          canPostNews: Boolean((data as any)?.can_post_news),
+          canBrokerRequests: Boolean((data as any)?.can_broker_requests),
+          canReceiveInvestor: Boolean((data as any)?.can_receive_investor),
+        });
       })
       .catch(() => {});
   }, [user?.id]);
@@ -255,14 +286,11 @@ export default function NewLab() {
         linkedin: form.linkedin.trim() || null,
         compliance: form.complianceTags,
         complianceDocs,
-        isVerified: false,
+        labStatus: "confirmed",
         isVisible: true,
         equipment: form.equipmentTags,
         focusAreas: form.focusTags,
         offers: form.offers,
-        pricePrivacy: form.pricePrivacy,
-        minimumStay: form.minimumStay.trim(),
-        rating: 0,
         photos,
         logoUrl: form.logoUrl.trim() || null,
         siretNumber: form.siretNumber.trim() || null,
@@ -940,29 +968,8 @@ export default function NewLab() {
               </Section>
             )}
 
-            {activeTab === "Offers & pricing" && (
-              <Section title="Offers & pricing">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Field label="Minimum stay">
-                    <input
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      value={form.minimumStay}
-                      onChange={e => handleChange("minimumStay", e.target.value)}
-                    />
-                  </Field>
-                  <label className="grid gap-1 text-sm font-medium text-foreground">
-                    Price privacy
-                    <select
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      value={form.pricePrivacy ? "yes" : "no"}
-                      onChange={e => handleChange("pricePrivacy", e.target.value === "yes")}
-                    >
-                      <option value="no">Rates published</option>
-                      <option value="yes">Quotes required</option>
-                    </select>
-                  </label>
-                </div>
-
+            {activeTab === "Offers" && (
+              <Section title="Offers">
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-foreground">Offers</p>
                   <div className="flex flex-wrap gap-2">

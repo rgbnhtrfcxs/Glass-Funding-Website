@@ -26,7 +26,7 @@ const TAB_ORDER = [
   "Compliance",
   "Team",
   "Photos",
-  "Offers & pricing",
+  "Offers",
 ] as const;
 
 type Form = {
@@ -62,8 +62,6 @@ type Form = {
   equipmentTags: string[];
   focusTags: string[];
   offers: OfferOption[];
-  minimumStay: string;
-  pricePrivacy: boolean;
 };
 
 export default function MyLab({ params }: { params: { id: string } }) {
@@ -74,8 +72,24 @@ export default function MyLab({ params }: { params: { id: string } }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [subscriptionTier, setSubscriptionTier] = useState<string>("base");
-  const [profileRole, setProfileRole] = useState<string>("user");
+  const [labStatus, setLabStatus] = useState<string>("listed");
+  const [profileCaps, setProfileCaps] = useState<{
+    canCreateLab: boolean;
+    canManageMultipleLabs: boolean;
+    canManageTeams: boolean;
+    canManageMultipleTeams: boolean;
+    canPostNews: boolean;
+    canBrokerRequests: boolean;
+    canReceiveInvestor: boolean;
+  }>({
+    canCreateLab: false,
+    canManageMultipleLabs: false,
+    canManageTeams: false,
+    canManageMultipleTeams: false,
+    canPostNews: false,
+    canBrokerRequests: false,
+    canReceiveInvestor: false,
+  });
   const [analytics, setAnalytics] = useState<{
     views7d: number;
     views30d: number;
@@ -116,8 +130,6 @@ export default function MyLab({ params }: { params: { id: string } }) {
     equipmentTags: [],
     focusTags: [],
     offers: [],
-    minimumStay: "",
-    pricePrivacy: false,
   });
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
@@ -153,8 +165,9 @@ export default function MyLab({ params }: { params: { id: string } }) {
   const [teamLinkLoading, setTeamLinkLoading] = useState(false);
   const [teamLinkError, setTeamLinkError] = useState<string | null>(null);
   const draftKey = useMemo(() => `my-lab-draft:${labIdParam || "unknown"}`, [labIdParam]);
+  const canUseLogo = ["verified_passive", "verified_active", "premier"].includes((labStatus || "listed").toLowerCase());
   const canUsePartnerLogos =
-    subscriptionTier === "premier" || subscriptionTier === "custom" || profileRole === "multi-lab" || profileRole === "admin";
+    (labStatus || "").toLowerCase() === "premier" || profileCaps.canManageMultipleLabs;
 
   useEffect(() => {
     (async () => {
@@ -239,11 +252,26 @@ export default function MyLab({ params }: { params: { id: string } }) {
       }
       const parsed = JSON.parse(raw);
       if (parsed?.form) {
-        setForm(prev => ({ ...prev, ...parsed.form }));
+        setForm(prev => {
+          const next = { ...prev };
+          for (const [key, value] of Object.entries(parsed.form as Record<string, unknown>)) {
+            if (value === null || value === undefined) continue;
+            if (typeof value === "string") {
+              if (value.trim().length > 0) (next as any)[key] = value;
+              continue;
+            }
+            if (Array.isArray(value)) {
+              if (value.length > 0) (next as any)[key] = value;
+              continue;
+            }
+            (next as any)[key] = value;
+          }
+          return next;
+        });
       }
-      if (Array.isArray(parsed?.photos)) setPhotos(parsed.photos);
-      if (Array.isArray(parsed?.partnerLogos)) setPartnerLogos(parsed.partnerLogos);
-      if (Array.isArray(parsed?.complianceDocs)) setComplianceDocs(parsed.complianceDocs);
+      if (Array.isArray(parsed?.photos) && parsed.photos.length > 0) setPhotos(parsed.photos);
+      if (Array.isArray(parsed?.partnerLogos) && parsed.partnerLogos.length > 0) setPartnerLogos(parsed.partnerLogos);
+      if (Array.isArray(parsed?.complianceDocs) && parsed.complianceDocs.length > 0) setComplianceDocs(parsed.complianceDocs);
       if (typeof parsed?.activeTab === "string" && (TAB_ORDER as readonly string[]).includes(parsed.activeTab)) {
         setActiveTab(parsed.activeTab as (typeof TAB_ORDER)[number]);
       }
@@ -482,7 +510,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
       }
       const lab = await res.json();
       setLabId(lab.id);
-      setSubscriptionTier((lab.subscriptionTier || "base").toLowerCase());
+      setLabStatus((lab.labStatus || "listed").toLowerCase());
       setIsVisible(lab.isVisible !== false);
       setForm({
         name: lab.name || "",
@@ -509,8 +537,6 @@ export default function MyLab({ params }: { params: { id: string } }) {
         equipmentTags: lab.equipment || [],
         focusTags: lab.focusAreas || [],
         offers: lab.offers || [],
-        minimumStay: lab.minimumStay || "",
-        pricePrivacy: !!lab.pricePrivacy,
       });
       setPartnerLogos(lab.partnerLogos || []);
       setPhotos(lab.photos || []);
@@ -551,11 +577,30 @@ export default function MyLab({ params }: { params: { id: string } }) {
     if (!user?.id) return;
     supabase
       .from("profiles")
-      .select("role")
+      .select(
+        [
+        "can_create_lab",
+        "can_manage_multiple_labs",
+        "can_manage_teams",
+        "can_manage_multiple_teams",
+        "can_post_news",
+        "can_broker_requests",
+        "can_receive_investor",
+        "is_admin",
+      ].join(","),
+      )
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
-        setProfileRole((data?.role || "user").toLowerCase());
+        setProfileCaps({
+          canCreateLab: Boolean((data as any)?.can_create_lab),
+          canManageMultipleLabs: Boolean((data as any)?.can_manage_multiple_labs),
+          canManageTeams: Boolean((data as any)?.can_manage_teams),
+          canManageMultipleTeams: Boolean((data as any)?.can_manage_multiple_teams),
+          canPostNews: Boolean((data as any)?.can_post_news),
+          canBrokerRequests: Boolean((data as any)?.can_broker_requests),
+          canReceiveInvestor: Boolean((data as any)?.can_receive_investor),
+        });
       })
       .catch(() => {});
   }, [user?.id]);
@@ -601,8 +646,6 @@ export default function MyLab({ params }: { params: { id: string } }) {
           equipment: form.equipmentTags,
           focusAreas: form.focusTags,
           offers: form.offers,
-          minimumStay: form.minimumStay,
-          pricePrivacy: form.pricePrivacy,
         }),
       });
       if (!res.ok) {
@@ -1174,8 +1217,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
 
             {activeTab === "Photos" && (
             <Section title="Photos">
-              {(subscriptionTier === "premier" || subscriptionTier === "custom" || subscriptionTier === "verified") && (
-                <Field label="Logo (premier feature)">
+              {canUseLogo && (
+                <Field label="Logo (verified labs)">
                   <div className="flex flex-col gap-2">
                     <label className="inline-flex items-center gap-3">
                       <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
@@ -1303,8 +1346,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
             </Section>
             )}
 
-            {activeTab === "Offers & pricing" && (
-            <Section title="Offers & pricing">
+            {activeTab === "Offers" && (
+            <Section title="Offers">
               <Field label="Offers">
                 <div className="flex flex-wrap gap-3">
                   {offerOptions.map(option => (
@@ -1326,13 +1369,6 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   ))}
                 </div>
               </Field>
-              <Field label="Minimum stay">
-                <input className={INPUT_CLASS} value={form.minimumStay} onChange={e => setForm({ ...form, minimumStay: e.target.value })} />
-              </Field>
-              <label className="flex items-center gap-3 text-sm text-foreground">
-                <input type="checkbox" checked={form.pricePrivacy} onChange={e => setForm({ ...form, pricePrivacy: e.target.checked })} />
-                Pricing shared privately
-              </label>
             </Section>
             )}
 

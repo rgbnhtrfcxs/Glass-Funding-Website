@@ -62,12 +62,94 @@ const timingSafeEqual = (a: string, b: string) => {
   return crypto.timingSafeEqual(aBuf, bBuf);
 };
 
-const fetchProfileRole = async (userId?: string | null): Promise<string | null> => {
-  if (!userId) return null;
-  const { data, error } = await supabase.from("profiles").select("role").eq("user_id", userId).maybeSingle();
+const findLabIdByContactEmail = async (email?: string | null, labId?: number | null): Promise<number | null> => {
+  if (!email) return null;
+  const trimmed = email.trim();
+  if (!trimmed) return null;
+  let query = supabase.from("lab_contacts").select("lab_id").ilike("contact_email", trimmed);
+  if (labId) {
+    query = query.eq("lab_id", labId);
+  }
+  const { data, error } = await query.limit(1).maybeSingle();
   if (error) return null;
-  return typeof data?.role === "string" ? data.role.toLowerCase() : null;
+  const id = data?.lab_id ? Number(data.lab_id) : NaN;
+  return Number.isNaN(id) ? null : id;
 };
+
+const claimLabForUser = async (userId?: string | null, email?: string | null, labId?: number | null) => {
+  if (!userId || !email) return null;
+  const id = await findLabIdByContactEmail(email, labId ?? null);
+  if (!id) return null;
+  const { data, error } = await supabase.from("labs").select("id, owner_user_id").eq("id", id).maybeSingle();
+  if (error || !data) return null;
+  if (!data.owner_user_id) {
+    await supabase.from("labs").update({ owner_user_id: userId }).eq("id", data.id);
+  }
+  return { id: data.id };
+};
+
+const listLabIdsForUser = async (userId?: string | null, email?: string | null) => {
+  const ids = new Set<number>();
+  if (userId) {
+    const { data } = await supabase.from("labs").select("id").eq("owner_user_id", userId);
+    (data ?? []).forEach(row => {
+      const id = Number(row.id);
+      if (!Number.isNaN(id)) ids.add(id);
+    });
+  }
+  if (email) {
+    const { data } = await supabase.from("lab_contacts").select("lab_id").ilike("contact_email", email.trim());
+    (data ?? []).forEach(row => {
+      const id = Number((row as any).lab_id);
+      if (!Number.isNaN(id)) ids.add(id);
+    });
+  }
+  return Array.from(ids);
+};
+
+const parseBoolean = (value: boolean | string | null | undefined, fallback = false) => {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "boolean") return value;
+  const normalized = value.toString().toLowerCase();
+  return normalized === "true" || normalized === "t" || normalized === "1";
+};
+
+const fetchProfileCapabilities = async (userId?: string | null) => {
+  if (!userId) return null;
+  const { data, error } = await supabase
+    .from("profiles")
+    .select(
+      [
+        "can_create_lab",
+        "can_manage_multiple_labs",
+        "can_manage_teams",
+        "can_manage_multiple_teams",
+        "can_post_news",
+        "can_broker_requests",
+        "can_receive_investor",
+        "is_admin",
+      ].join(","),
+    )
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) return null;
+  return {
+    canCreateLab: parseBoolean((data as any)?.can_create_lab, false),
+    canManageMultipleLabs: parseBoolean((data as any)?.can_manage_multiple_labs, false),
+    canManageTeams: parseBoolean((data as any)?.can_manage_teams, false),
+    canManageMultipleTeams: parseBoolean((data as any)?.can_manage_multiple_teams, false),
+    canPostNews: parseBoolean((data as any)?.can_post_news, false),
+    canBrokerRequests: parseBoolean((data as any)?.can_broker_requests, false),
+    canReceiveInvestor: parseBoolean((data as any)?.can_receive_investor, false),
+    isAdmin: parseBoolean((data as any)?.is_admin, false),
+  };
+};
+
+const normalizeLabStatus = (status?: string | null) => (status || "listed").toLowerCase();
+const isVerifiedLabStatus = (status?: string | null) =>
+  ["verified_passive", "verified_active", "premier"].includes(normalizeLabStatus(status));
+const canForwardLabRequests = (status?: string | null) =>
+  ["verified_active", "premier"].includes(normalizeLabStatus(status));
 
 const fetchStripePrice = async (stripeKey: string, priceId?: string) => {
   if (!priceId) return null;
@@ -341,13 +423,6 @@ export function registerRoutes(app: Express) {
         console.warn("[stripe] failed to update profile", updateError.message);
       }
 
-      const { error: labError } = await supabase
-        .from("labs")
-        .update({ subscription_tier: tierToSave })
-        .eq("owner_user_id", userId);
-      if (labError) {
-        console.warn("[stripe] failed to update labs", labError.message);
-      }
     };
 
     try {
@@ -967,9 +1042,9 @@ export function registerRoutes(app: Express) {
       if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
 
       const { data, error } = await supabase
-        .from("labs")
+        .from("lab_profile")
         .select("hal_structure_id, hal_person_id")
-        .eq("id", labId)
+        .eq("lab_id", labId)
         .maybeSingle();
       if (error) throw error;
       const halStructureId = data?.hal_structure_id;
@@ -1024,9 +1099,9 @@ export function registerRoutes(app: Express) {
       if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
 
       const { data, error } = await supabase
-        .from("labs")
+        .from("lab_profile")
         .select("hal_structure_id, hal_person_id")
-        .eq("id", labId)
+        .eq("lab_id", labId)
         .maybeSingle();
       if (error) throw error;
       const halStructureId = data?.hal_structure_id;
@@ -1108,16 +1183,14 @@ export function registerRoutes(app: Express) {
     try {
       const ownerId = req.body?.ownerUserId || req.body?.owner_user_id || null;
       if (ownerId) {
-        const { data: profileRow, error: profErr } = await supabase
-          .from("profiles")
-          .select("subscription_tier, role")
-          .eq("user_id", ownerId)
-          .maybeSingle();
-        if (profErr) throw profErr;
-        const tier = (profileRow?.subscription_tier || "base").toLowerCase();
-        const role = (profileRow?.role || "").toLowerCase();
-        const multiLab = role === "multi-lab" || role === "admin";
-        if (!multiLab) {
+        const profile = await fetchProfileCapabilities(ownerId);
+        if (!profile) {
+          return res.status(403).json({ message: "Profile permissions not found for this account." });
+        }
+        if (!profile.canCreateLab) {
+          return res.status(403).json({ message: "This account is not allowed to create labs yet." });
+        }
+        if (!profile.canManageMultipleLabs) {
           const { count, error: countErr } = await supabase
             .from("labs")
             .select("id", { count: "exact", head: true })
@@ -1126,7 +1199,7 @@ export function registerRoutes(app: Express) {
           if ((count ?? 0) >= 1) {
             return res
               .status(403)
-              .json({ message: "Only multi-lab accounts can manage more than one lab. Upgrade to add another." });
+              .json({ message: "This account can manage only one lab right now. Contact Glass to add more." });
           }
         }
       }
@@ -1205,11 +1278,29 @@ export function registerRoutes(app: Express) {
   app.post("/api/teams", authenticate, async (req, res) => {
     try {
       const ownerUserId = req.user?.id ?? null;
-      const role = await fetchProfileRole(req.user?.id);
+      const profile = await fetchProfileCapabilities(req.user?.id);
+      if (!profile) {
+        return res.status(403).json({ message: "Profile permissions not found for this account." });
+      }
+      if (!profile.canManageTeams) {
+        return res.status(403).json({ message: "This account is not allowed to manage teams yet." });
+      }
+      if (!profile.canManageMultipleTeams) {
+        const { count, error: countErr } = await supabase
+          .from("teams")
+          .select("id", { count: "exact", head: true })
+          .eq("owner_user_id", ownerUserId);
+        if (countErr) throw countErr;
+        if ((count ?? 0) >= 1) {
+          return res
+            .status(403)
+            .json({ message: "This account can manage only one team right now. Contact Glass to add more." });
+        }
+      }
       const payload = insertTeamSchema.parse({
         ...req.body,
         ownerUserId,
-        labIds: role === "admin" ? req.body?.labIds ?? [] : [],
+        labIds: [],
       });
       const team = await teamStore.create(payload);
       res.status(201).json(team);
@@ -1230,12 +1321,18 @@ export function registerRoutes(app: Express) {
     try {
       const existing = await teamStore.findById(id);
       if (!existing) return res.status(404).json({ message: "Team not found" });
-      const role = await fetchProfileRole(req.user?.id);
-      if (existing.ownerUserId !== req.user?.id && role !== "admin") {
+      const profile = await fetchProfileCapabilities(req.user?.id);
+      if (!profile) {
+        return res.status(403).json({ message: "Profile permissions not found for this account." });
+      }
+      if (existing.ownerUserId !== req.user?.id) {
         return res.status(403).json({ message: "Not authorized to update this team" });
       }
+      if (!profile.canManageTeams) {
+        return res.status(403).json({ message: "This account is not allowed to manage teams yet." });
+      }
       const sanitized = { ...req.body };
-      if (role !== "admin") delete sanitized.labIds;
+      delete sanitized.labIds;
       const updates = updateTeamSchema.parse(sanitized);
       const updated = await teamStore.update(id, updates);
       res.json(updated);
@@ -1256,9 +1353,15 @@ export function registerRoutes(app: Express) {
     try {
       const existing = await teamStore.findById(id);
       if (!existing) return res.status(404).json({ message: "Team not found" });
-      const role = await fetchProfileRole(req.user?.id);
-      if (existing.ownerUserId !== req.user?.id && role !== "admin") {
+      const profile = await fetchProfileCapabilities(req.user?.id);
+      if (!profile) {
+        return res.status(403).json({ message: "Profile permissions not found for this account." });
+      }
+      if (existing.ownerUserId !== req.user?.id) {
         return res.status(403).json({ message: "Not authorized to delete this team" });
+      }
+      if (!profile.canManageTeams) {
+        return res.status(403).json({ message: "This account is not allowed to manage teams yet." });
       }
       await teamStore.delete(id);
       res.status(204).end();
@@ -1271,6 +1374,10 @@ export function registerRoutes(app: Express) {
     try {
       const userId = req.user?.id;
       if (!userId) return res.status(400).json({ message: "No user on request" });
+      const profile = await fetchProfileCapabilities(userId);
+      if (!profile?.canManageTeams) {
+        return res.status(403).json({ message: "This account is not enabled to manage teams yet." });
+      }
       const teams = await teamStore.listByOwner(userId);
       res.json(teams);
     } catch (error) {
@@ -1284,6 +1391,10 @@ export function registerRoutes(app: Express) {
       if (Number.isNaN(teamId)) return res.status(400).json({ message: "Invalid team id" });
       const userId = req.user?.id;
       if (!userId) return res.status(400).json({ message: "No user on request" });
+      const profile = await fetchProfileCapabilities(userId);
+      if (!profile?.canManageTeams) {
+        return res.status(403).json({ message: "This account is not enabled to manage teams yet." });
+      }
       const team = await teamStore.findById(teamId);
       if (!team || team.ownerUserId !== userId) return res.status(404).json({ message: "No team linked to this account" });
       res.json(team);
@@ -1298,6 +1409,10 @@ export function registerRoutes(app: Express) {
       if (Number.isNaN(teamId)) return res.status(400).json({ message: "Invalid team id" });
       const userId = req.user?.id;
       if (!userId) return res.status(400).json({ message: "No user on request" });
+      const profile = await fetchProfileCapabilities(userId);
+      if (!profile?.canManageTeams) {
+        return res.status(403).json({ message: "This account is not enabled to manage teams yet." });
+      }
       const team = await teamStore.findById(teamId);
       if (!team || team.ownerUserId !== userId) return res.status(404).json({ message: "No team linked to this account" });
       const sanitized = { ...req.body };
@@ -1350,9 +1465,12 @@ export function registerRoutes(app: Express) {
       if (!userId) return res.status(400).json({ message: "No user on request" });
       const team = await teamStore.findById(teamId);
       if (!team) return res.status(404).json({ message: "Team not found" });
-      const role = await fetchProfileRole(userId);
-      if (team.ownerUserId !== userId && role !== "admin") {
+      const profile = await fetchProfileCapabilities(userId);
+      if (team.ownerUserId !== userId) {
         return res.status(403).json({ message: "Not authorized to request lab links" });
+      }
+      if (!profile?.canManageTeams) {
+        return res.status(403).json({ message: "This account cannot manage teams." });
       }
       const labId = Number(req.body?.labId);
       if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
@@ -1406,17 +1524,35 @@ export function registerRoutes(app: Express) {
       if (!userId) return res.status(400).json({ message: "No user on request" });
       const team = await teamStore.findById(teamId);
       if (!team) return res.status(404).json({ message: "Team not found" });
-      const role = await fetchProfileRole(userId);
-      if (team.ownerUserId !== userId && role !== "admin") {
+      const profile = await fetchProfileCapabilities(userId);
+      if (team.ownerUserId !== userId) {
         return res.status(403).json({ message: "Not authorized to view requests" });
+      }
+      if (!profile?.canManageTeams) {
+        return res.status(403).json({ message: "This account cannot manage teams." });
       }
       const { data, error } = await supabase
         .from("lab_team_link_requests")
-        .select("id, lab_id, status, created_at, responded_at, labs (id, name, city, country)")
+        .select("id, lab_id, status, created_at, responded_at, labs (id, name, lab_location (city, country))")
         .eq("team_id", teamId)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      res.json(data ?? []);
+      const mapped = (data ?? []).map(row => {
+        const lab = (row as any).labs ?? null;
+        const location = (Array.isArray(lab?.lab_location) ? lab.lab_location[0] : lab?.lab_location) ?? null;
+        return {
+          ...row,
+          labs: lab
+            ? {
+                id: lab.id,
+                name: lab.name,
+                city: location?.city ?? null,
+                country: location?.country ?? null,
+              }
+            : null,
+        };
+      });
+      res.json(mapped);
     } catch (error) {
       res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load requests" });
     }
@@ -1430,9 +1566,12 @@ export function registerRoutes(app: Express) {
       if (!userId) return res.status(400).json({ message: "No user on request" });
       const lab = await labStore.findById(labId);
       if (!lab) return res.status(404).json({ message: "Lab not found" });
-      const role = await fetchProfileRole(userId);
-      if (lab.ownerUserId !== userId && role !== "admin") {
+      const profile = await fetchProfileCapabilities(userId);
+      if (lab.ownerUserId !== userId) {
         return res.status(403).json({ message: "Not authorized to view requests" });
+      }
+      if (!profile?.canCreateLab) {
+        return res.status(403).json({ message: "This account cannot manage labs." });
       }
       const { data, error } = await supabase
         .from("lab_team_link_requests")
@@ -1461,9 +1600,12 @@ export function registerRoutes(app: Express) {
       if (!userId) return res.status(400).json({ message: "No user on request" });
       const lab = await labStore.findById(labId);
       if (!lab) return res.status(404).json({ message: "Lab not found" });
-      const role = await fetchProfileRole(userId);
-      if (lab.ownerUserId !== userId && role !== "admin") {
+      const profile = await fetchProfileCapabilities(userId);
+      if (lab.ownerUserId !== userId) {
         return res.status(403).json({ message: "Not authorized to update requests" });
+      }
+      if (!profile?.canCreateLab) {
+        return res.status(403).json({ message: "This account cannot manage labs." });
       }
       const { data: requestRow, error: reqError } = await supabase
         .from("lab_team_link_requests")
@@ -1502,6 +1644,12 @@ export function registerRoutes(app: Express) {
       const payload = insertLabCollaborationSchema.parse(req.body);
       const lab = await labStore.findById(payload.labId);
       if (!lab) return res.status(404).json({ message: "Lab not found" });
+      const status = normalizeLabStatus(lab.labStatus);
+      if (status === "listed" || status === "confirmed") {
+        return res.status(403).json({ message: "This lab is not accepting collaboration requests yet." });
+      }
+      const ownerProfile = lab.ownerUserId ? await fetchProfileCapabilities(lab.ownerUserId) : null;
+      const canForward = ownerProfile?.canBrokerRequests;
 
       const created = await labCollaborationStore.create({
         ...payload,
@@ -1539,7 +1687,7 @@ export function registerRoutes(app: Express) {
         },
       });
       // Notify lab contact if available
-      if (lab.contactEmail) {
+      if (lab.contactEmail && canForward && canForwardLabRequests(status)) {
         await sendMail({
           to: lab.contactEmail,
           from: process.env.MAIL_FROM_LAB || process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
@@ -1594,6 +1742,12 @@ export function registerRoutes(app: Express) {
       const payload = insertLabRequestSchema.parse(req.body);
       const lab = await labStore.findById(payload.labId);
       if (!lab) return res.status(404).json({ message: "Lab not found" });
+      const status = normalizeLabStatus(lab.labStatus);
+      if (status === "listed" || status === "confirmed") {
+        return res.status(403).json({ message: "This lab is not accepting requests yet." });
+      }
+      const ownerProfile = lab.ownerUserId ? await fetchProfileCapabilities(lab.ownerUserId) : null;
+      const canForward = ownerProfile?.canBrokerRequests;
 
       console.log("[lab-requests] creating request", { labId: payload.labId, labName: lab.name });
       const created = await labRequestStore.create({
@@ -1663,7 +1817,7 @@ export function registerRoutes(app: Express) {
         },
       });
       // Notify lab contact if available
-      if (lab.contactEmail) {
+      if (lab.contactEmail && canForward && canForwardLabRequests(status)) {
         console.log("[lab-requests] sending lab email");
         await sendMail({
           to: lab.contactEmail,
@@ -1889,20 +2043,18 @@ app.get("/api/profile", authenticate, async (req, res) => {
       const payload = insertNewsSchema.parse(req.body);
       const lab = await labStore.findById(payload.labId);
       if (!lab) return res.status(404).json({ message: "Lab not found" });
-      const tier = ((lab as any).subscriptionTier || (lab as any).subscription_tier || "base").toLowerCase();
-      let ownerRole: string | null = null;
-      if (lab.ownerUserId) {
-        const { data: roleRow } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("user_id", lab.ownerUserId)
-          .maybeSingle();
-        ownerRole = (roleRow?.role as string | null)?.toLowerCase?.() ?? null;
+      const ownerUserId = lab.ownerUserId ?? null;
+      if (!ownerUserId) {
+        return res.status(403).json({ message: "Only claimed labs can post news right now." });
       }
-      const premium = tier === "premier" || ownerRole === "multi-lab";
-      if (!premium) return res.status(403).json({ message: "Only premier labs or multi-lab accounts can post news" });
-      const ownerUserId = (lab as any).ownerUserId || (lab as any).owner_user_id || null;
-      if (ownerUserId && payload.authorId && ownerUserId !== payload.authorId) {
+      const profile = await fetchProfileCapabilities(ownerUserId);
+      if (!profile?.canCreateLab) {
+        return res.status(403).json({ message: "News is available to lab owners only." });
+      }
+      if (lab.labStatus !== "premier") {
+        return res.status(403).json({ message: "News is available for premier labs only." });
+      }
+      if (payload.authorId && ownerUserId !== payload.authorId) {
         return res.status(403).json({ message: "Not allowed to post for this lab" });
       }
 
@@ -1934,7 +2086,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
     try {
       const { data, error } = await supabase
         .from("lab_news")
-        .select("id, lab_id, title, summary, category, images, status, created_at, labs!inner(name, subscription_tier, owner_user_id)")
+        .select("id, lab_id, title, summary, category, images, status, created_at, labs!inner(name, lab_status, owner_user_id)")
         .eq("labs.owner_user_id", req.user.id)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -1948,7 +2100,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
     try {
       const { data, error } = await supabase
         .from("lab_news")
-        .select("id, lab_id, title, summary, category, images, status, created_at, labs:lab_id (name, subscription_tier)")
+        .select("id, lab_id, title, summary, category, images, status, created_at, labs:lab_id (name, lab_status)")
         .eq("status", "approved")
         .order("created_at", { ascending: false })
         .limit(50);
@@ -1967,9 +2119,13 @@ app.get("/api/profile", authenticate, async (req, res) => {
       const payload = insertInvestorRequestSchema.parse({ ...req.body, labId });
       const lab = await labStore.findById(labId);
       if (!lab) return res.status(404).json({ message: "Lab not found" });
-      const tier = ((lab as any).subscriptionTier || (lab as any).subscription_tier || "base").toLowerCase();
-      if (tier !== "premier") {
-        return res.status(403).json({ message: "Investor contact is available for premier labs only" });
+      const ownerUserId = lab.ownerUserId ?? null;
+      if (!ownerUserId) {
+        return res.status(403).json({ message: "Investor contact is available for claimed labs only" });
+      }
+      const profile = await fetchProfileCapabilities(ownerUserId);
+      if (!profile?.canReceiveInvestor) {
+        return res.status(403).json({ message: "Investor contact is not enabled for this lab" });
       }
 
       await supabase.from("lab_contact_requests").insert({
@@ -2172,7 +2328,9 @@ app.get("/api/profile", authenticate, async (req, res) => {
       };
       const hasAddress = Object.values(addressUpdate).some(v => v && String(v).trim().length > 0);
       if (hasAddress) {
-        await supabase.from("labs").update(addressUpdate).eq("id", payload.labId);
+        await supabase
+          .from("lab_location")
+          .upsert({ lab_id: payload.labId, ...addressUpdate }, { onConflict: "lab_id" });
       }
 
       // Store request (requires table to exist)
@@ -2189,7 +2347,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
       });
 
       const adminInbox = process.env.ADMIN_INBOX ?? "contact@glass-funding.com";
-      const userEmail = req.user.email || (lab as any).contactEmail || (lab as any).contact_email;
+      const userEmail = req.user.email || lab.contactEmail || null;
 
       // Notify admin
       await sendMail({
@@ -2199,12 +2357,12 @@ app.get("/api/profile", authenticate, async (req, res) => {
         text: [
           `Lab: ${lab.name} (id: ${payload.labId})`,
           `Requested by user: ${req.user.id}`,
-          `Address line1: ${payload.addressLine1 || (lab as any).addressLine1 || (lab as any).address_line1 || "N/A"}`,
-          `Address line2: ${payload.addressLine2 || (lab as any).addressLine2 || (lab as any).address_line2 || "N/A"}`,
-          `City: ${payload.city || (lab as any).city || "N/A"}`,
-          `State: ${payload.state || (lab as any).state || "N/A"}`,
-          `Postal code: ${payload.postalCode || (lab as any).postalCode || (lab as any).postal_code || "N/A"}`,
-          `Country: ${payload.country || (lab as any).country || "N/A"}`,
+          `Address line1: ${payload.addressLine1 || lab.addressLine1 || "N/A"}`,
+          `Address line2: ${payload.addressLine2 || lab.addressLine2 || "N/A"}`,
+          `City: ${payload.city || lab.city || "N/A"}`,
+          `State: ${payload.state || lab.state || "N/A"}`,
+          `Postal code: ${payload.postalCode || lab.postalCode || "N/A"}`,
+          `Country: ${payload.country || lab.country || "N/A"}`,
           `Note: On-site verification requested; please follow up for scheduling and costs.`,
         ].join("\n"),
         templateId: process.env.BREVO_TEMPLATE_VERIFY_ADMIN
@@ -2214,12 +2372,12 @@ app.get("/api/profile", authenticate, async (req, res) => {
           labName: lab.name,
           requester: req.user.id,
           address: [
-            payload.addressLine1 || (lab as any).addressLine1 || (lab as any).address_line1 || "",
-            payload.addressLine2 || (lab as any).addressLine2 || (lab as any).address_line2 || "",
-            payload.city || (lab as any).city || "",
-            payload.state || (lab as any).state || "",
-            payload.postalCode || (lab as any).postalCode || (lab as any).postal_code || "",
-            payload.country || (lab as any).country || "",
+            payload.addressLine1 || lab.addressLine1 || "",
+            payload.addressLine2 || lab.addressLine2 || "",
+            payload.city || lab.city || "",
+            payload.state || lab.state || "",
+            payload.postalCode || lab.postalCode || "",
+            payload.country || lab.country || "",
           ]
             .filter(Boolean)
             .join(", "),
@@ -2234,23 +2392,20 @@ app.get("/api/profile", authenticate, async (req, res) => {
           from: process.env.MAIL_FROM_USER || process.env.MAIL_FROM,
           subject: `We received your verification request for ${lab.name}`,
           text: `Thanks! We received your request to verify ${lab.name}. Our team will reach out to schedule an on-site visit (additional cost applies).\nAddress: ${
-            payload.addressLine1 ||
-            (lab as any).addressLine1 ||
-            (lab as any).address_line1 ||
-            ""
-          } ${payload.city || (lab as any).city || ""} ${payload.country || (lab as any).country || ""}`.trim(),
+            payload.addressLine1 || lab.addressLine1 || ""
+          } ${payload.city || lab.city || ""} ${payload.country || lab.country || ""}`.trim(),
           templateId: process.env.BREVO_TEMPLATE_VERIFY_USER
             ? Number(process.env.BREVO_TEMPLATE_VERIFY_USER)
             : 9,
           params: {
             labName: lab.name,
             address: [
-              payload.addressLine1 || (lab as any).addressLine1 || (lab as any).address_line1 || "",
-              payload.addressLine2 || (lab as any).addressLine2 || (lab as any).address_line2 || "",
-              payload.city || (lab as any).city || "",
-              payload.state || (lab as any).state || "",
-              payload.postalCode || (lab as any).postalCode || (lab as any).postal_code || "",
-              payload.country || (lab as any).country || "",
+              payload.addressLine1 || lab.addressLine1 || "",
+              payload.addressLine2 || lab.addressLine2 || "",
+              payload.city || lab.city || "",
+              payload.state || lab.state || "",
+              payload.postalCode || lab.postalCode || "",
+              payload.country || lab.country || "",
             ]
               .filter(Boolean)
               .join(", "),
@@ -2343,12 +2498,17 @@ app.get("/api/profile", authenticate, async (req, res) => {
     }
   });
 
-  // Lab manager endpoints: manage only the lab tied to their user id (owner_user_id) or claim an unowned lab by contact_email
+  // Lab manager endpoints: manage only the lab tied to their user id (owner_user_id) or claim by contact email
   app.get("/api/my-lab", authenticate, async (req, res) => {
     try {
       const userId = req.user?.id;
       const email = req.user?.email;
       if (!userId && !email) return res.status(400).json({ message: "No user on request" });
+
+      const profile = await fetchProfileCapabilities(userId);
+      if (!profile?.canCreateLab) {
+        return res.status(403).json({ message: "This account is not enabled to manage labs yet." });
+      }
 
       let labRow = null;
       if (userId) {
@@ -2357,17 +2517,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
         if (data) labRow = data;
       }
       if (!labRow && userId && email) {
-        const { data, error } = await supabase
-          .from("labs")
-          .select("id, owner_user_id")
-          .eq("contact_email", email)
-          .is("owner_user_id", null)
-          .maybeSingle();
-        if (error) throw error;
-        if (data) {
-          await supabase.from("labs").update({ owner_user_id: userId }).eq("id", data.id);
-          labRow = { id: data.id };
-        }
+        labRow = await claimLabForUser(userId, email);
       }
       if (!labRow) return res.status(404).json({ message: "No lab linked to this account" });
 
@@ -2385,17 +2535,49 @@ app.get("/api/profile", authenticate, async (req, res) => {
       const email = req.user?.email;
       if (!userId && !email) return res.status(400).json({ message: "No user on request" });
 
-      const clauses = [];
-      if (userId) clauses.push(`owner_user_id.eq.${userId}`);
-      if (email) clauses.push(`contact_email.eq.${email},contact_email.ilike.${email}`);
+      const profile = await fetchProfileCapabilities(userId);
+      if (!profile?.canCreateLab) {
+        return res.status(403).json({ message: "This account is not enabled to manage labs yet." });
+      }
+
+      const labIds = await listLabIdsForUser(userId, email);
+      if (!labIds.length) return res.json([]);
+
       const { data, error } = await supabase
         .from("labs")
         .select(
-          "id, name, subscription_tier, city, country, logo_url, is_visible, lab_photos (url, name), lab_equipment (item)",
+          [
+            "id",
+            "name",
+            "is_visible",
+            "lab_status",
+            "lab_profile (logo_url)",
+            "lab_location (city, country)",
+            "lab_photos (url, name)",
+            "lab_equipment (item)",
+          ].join(","),
         )
-        .or(clauses.join(","));
+        .in("id", labIds);
       if (error) throw error;
-      res.json(data ?? []);
+
+      const mapped = (data ?? []).map(row => {
+        const pickOne = (value: any) => (Array.isArray(value) ? value[0] : value) ?? null;
+        const profileRow = pickOne((row as any).lab_profile);
+        const locationRow = pickOne((row as any).lab_location);
+        return {
+          id: row.id,
+          name: row.name,
+          lab_status: (row as any).lab_status ?? null,
+          city: locationRow?.city ?? null,
+          country: locationRow?.country ?? null,
+          logo_url: profileRow?.logo_url ?? null,
+          is_visible: (row as any).is_visible ?? null,
+          lab_photos: (row as any).lab_photos ?? [],
+          lab_equipment: (row as any).lab_equipment ?? [],
+        };
+      });
+
+      res.json(mapped);
     } catch (err) {
       res.status(500).json({ message: err instanceof Error ? err.message : "Unable to load labs" });
     }
@@ -2409,6 +2591,11 @@ app.get("/api/profile", authenticate, async (req, res) => {
       const email = req.user?.email;
       if (!userId && !email) return res.status(400).json({ message: "No user on request" });
 
+      const profile = await fetchProfileCapabilities(userId);
+      if (!profile?.canCreateLab) {
+        return res.status(403).json({ message: "This account is not enabled to manage labs yet." });
+      }
+
       // owner match first
       let labRow = null;
       if (userId) {
@@ -2417,19 +2604,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
         if (data) labRow = data;
       }
       if (!labRow && email && userId) {
-        const { data, error } = await supabase
-          .from("labs")
-          .select("id, owner_user_id")
-          .eq("id", labId)
-          .eq("contact_email", email)
-          .maybeSingle();
-        if (error) throw error;
-        if (data) {
-          if (!data.owner_user_id) {
-            await supabase.from("labs").update({ owner_user_id: userId }).eq("id", data.id);
-          }
-          labRow = data;
-        }
+        labRow = await claimLabForUser(userId, email, labId);
       }
       if (!labRow) return res.status(404).json({ message: "No lab linked to this account" });
 
@@ -2449,6 +2624,11 @@ app.get("/api/profile", authenticate, async (req, res) => {
       const email = req.user?.email;
       if (!userId && !email) return res.status(400).json({ message: "No user on request" });
 
+      const profile = await fetchProfileCapabilities(userId);
+      if (!profile?.canCreateLab) {
+        return res.status(403).json({ message: "This account is not enabled to manage labs yet." });
+      }
+
       let labRow = null;
       if (userId) {
         const { data, error } = await supabase
@@ -2461,19 +2641,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
         if (data) labRow = data;
       }
       if (!labRow && email && userId) {
-        const { data, error } = await supabase
-          .from("labs")
-          .select("id, owner_user_id")
-          .eq("id", labId)
-          .eq("contact_email", email)
-          .maybeSingle();
-        if (error) throw error;
-        if (data) {
-          if (!data.owner_user_id) {
-            await supabase.from("labs").update({ owner_user_id: userId }).eq("id", data.id);
-          }
-          labRow = data;
-        }
+        labRow = await claimLabForUser(userId, email, labId);
       }
       if (!labRow) return res.status(404).json({ message: "No lab linked to this account" });
 
@@ -2496,6 +2664,11 @@ app.get("/api/profile", authenticate, async (req, res) => {
       const email = req.user?.email;
       if (!userId && !email) return res.status(400).json({ message: "No user on request" });
 
+      const profile = await fetchProfileCapabilities(userId);
+      if (!profile?.canCreateLab) {
+        return res.status(403).json({ message: "This account is not enabled to manage labs yet." });
+      }
+
       let labRow = null;
       if (userId) {
         const { data, error } = await supabase
@@ -2508,19 +2681,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
         if (data) labRow = data;
       }
       if (!labRow && email && userId) {
-        const { data, error } = await supabase
-          .from("labs")
-          .select("id, owner_user_id")
-          .eq("id", labId)
-          .eq("contact_email", email)
-          .maybeSingle();
-        if (error) throw error;
-        if (data) {
-          if (!data.owner_user_id) {
-            await supabase.from("labs").update({ owner_user_id: userId }).eq("id", data.id);
-          }
-          labRow = data;
-        }
+        labRow = await claimLabForUser(userId, email, labId);
       }
       if (!labRow) return res.status(404).json({ message: "No lab linked to this account" });
 
@@ -2544,36 +2705,24 @@ app.get("/api/profile", authenticate, async (req, res) => {
       if (userId) {
         const { data, error } = await supabase
           .from("labs")
-          .select("id, subscription_tier")
+          .select("id, lab_status")
           .eq("owner_user_id", userId)
           .maybeSingle();
         if (error) throw error;
         if (data) labRow = data;
       }
       if (!labRow && userId && email) {
-        const { data, error } = await supabase
-          .from("labs")
-          .select("id, subscription_tier, owner_user_id")
-          .eq("contact_email", email)
-          .is("owner_user_id", null)
-          .maybeSingle();
-        if (error) throw error;
-        if (data) {
-          await supabase.from("labs").update({ owner_user_id: userId }).eq("id", data.id);
-          labRow = data;
-        }
+        labRow = await claimLabForUser(userId, email);
       }
       if (!labRow) return res.status(404).json({ message: "No lab linked to this account" });
 
-      const labId = Number(labRow.id);
-      const tier = ((labRow.subscription_tier as string) || "base").toLowerCase();
-      let role: string | null = null;
-      if (userId) {
-        const { data: roleRow } = await supabase.from("profiles").select("role").eq("user_id", userId).maybeSingle();
-        role = (roleRow?.role as string | null)?.toLowerCase?.() ?? null;
-      }
-      if (!(tier === "premier" || role === "multi-lab" || role === "admin")) {
-        return res.status(403).json({ message: "Analytics available for premier labs or multi-lab accounts only" });
+      const labId = Number((labRow as any).id);
+      const lab = await labStore.findById(labId);
+      if (!lab) return res.status(404).json({ message: "Lab not found" });
+      const profile = await fetchProfileCapabilities(userId);
+      const canAccess = profile?.canCreateLab;
+      if (!canAccess) {
+        return res.status(403).json({ message: "Analytics are not enabled for this account yet." });
       }
 
       const now = new Date();
@@ -2618,18 +2767,24 @@ app.get("/api/profile", authenticate, async (req, res) => {
       const email = req.user?.email;
       if (!userId && !email) return res.status(400).json({ message: "No user on request" });
 
-      const clauses = [];
-      if (userId) clauses.push(`owner_user_id.eq.${userId}`);
-      if (email) clauses.push(`contact_email.eq.${email},contact_email.ilike.${email}`);
+      const labIds = await listLabIdsForUser(userId, email);
+      if (!labIds.length) return res.json({ labs: [] });
+
       const { data: labs, error: labsError } = await supabase
         .from("labs")
-        .select("id, name, is_visible, subscription_tier, owner_user_id")
-        .or(clauses.join(","));
+        .select("id, name, is_visible, lab_status, owner_user_id")
+        .in("id", labIds);
       if (labsError) throw labsError;
       if (!labs || labs.length === 0) return res.json({ labs: [] });
 
-      const labIds = labs.map(l => Number(l.id)).filter(id => !Number.isNaN(id));
-      if (!labIds.length) return res.json({ labs: [] });
+      const profile = await fetchProfileCapabilities(userId);
+      const canAccess = profile?.canCreateLab;
+      if (!canAccess) {
+        return res.status(403).json({ message: "Analytics are not enabled for this account yet." });
+      }
+
+      const labIdList = labs.map(l => Number(l.id)).filter(id => !Number.isNaN(id));
+      if (!labIdList.length) return res.json({ labs: [] });
 
       const now = new Date();
       const from7 = new Date(now);
@@ -2638,9 +2793,9 @@ app.get("/api/profile", authenticate, async (req, res) => {
       from30.setDate(from30.getDate() - 30);
 
       const [view7, view30, favs] = await Promise.all([
-        supabase.from("lab_views").select("lab_id").in("lab_id", labIds).gte("created_at", from7.toISOString()),
-        supabase.from("lab_views").select("lab_id").in("lab_id", labIds).gte("created_at", from30.toISOString()),
-        supabase.from("lab_favorites").select("lab_id").in("lab_id", labIds),
+        supabase.from("lab_views").select("lab_id").in("lab_id", labIdList).gte("created_at", from7.toISOString()),
+        supabase.from("lab_views").select("lab_id").in("lab_id", labIdList).gte("created_at", from30.toISOString()),
+        supabase.from("lab_favorites").select("lab_id").in("lab_id", labIdList),
       ]);
 
       const toMap = (rows?: { lab_id: number }[] | null) => {
@@ -2661,7 +2816,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
           id: lab.id,
           name: lab.name,
           isVisible: lab.is_visible,
-          subscriptionTier: lab.subscription_tier,
+          labStatus: (lab as any).lab_status ?? null,
           views7d: view7Map[lab.id] ?? 0,
           views30d: view30Map[lab.id] ?? 0,
           favorites: favMap[lab.id] ?? 0,
@@ -2678,19 +2833,19 @@ app.get("/api/profile", authenticate, async (req, res) => {
       const email = req.user?.email;
       if (!userId && !email) return res.status(400).json({ message: "No user on request" });
 
-      const clauses = [];
-      if (userId) clauses.push(`owner_user_id.eq.${userId}`);
-      if (email) clauses.push(`contact_email.eq.${email},contact_email.ilike.${email}`);
+      const labIds = await listLabIdsForUser(userId, email);
+      if (!labIds.length) return res.json({ labs: [], collaborations: [], contacts: [] });
+
       const { data: labs, error: labsError } = await supabase
         .from("labs")
         .select("id, name, owner_user_id")
-        .or(clauses.join(","));
+        .in("id", labIds);
       if (labsError) throw labsError;
       if (!labs || labs.length === 0) return res.json({ labs: [], collaborations: [], contacts: [] });
 
       const labNames = labs.map(l => l.name).filter(Boolean);
-      const labIds = labs.map(l => Number(l.id)).filter(id => !Number.isNaN(id));
-      if (!labIds.length && !labNames.length) return res.json({ labs, collaborations: [], contacts: [] });
+      const labIdList = labs.map(l => Number(l.id)).filter(id => !Number.isNaN(id));
+      if (!labIdList.length && !labNames.length) return res.json({ labs, collaborations: [], contacts: [] });
 
       // Prefer matching by lab_id; fall back to case-insensitive lab_name to catch legacy rows
       const [collabs, contacts] = await Promise.all([
@@ -2702,7 +2857,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
       if (contacts.error) throw contacts.error;
 
       const nameSet = new Set(labNames.map(n => (n || "").toLowerCase()));
-      const idSet = new Set(labIds);
+      const idSet = new Set(labIdList);
       const filteredCollabs = (collabs.data ?? []).filter(row => {
         const rowId = Number((row as any).lab_id);
         if (!Number.isNaN(rowId) && idSet.has(rowId)) return true;
@@ -2773,17 +2928,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
         if (data) labRow = data;
       }
       if (!labRow && email && userId) {
-        const { data, error } = await supabase
-          .from("labs")
-          .select("id, owner_user_id")
-          .eq("contact_email", email)
-          .is("owner_user_id", null)
-          .maybeSingle();
-        if (error) throw error;
-        if (data) {
-          await supabase.from("labs").update({ owner_user_id: userId }).eq("id", data.id);
-          labRow = data;
-        }
+        labRow = await claimLabForUser(userId, email);
       }
       if (!labRow) return res.status(404).json({ message: "No lab linked to this account" });
 

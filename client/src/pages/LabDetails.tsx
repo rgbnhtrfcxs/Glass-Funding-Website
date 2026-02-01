@@ -3,7 +3,6 @@ import {
   ArrowLeft,
   ArrowUpRight,
   Beaker,
-  CalendarClock,
   CheckCircle2,
   Globe2,
   Images,
@@ -323,10 +322,12 @@ export default function LabDetails({ params }: LabDetailsProps) {
     url.startsWith("data:")
       ? url
       : `${url}${url.includes("?") ? "&" : "?"}auto=format&fit=crop&w=${width}&q=80`;
-  const tier = (lab as any)?.subscriptionTier ?? (lab as any)?.subscription_tier ?? "base";
+  const labStatus = (lab.labStatus || "listed").toLowerCase();
+  const isPremier = labStatus === "premier";
+  const isVerifiedStatus = ["verified_passive", "verified_active", "premier"].includes(labStatus);
   const logoUrl = (lab as any)?.logoUrl ?? (lab as any)?.logo_url ?? null;
-  const tierLower = (tier as string).toLowerCase?.() ?? (typeof tier === "string" ? tier.toLowerCase() : "base");
-  const status = lab.isVerified ? "verified" : tierLower === "base" ? "unverified" : "pending";
+  const status = isPremier ? "premier" : isVerifiedStatus ? "verified" : labStatus;
+  const canRequestLab = isVerifiedStatus;
   const offersLabSpace =
     lab.offersLabSpace === true ||
     lab.offersLabSpace === "true" ||
@@ -347,12 +348,19 @@ export default function LabDetails({ params }: LabDetailsProps) {
     });
   })();
   const badgeClass =
-    status === "verified"
+    status === "verified" || status === "premier"
       ? "bg-emerald-50 text-emerald-700"
-      : status === "pending"
+      : status === "confirmed"
         ? "bg-amber-50 text-amber-700"
         : "bg-slate-100 text-slate-700";
-  const badgeLabel = status === "verified" ? "Verified by Glass" : status === "pending" ? "Verification pending" : "Unverified";
+  const badgeLabel =
+    status === "premier"
+      ? "Premier"
+      : status === "verified"
+        ? "Verified"
+        : status === "confirmed"
+          ? "Confirmed"
+          : "Listed";
   const partnerLogos = lab.partnerLogos ?? [];
   const website = lab.website || null;
   const linkedin = lab.linkedin || null;
@@ -550,7 +558,10 @@ export default function LabDetails({ params }: LabDetailsProps) {
             <div className="flex flex-wrap items-center gap-3">
               <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
                 <MapPin className="h-3.5 w-3.5" />
-                {[lab.city, lab.country].filter(Boolean).join(", ") || "Location not set"}
+                {[
+                  lab.city,
+                  lab.country,
+                ].filter(Boolean).join(", ") || "Location not set"}
               </span>
               <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${badgeClass}`}>
                 {status === "verified" ? (
@@ -597,7 +608,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
               </button>
             </div>
             <div className="flex items-center gap-3">
-        {(logoUrl || tierLower === "premier") && (
+        {(logoUrl || isPremier) && (
                 <div className="h-12 w-12 overflow-hidden rounded-full border border-dashed border-border bg-muted/30 text-[11px] text-muted-foreground flex items-center justify-center flex-shrink-0">
                   {logoUrl ? (
                     <img src={logoUrl} alt={`${lab.name} logo`} className="h-full w-full object-cover" />
@@ -612,8 +623,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
               <p className="text-muted-foreground text-base leading-relaxed text-justify">{lab.descriptionShort}</p>
             ) : (
               <p className="text-muted-foreground text-base leading-relaxed">
-                Review compliance, offers, and baseline expectations before requesting space. Minimum commitment:
-                <span className="font-medium text-foreground"> {lab.minimumStay}</span>.
+                Review compliance, offers, and baseline expectations before requesting space.
               </p>
             )}
             {favoriteError && <span className="text-xs text-destructive">{favoriteError}</span>}
@@ -730,10 +740,6 @@ export default function LabDetails({ params }: LabDetailsProps) {
                     {offer}
                   </span>
                 ))}
-              </div>
-              <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-muted-foreground">
-                <CalendarClock className="h-4 w-4 text-primary" />
-                Minimum stay expectation: <span className="font-medium text-foreground">{lab.minimumStay}</span>
               </div>
             </section>
           )}
@@ -902,7 +908,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
           )}
 
           {(partnerLogos.length > 0 &&
-            (tierLower === "premier" ||
+            (isPremier ||
               currentUserRole === "admin" ||
               (currentUserRole === "multi-lab" && lab.ownerUserId && lab.ownerUserId === user?.id))) && (
             <div className="mt-8 rounded-2xl border border-primary/40 bg-primary/5 p-4">
@@ -1169,18 +1175,20 @@ export default function LabDetails({ params }: LabDetailsProps) {
         )}
 
           <footer className="flex flex-wrap gap-3 mt-6">
-            <button
-              type="button"
-              onClick={() => {
-                setShowRequest(true);
-                setRequestError(null);
-                setRequestSuccess(null);
-              }}
-              className="inline-flex items-center justify-center rounded-full border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
-            >
-              Request lab time
-            </button>
-            {tierLower === "premier" && (
+            {canRequestLab && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRequest(true);
+                  setRequestError(null);
+                  setRequestSuccess(null);
+                }}
+                className="inline-flex items-center justify-center rounded-full border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+              >
+                Request lab time
+              </button>
+            )}
+            {isPremier && (
               <button
                 type="button"
                 onClick={() => {

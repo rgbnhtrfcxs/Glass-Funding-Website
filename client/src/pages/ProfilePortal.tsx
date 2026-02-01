@@ -29,6 +29,7 @@ export default function ProfilePortal() {
   const [city, setCity] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [country, setCountry] = useState("France");
+  const [resettingPassword, setResettingPassword] = useState(false);
 
   useEffect(() => {
     async function fetchProfile() {
@@ -141,6 +142,25 @@ export default function ProfilePortal() {
     }
   };
 
+  const handlePasswordReset = async () => {
+    if (!user?.email) {
+      setError("No email found for this account.");
+      return;
+    }
+    setResettingPassword(true);
+    setError(null);
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(user.email, {
+        redirectTo: `${window.location.origin}/account/edit`,
+      });
+      if (resetError) throw resetError;
+    } catch (err: any) {
+      setError(err.message || "Failed to send reset email.");
+    } finally {
+      setResettingPassword(false);
+    }
+  };
+
   async function handleAvatarChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !user) return;
@@ -194,6 +214,14 @@ export default function ProfilePortal() {
               Browse labs
             </a>
           </Link>
+          <button
+            type="button"
+            onClick={handlePasswordReset}
+            disabled={resettingPassword}
+            className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:text-primary hover:border-primary disabled:opacity-60"
+          >
+            {resettingPassword ? "Sending reset…" : "Reset password"}
+          </button>
         </div>
 
         <div className="mt-12 grid gap-8 lg:grid-cols-2">

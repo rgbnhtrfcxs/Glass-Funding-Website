@@ -28,7 +28,16 @@ const TEAM_SELECT = `
   team_equipment (item, is_priority),
   team_techniques (name, description),
   team_focus_areas (focus_area),
-  lab_team_links (lab_id, labs (id, name, city, country, logo_url, subscription_tier))
+  lab_team_links (
+    lab_id,
+    labs (
+      id,
+      name,
+      lab_status,
+      lab_location (city, country),
+      lab_profile (logo_url)
+    )
+  )
 `;
 
 const TEAM_SELECT_BY_LAB = `
@@ -48,7 +57,16 @@ const TEAM_SELECT_BY_LAB = `
   team_equipment (item, is_priority),
   team_techniques (name, description),
   team_focus_areas (focus_area),
-  lab_team_links!inner (lab_id, labs (id, name, city, country, logo_url, subscription_tier))
+  lab_team_links!inner (
+    lab_id,
+    labs (
+      id,
+      name,
+      lab_status,
+      lab_location (city, country),
+      lab_profile (logo_url)
+    )
+  )
 `;
 
 type TeamRow = {
@@ -81,10 +99,9 @@ type TeamRow = {
     labs: {
       id: number;
       name: string;
-      city: string | null;
-      country: string | null;
-      logo_url: string | null;
-      subscription_tier: string | null;
+      lab_status: string | null;
+      lab_location: Array<{ city: string | null; country: string | null }> | null;
+      lab_profile: Array<{ logo_url: string | null }> | null;
     } | null;
   }> | null;
 };
@@ -106,14 +123,19 @@ function mapTeamRow(row: TeamRow): Team {
   const labs: TeamLab[] = (row.lab_team_links ?? [])
     .map(link => link.labs)
     .filter((lab): lab is NonNullable<typeof lab> => Boolean(lab))
-    .map(lab => ({
-      id: Number(lab.id),
-      name: lab.name,
-      city: lab.city ?? null,
-      country: lab.country ?? null,
-      logoUrl: lab.logo_url ?? null,
-      subscriptionTier: lab.subscription_tier ?? null,
-    }));
+    .map(lab => {
+      const pickOne = (value: any) => (Array.isArray(value) ? value[0] : value) ?? null;
+      const location = pickOne(lab.lab_location);
+      const profile = pickOne(lab.lab_profile);
+      return {
+        id: Number(lab.id),
+        name: lab.name,
+        city: location?.city ?? null,
+        country: location?.country ?? null,
+        logoUrl: profile?.logo_url ?? null,
+        labStatus: lab.lab_status ?? null,
+      };
+    });
   const labIds = (row.lab_team_links ?? [])
     .map(link => Number(link.lab_id))
     .filter(id => Number.isFinite(id));

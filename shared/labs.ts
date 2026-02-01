@@ -41,8 +41,14 @@ export const teamMemberSchema = z.object({
 
 export const labCoreSchema = z.object({
   name: z.string().min(1, "Lab name is required"),
-  labManager: z.string().min(1, "Lab manager name is required"),
-  contactEmail: z.string().email("Valid contact email is required"),
+  labManager: z.preprocess(
+    value => (typeof value === "string" && value.trim() === "" ? null : value),
+    z.string().min(1, "Lab manager name is required").optional().nullable(),
+  ),
+  contactEmail: z.preprocess(
+    value => (typeof value === "string" && value.trim() === "" ? null : value),
+    z.string().email("Valid contact email is required").optional().nullable(),
+  ),
   ownerUserId: z.string().uuid().optional().nullable(),
   descriptionShort: z.string().max(350).optional().nullable(),
   descriptionLong: z.string().max(8000).optional().nullable(),
@@ -66,17 +72,24 @@ export const labCoreSchema = z.object({
   halStructureId: z.string().min(1).optional().nullable(),
   halPersonId: z.string().min(1).optional().nullable(),
   teamMembers: z.array(teamMemberSchema).default([]),
-  isVerified: z.boolean().default(false),
+  auditPassed: z.boolean().default(false),
+  auditPassedAt: z.string().optional().nullable(),
+  labStatus: z.enum([
+    "listed",
+    "confirmed",
+    "verified_passive",
+    "verified_active",
+    "premier",
+  ]).default("listed"),
   isVisible: z.boolean().default(true),
   equipment: z.array(z.string().min(1)).default([]),
   focusAreas: z.array(z.string().min(1)).default([]),
   offers: z.array(z.enum(offerOptions)).default([]),
-  pricePrivacy: z.boolean().default(false),
-  minimumStay: z.string().optional().default(""),
-  rating: z.number().min(0).max(5).default(0),
-  subscriptionTier: z.enum(["base", "verified", "premier"]).default("base"),
   photos: z.array(mediaAssetSchema).min(0),
   field: z.string().min(1).optional().nullable(),
+  public: z.boolean().optional().nullable(),
+  alternateNames: z.array(z.string().min(1)).default([]),
+  tags: z.array(z.string().min(1)).default([]),
 });
 
 export const labSchema = labCoreSchema.extend({

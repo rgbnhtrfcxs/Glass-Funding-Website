@@ -28,7 +28,7 @@ import LabDetails from "@/pages/LabDetails";
 import LabRequest from "@/pages/LabRequest";
 import LabCollaboration from "@/pages/LabCollaboration";
 import AdminLabs from "@/pages/AdminLabs";
-import Pricing from "@/pages/Pricing";
+import PricingArchived from "@/pages/PricingArchived";
 import LabProfile from "@/pages/LabProfile";
 import ProfilePortal from "@/pages/ProfilePortal";
 import Account from "@/pages/Account";
@@ -44,11 +44,7 @@ import ManageSelect from "@/pages/ManageSelect";
 import NewLab from "@/pages/NewLab";
 import Favorites from "@/pages/Favorites";
 import Subscriptions from "@/pages/Subscriptions";
-import DonationFlow from "@/pages/DonationFlow";
-import DonationConfirmation from "@/pages/DonationConfirmation";
-import PricingArchived from "@/pages/PricingArchived";
 import DonationDisabled from "@/pages/DonationDisabled";
-import Subscribe from "@/pages/Subscribe";
 import { LabsProvider } from "@/context/LabsContext";
 import { TeamsProvider } from "@/context/TeamsContext";
 import { AuthProvider } from "@/context/AuthContext";
@@ -127,9 +123,9 @@ function Router() {
       <ProtectedRoute path="/team/manage/:id" component={TeamEditor} />
       <Route path="/payments" component={PaymentFlow} />
       <Route path="/stripe" component={StripeCheckout} />
-      <Route path="/donate" component={DonationFlow} />
-      <Route path="/donate-confirmation" component={DonationConfirmation} />
-      <ProtectedRoute path="/subscribe" component={Subscribe} />
+      <Route path="/donate" component={DonationDisabled} />
+      <Route path="/donate-confirmation" component={DonationDisabled} />
+      <ProtectedRoute path="/subscribe" component={PricingArchived} />
       <Route path="/logout" component={Logout} />
 
       {/* Auth Pages */}
@@ -142,7 +138,7 @@ function Router() {
       {/* Base Pages */}
       <Route path="/" component={Home} />
       <Route path="/about" component={About} />
-      <Route path="/pricing" component={Pricing} />
+      <Route path="/pricing" component={PricingArchived} />
       <Route path="/contact" component={Contact} />
       <Route path="/one-pagers" component={OnePagers} />
       <Route path="/roadmap" component={Roadmap} />

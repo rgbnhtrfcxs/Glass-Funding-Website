@@ -8,7 +8,7 @@ import { MapPin, ShieldCheck, ShieldAlert, Plus } from "lucide-react";
 type LabSummary = {
   id: number;
   name: string;
-  subscription_tier?: string | null;
+  lab_status?: string | null;
   city?: string | null;
   country?: string | null;
   logo_url?: string | null;
@@ -24,7 +24,10 @@ export default function ManageSelect() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [profileTier, setProfileTier] = useState<string>("base");
+  const [profileCaps, setProfileCaps] = useState({
+    canCreateLab: false,
+    canManageMultipleLabs: false,
+  });
 
   useEffect(() => {
     (async () => {
@@ -44,11 +47,13 @@ export default function ManageSelect() {
 
         const { data: profileRow } = await supabase
           .from("profiles")
-          .select("subscription_tier")
+          .select("can_create_lab, can_manage_multiple_labs")
           .eq("user_id", user?.id)
           .maybeSingle();
-        const tier = (profileRow?.subscription_tier || "base").toLowerCase();
-        setProfileTier(tier);
+        setProfileCaps({
+          canCreateLab: Boolean((profileRow as any)?.can_create_lab),
+          canManageMultipleLabs: Boolean((profileRow as any)?.can_manage_multiple_labs),
+        });
       } catch (err: any) {
         setError(err.message || "Unable to load labs");
       } finally {
@@ -68,17 +73,17 @@ export default function ManageSelect() {
     });
   }, [labs, search]);
 
-  const canAddAnother = profileTier === "custom" || labs.length === 0;
+  const canAddAnother = profileCaps.canCreateLab && (profileCaps.canManageMultipleLabs || labs.length === 0);
 
   const badge = (lab: LabSummary) => {
-    const tierLower = (lab.subscription_tier || "").toLowerCase();
-    const isPremium = tierLower === "premier" || tierLower === "custom";
+    const status = (lab.lab_status || "listed").toLowerCase();
+    const isPremium = status === "premier";
     const hidden = lab.is_visible === false;
     return (
       <div className="flex flex-col items-end gap-1">
         {isPremium ? (
           <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">
-            {tierLower === "custom" ? "Custom" : "Premier"}
+            Premier
           </span>
         ) : null}
         {hidden ? (

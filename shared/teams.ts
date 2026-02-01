@@ -34,7 +34,13 @@ export const teamLabSchema = z.object({
   city: z.string().min(1).optional().nullable(),
   country: z.string().min(1).optional().nullable(),
   logoUrl: z.string().url().optional().nullable(),
-  subscriptionTier: z.string().optional().nullable(),
+  labStatus: z.enum([
+    "listed",
+    "confirmed",
+    "verified_passive",
+    "verified_active",
+    "premier",
+  ]).optional().nullable(),
 });
 
 export const teamCoreSchema = z.object({

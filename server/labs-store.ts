@@ -15,35 +15,20 @@ import { supabase } from "./supabaseClient";
 const LAB_SELECT = `
   id,
   name,
-  lab_manager,
-  contact_email,
   owner_user_id,
-  siret_number,
-  logo_url,
-  description_short,
-  description_long,
-  field,
-  offers_lab_space,
-  address_line1,
-  address_line2,
-  city,
-  state,
-  postal_code,
-  country,
-  website,
-  linkedin,
-  lab_partner_logos (name, url, website),
-  is_verified,
+  created_at,
   is_visible,
-  price_privacy,
-  minimum_stay,
-  rating,
-  subscription_tier,
+  lab_status,
+  audit_passed,
+  audit_passed_at,
+  lab_contacts (contact_email, website, linkedin, tags),
+  lab_location (address_line1, address_line2, city, state, postal_code, country),
+  lab_profile (lab_manager, siret_number, description_short, description_long, field, public, alternate_names, logo_url, hal_structure_id, hal_person_id),
+  lab_settings (offers_lab_space),
+  lab_partner_logos (name, url, website),
   lab_photos (name, url),
   lab_compliance_labels (label),
   lab_compliance_docs (name, url),
-  hal_structure_id,
-  hal_person_id,
   lab_team_members (name, title, linkedin, website, is_lead, team_name, role_rank),
   lab_equipment (item),
   lab_focus_areas (focus_area),
@@ -53,34 +38,43 @@ const LAB_SELECT = `
 type LabRow = {
   id: number;
   name: string;
-  lab_manager: string;
-  contact_email: string;
   owner_user_id: string | null;
-  siret_number: string | null;
-  logo_url: string | null;
-  description_short: string | null;
-  description_long: string | null;
-  offers_lab_space: boolean | string | null;
-  address_line1: string | null;
-  address_line2: string | null;
-  city: string | null;
-  state: string | null;
-  postal_code: string | null;
-  country: string | null;
-  website: string | null;
-  linkedin: string | null;
-  lab_partner_logos: Array<{ name: string; url: string; website: string | null }> | null;
-  is_verified: boolean | string | null;
+  created_at: string | null;
   is_visible: boolean | string | null;
-  price_privacy: boolean;
-  minimum_stay: string | null;
-  rating: number | string | null;
-  subscription_tier: string | null;
+  lab_status: string | null;
+  audit_passed: boolean | string | null;
+  audit_passed_at: string | null;
+  lab_contacts: Array<{
+    contact_email: string | null;
+    website: string | null;
+    linkedin: string | null;
+    tags: string[] | null;
+  }> | null;
+  lab_location: Array<{
+    address_line1: string | null;
+    address_line2: string | null;
+    city: string | null;
+    state: string | null;
+    postal_code: string | null;
+    country: string | null;
+  }> | null;
+  lab_profile: Array<{
+    lab_manager: string | null;
+    siret_number: string | null;
+    description_short: string | null;
+    description_long: string | null;
+    field: string | null;
+    public: boolean | string | null;
+    alternate_names: string[] | null;
+    logo_url: string | null;
+    hal_structure_id: string | null;
+    hal_person_id: string | null;
+  }> | null;
+  lab_settings: Array<{ offers_lab_space: boolean | string | null }> | null;
+  lab_partner_logos: Array<{ name: string; url: string; website: string | null }> | null;
   lab_photos: Array<{ name: string; url: string }> | null;
   lab_compliance_labels: Array<{ label: string }> | null;
   lab_compliance_docs: Array<{ name: string; url: string }> | null;
-  hal_structure_id: string | null;
-  hal_person_id: string | null;
   lab_team_members: Array<{
     name: string;
     title: string;
@@ -93,15 +87,6 @@ type LabRow = {
   lab_equipment: Array<{ item: string }> | null;
   lab_focus_areas: Array<{ focus_area: string }> | null;
   lab_offers: Array<{ offer: OfferOption }> | null;
-  field: string | null;
-};
-
-const normalizeTier = (tier?: string | null): LabPartner["subscriptionTier"] => {
-  const raw = (tier || "base").toLowerCase();
-  if (raw === "premier") return "premier";
-  if (raw === "verified") return "verified";
-  if (raw === "custom") return "verified";
-  return "base";
 };
 
 function parseBoolean(value: boolean | string | null | undefined, fallback = false): boolean {
@@ -111,20 +96,13 @@ function parseBoolean(value: boolean | string | null | undefined, fallback = fal
   return normalized === "true" || normalized === "t" || normalized === "1";
 }
 
-function parseRating(value: LabRow["rating"]): number {
-  if (typeof value === "number") return value;
-  if (typeof value === "string") {
-    const parsed = parseFloat(value);
-    return Number.isNaN(parsed) ? 0 : parsed;
-  }
-  return 0;
-}
-
-async function fetchProfileRole(userId?: string | null): Promise<string | null> {
-  if (!userId) return null;
-  const { data, error } = await supabase.from("profiles").select("role").eq("user_id", userId).maybeSingle();
-  if (error) return null;
-  return typeof data?.role === "string" ? data.role.toLowerCase() : null;
+function normalizeLabStatus(value?: string | null): LabPartner["labStatus"] {
+  const raw = (value || "listed").toLowerCase();
+  if (raw === "confirmed") return "confirmed";
+  if (raw === "verified_passive") return "verified_passive";
+  if (raw === "verified_active") return "verified_active";
+  if (raw === "premier") return "premier";
+  return "listed";
 }
 
 async function resolveOwnerUserId(contactEmail: string | null | undefined, explicit?: string | null): Promise<string | null> {
@@ -142,6 +120,12 @@ async function resolveOwnerUserId(contactEmail: string | null | undefined, expli
 }
 
 function mapLabRow(row: LabRow): LabPartner {
+  const pickOne = <T>(value: T[] | T | null | undefined) =>
+    (Array.isArray(value) ? value[0] : value) ?? null;
+  const contactRow = pickOne(row.lab_contacts);
+  const locationRow = pickOne(row.lab_location);
+  const profileRow = pickOne(row.lab_profile);
+  const settingsRow = pickOne(row.lab_settings);
   const photos = (row.lab_photos ?? []).filter(photo => (photo?.url || "").trim().length > 0).map(photo => ({
     name: photo.name,
     url: photo.url,
@@ -156,27 +140,27 @@ function mapLabRow(row: LabRow): LabPartner {
   const mapped = {
     id: Number(row.id),
     name: row.name,
-    labManager: row.lab_manager,
-    contactEmail: (row.contact_email ?? "").trim(),
+    labManager: (profileRow?.lab_manager ?? "").trim(),
+    contactEmail: (contactRow?.contact_email ?? "").trim(),
     ownerUserId: row.owner_user_id || null,
-    siretNumber: row.siret_number || null,
-    logoUrl: row.logo_url || null,
-    descriptionShort: row.description_short || null,
-    descriptionLong: row.description_long || null,
-    offersLabSpace: parseBoolean(row.offers_lab_space, false),
-    addressLine1: row.address_line1 || null,
-    addressLine2: row.address_line2 || null,
-    city: row.city || null,
-    state: row.state || null,
-    postalCode: row.postal_code || null,
-    country: row.country || null,
-    website: row.website || null,
-    linkedin: row.linkedin || null,
+    siretNumber: profileRow?.siret_number || null,
+    logoUrl: profileRow?.logo_url || null,
+    descriptionShort: profileRow?.description_short || null,
+    descriptionLong: profileRow?.description_long || null,
+    offersLabSpace: parseBoolean(settingsRow?.offers_lab_space, false),
+    addressLine1: locationRow?.address_line1 || null,
+    addressLine2: locationRow?.address_line2 || null,
+    city: locationRow?.city || null,
+    state: locationRow?.state || null,
+    postalCode: locationRow?.postal_code || null,
+    country: locationRow?.country || null,
+    website: contactRow?.website || null,
+    linkedin: contactRow?.linkedin || null,
     partnerLogos,
     compliance: (row.lab_compliance_labels ?? []).map(item => item.label),
     complianceDocs: (row.lab_compliance_docs ?? []).map(doc => ({ name: doc.name, url: doc.url })),
-    halStructureId: row.hal_structure_id || null,
-    halPersonId: row.hal_person_id || null,
+    halStructureId: profileRow?.hal_structure_id || null,
+    halPersonId: profileRow?.hal_person_id || null,
     teamMembers: (row.lab_team_members ?? [])
       .map(member => ({
         name: member.name,
@@ -199,16 +183,17 @@ function mapLabRow(row: LabRow): LabPartner {
         if (rankA !== rankB) return rankA - rankB;
         return a.name.localeCompare(b.name);
       }),
-    isVerified: parseBoolean(row.is_verified),
+    auditPassed: parseBoolean(row.audit_passed, false),
+    auditPassedAt: row.audit_passed_at || null,
+    labStatus: normalizeLabStatus(row.lab_status),
     isVisible: parseBoolean(row.is_visible, true),
     equipment: (row.lab_equipment ?? []).map(item => item.item),
     focusAreas: (row.lab_focus_areas ?? []).map(item => item.focus_area),
     offers: (row.lab_offers ?? []).map(item => item.offer),
-    pricePrivacy: Boolean(row.price_privacy),
-    minimumStay: row.minimum_stay ?? "",
-    rating: parseRating(row.rating),
-    subscriptionTier: normalizeTier(row.subscription_tier as string | null),
-    field: row.field || null,
+    field: profileRow?.field || null,
+    public: parseBoolean(profileRow?.public, false),
+    alternateNames: profileRow?.alternate_names ?? [],
+    tags: contactRow?.tags ?? [],
     photos,
   };
   return labSchema.parse(mapped);
@@ -316,6 +301,98 @@ async function replaceLabPartnerLogos(labId: number, logos: PartnerLogo[]) {
   if (ins.error) throw ins.error;
 }
 
+async function upsertLabContacts(labId: number, data: {
+  contactEmail: string | null;
+  website: string | null;
+  linkedin: string | null;
+  tags: string[];
+}) {
+  const { error } = await supabase
+    .from("lab_contacts")
+    .upsert(
+      {
+        lab_id: labId,
+        contact_email: data.contactEmail ?? null,
+        website: data.website ?? null,
+        linkedin: data.linkedin ?? null,
+        tags: data.tags ?? [],
+      },
+      { onConflict: "lab_id" },
+    );
+  if (error) throw error;
+}
+
+async function upsertLabLocation(labId: number, data: {
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  country: string | null;
+}) {
+  const { error } = await supabase
+    .from("lab_location")
+    .upsert(
+      {
+        lab_id: labId,
+        address_line1: data.addressLine1 ?? null,
+        address_line2: data.addressLine2 ?? null,
+        city: data.city ?? null,
+        state: data.state ?? null,
+        postal_code: data.postalCode ?? null,
+        country: data.country ?? null,
+      },
+      { onConflict: "lab_id" },
+    );
+  if (error) throw error;
+}
+
+async function upsertLabProfile(labId: number, data: {
+  labManager: string | null;
+  siretNumber: string | null;
+  descriptionShort: string | null;
+  descriptionLong: string | null;
+  field: string | null;
+  public: boolean | null;
+  alternateNames: string[];
+  logoUrl: string | null;
+  halStructureId: string | null;
+  halPersonId: string | null;
+}) {
+  const { error } = await supabase
+    .from("lab_profile")
+    .upsert(
+      {
+        lab_id: labId,
+        lab_manager: data.labManager ?? null,
+        siret_number: data.siretNumber ?? null,
+        description_short: data.descriptionShort ?? null,
+        description_long: data.descriptionLong ?? null,
+        field: data.field ?? null,
+        public: data.public ?? null,
+        alternate_names: data.alternateNames ?? [],
+        logo_url: data.logoUrl ?? null,
+        hal_structure_id: data.halStructureId ?? null,
+        hal_person_id: data.halPersonId ?? null,
+      },
+      { onConflict: "lab_id" },
+    );
+  if (error) throw error;
+}
+
+async function upsertLabSettings(labId: number, data: { offersLabSpace: boolean | null }) {
+  const { error } = await supabase
+    .from("lab_settings")
+    .upsert(
+      {
+        lab_id: labId,
+        offers_lab_space: data.offersLabSpace ?? null,
+      },
+      { onConflict: "lab_id" },
+    );
+  if (error) throw error;
+}
+
 async function writeLabRelations(labId: number, lab: InsertLab | LabPartner) {
   await replaceLabPhotos(labId, lab.photos);
   await replaceLabPartnerLogos(labId, (lab as any).partnerLogos ?? []);
@@ -373,39 +450,19 @@ export class LabStore {
   async create(payload: InsertLab): Promise<LabPartner> {
     const data = insertLabSchema.parse(payload);
     const ownerUserId = await resolveOwnerUserId(data.contactEmail, data.ownerUserId ?? null);
-    const ownerRole = await fetchProfileRole(ownerUserId);
-    const subscriptionTier = ownerRole === "multi-lab"
-      ? "verified"
-      : normalizeTier(data.subscriptionTier ?? "base");
+    const auditPassed = Boolean(data.auditPassed);
+    const auditPassedAt = auditPassed ? (data.auditPassedAt ?? new Date().toISOString()) : null;
+    const initialStatus = data.labStatus ?? "listed";
+    const labStatus = ownerUserId && initialStatus === "listed" ? "confirmed" : initialStatus;
     const { data: inserted, error } = await supabase
       .from("labs")
       .insert({
         name: data.name,
-        lab_manager: data.labManager,
-        contact_email: data.contactEmail,
         owner_user_id: ownerUserId,
-        siret_number: data.siretNumber ?? null,
-        logo_url: data.logoUrl ?? null,
-        description_short: data.descriptionShort ?? null,
-        description_long: data.descriptionLong ?? null,
-        offers_lab_space: data.offersLabSpace ?? true,
-        address_line1: data.addressLine1 ?? null,
-        address_line2: data.addressLine2 ?? null,
-        city: data.city ?? null,
-        state: data.state ?? null,
-        postal_code: data.postalCode ?? null,
-        country: data.country ?? null,
-        website: data.website ?? null,
-        linkedin: data.linkedin ?? null,
-        field: data.field ?? null,
-        hal_structure_id: data.halStructureId ?? null,
-        hal_person_id: data.halPersonId ?? null,
-        is_verified: data.isVerified,
+        lab_status: labStatus,
+        audit_passed: auditPassed,
+        audit_passed_at: auditPassedAt,
         is_visible: data.isVisible,
-        price_privacy: data.pricePrivacy,
-        minimum_stay: data.minimumStay ?? "",
-        rating: data.rating ?? 0,
-        subscription_tier: subscriptionTier,
       })
       .select("id")
       .single();
@@ -415,6 +472,33 @@ export class LabStore {
     }
 
     const labId = Number(inserted.id);
+    await upsertLabContacts(labId, {
+      contactEmail: data.contactEmail ?? null,
+      website: data.website ?? null,
+      linkedin: data.linkedin ?? null,
+      tags: data.tags ?? [],
+    });
+    await upsertLabLocation(labId, {
+      addressLine1: data.addressLine1 ?? null,
+      addressLine2: data.addressLine2 ?? null,
+      city: data.city ?? null,
+      state: data.state ?? null,
+      postalCode: data.postalCode ?? null,
+      country: data.country ?? null,
+    });
+    await upsertLabProfile(labId, {
+      labManager: data.labManager ?? null,
+      siretNumber: data.siretNumber ?? null,
+      descriptionShort: data.descriptionShort ?? null,
+      descriptionLong: data.descriptionLong ?? null,
+      field: data.field ?? null,
+      public: data.public ?? null,
+      alternateNames: data.alternateNames ?? [],
+      logoUrl: data.logoUrl ?? null,
+      halStructureId: data.halStructureId ?? null,
+      halPersonId: data.halPersonId ?? null,
+    });
+    await upsertLabSettings(labId, { offersLabSpace: data.offersLabSpace ?? true });
     await writeLabRelations(labId, data);
     const lab = await this.findById(labId);
     if (!lab) throw new Error("Lab not found after creation");
@@ -426,56 +510,88 @@ export class LabStore {
     if (!existing) throw new Error("Lab not found");
 
     const parsed = updateLabSchema.parse(updates);
-    const nextContactEmail = Object.prototype.hasOwnProperty.call(updates, "contactEmail")
-      ? parsed.contactEmail ?? existing.contactEmail
-      : existing.contactEmail;
-    const requestedOwner = Object.prototype.hasOwnProperty.call(updates, "ownerUserId")
-      ? parsed.ownerUserId ?? null
-      : existing.ownerUserId ?? null;
-    const ownerUserId = await resolveOwnerUserId(nextContactEmail, requestedOwner ?? existing.ownerUserId ?? null);
-    const ownerRole = await fetchProfileRole(ownerUserId);
-    const requestedTier = Object.prototype.hasOwnProperty.call(updates, "subscriptionTier")
-      ? (updates as any).subscriptionTier ?? existing.subscriptionTier
-      : existing.subscriptionTier;
-    const subscriptionTier = ownerRole === "admin"
-      ? normalizeTier(requestedTier)
-      : ownerRole === "multi-lab"
-        ? "verified"
-        : normalizeTier(requestedTier);
-    const baseUpdates: Record<string, unknown> = {};
+    const has = (key: keyof UpdateLab) => Object.prototype.hasOwnProperty.call(updates, key);
+    const nextContactEmail = has("contactEmail") ? parsed.contactEmail ?? null : existing.contactEmail ?? null;
+    const requestedOwner = has("ownerUserId") ? parsed.ownerUserId ?? null : existing.ownerUserId ?? null;
+    const ownerUserId = await resolveOwnerUserId(nextContactEmail, requestedOwner ?? null);
+    const auditPassed = has("auditPassed") ? Boolean(parsed.auditPassed) : existing.auditPassed;
+    let auditPassedAt = existing.auditPassedAt ?? null;
+    if (has("auditPassedAt")) {
+      auditPassedAt = parsed.auditPassedAt ?? null;
+    } else if (has("auditPassed")) {
+      auditPassedAt = auditPassed ? (existing.auditPassedAt ?? new Date().toISOString()) : null;
+    }
 
-    if (Object.prototype.hasOwnProperty.call(updates, "name")) baseUpdates.name = parsed.name;
-    if (Object.prototype.hasOwnProperty.call(updates, "labManager")) baseUpdates.lab_manager = parsed.labManager;
-    if (Object.prototype.hasOwnProperty.call(updates, "contactEmail")) baseUpdates.contact_email = parsed.contactEmail;
-    baseUpdates.owner_user_id = ownerUserId ?? null;
-    if (Object.prototype.hasOwnProperty.call(updates, "siretNumber")) baseUpdates.siret_number = parsed.siretNumber ?? null;
-    if (Object.prototype.hasOwnProperty.call(updates, "logoUrl")) baseUpdates.logo_url = parsed.logoUrl ?? null;
-    if (Object.prototype.hasOwnProperty.call(updates, "descriptionShort")) baseUpdates.description_short = parsed.descriptionShort ?? null;
-    if (Object.prototype.hasOwnProperty.call(updates, "descriptionLong")) baseUpdates.description_long = parsed.descriptionLong ?? null;
-    if (Object.prototype.hasOwnProperty.call(updates, "halStructureId")) baseUpdates.hal_structure_id = parsed.halStructureId ?? null;
-    if (Object.prototype.hasOwnProperty.call(updates, "halPersonId")) baseUpdates.hal_person_id = parsed.halPersonId ?? null;
-    if (Object.prototype.hasOwnProperty.call(updates, "offersLabSpace"))
-      baseUpdates.offers_lab_space = parsed.offersLabSpace ?? true;
-    if (Object.prototype.hasOwnProperty.call(updates, "addressLine1")) baseUpdates.address_line1 = parsed.addressLine1 ?? null;
-    if (Object.prototype.hasOwnProperty.call(updates, "addressLine2")) baseUpdates.address_line2 = parsed.addressLine2 ?? null;
-    if (Object.prototype.hasOwnProperty.call(updates, "city")) baseUpdates.city = parsed.city ?? null;
-    if (Object.prototype.hasOwnProperty.call(updates, "state")) baseUpdates.state = parsed.state ?? null;
-    if (Object.prototype.hasOwnProperty.call(updates, "postalCode")) baseUpdates.postal_code = parsed.postalCode ?? null;
-    if (Object.prototype.hasOwnProperty.call(updates, "country")) baseUpdates.country = parsed.country ?? null;
-    if (Object.prototype.hasOwnProperty.call(updates, "website")) baseUpdates.website = parsed.website ?? null;
-    if (Object.prototype.hasOwnProperty.call(updates, "linkedin")) baseUpdates.linkedin = parsed.linkedin ?? null;
-    if (Object.prototype.hasOwnProperty.call(updates, "field")) baseUpdates.field = parsed.field ?? null;
-    if (Object.prototype.hasOwnProperty.call(updates, "isVerified")) baseUpdates.is_verified = parsed.isVerified;
-    if (Object.prototype.hasOwnProperty.call(updates, "isVisible")) baseUpdates.is_visible = parsed.isVisible;
-    if (Object.prototype.hasOwnProperty.call(updates, "pricePrivacy")) baseUpdates.price_privacy = parsed.pricePrivacy;
-    if (Object.prototype.hasOwnProperty.call(updates, "minimumStay")) baseUpdates.minimum_stay = parsed.minimumStay ?? "";
-    if (Object.prototype.hasOwnProperty.call(updates, "rating")) baseUpdates.rating = parsed.rating ?? 0;
-    // Always sync tier from the profile so lab rows mirror profile subscription
-    baseUpdates.subscription_tier = subscriptionTier;
+    const baseUpdates: Record<string, unknown> = {};
+    if (has("name")) baseUpdates.name = parsed.name;
+    if (has("ownerUserId") || has("contactEmail")) baseUpdates.owner_user_id = ownerUserId ?? null;
+    if (has("labStatus")) baseUpdates.lab_status = parsed.labStatus ?? "listed";
+    if (has("isVisible")) baseUpdates.is_visible = parsed.isVisible;
+    if (has("auditPassed") || has("auditPassedAt")) {
+      baseUpdates.audit_passed = auditPassed;
+      baseUpdates.audit_passed_at = auditPassedAt;
+    }
 
     if (Object.keys(baseUpdates).length) {
       const upd = await supabase.from("labs").update(baseUpdates).eq("id", id).select("id").single();
       if (upd.error) throw upd.error;
+    }
+
+    if (has("contactEmail") || has("website") || has("linkedin") || has("tags")) {
+      await upsertLabContacts(id, {
+        contactEmail: has("contactEmail") ? parsed.contactEmail ?? null : existing.contactEmail ?? null,
+        website: has("website") ? parsed.website ?? null : existing.website ?? null,
+        linkedin: has("linkedin") ? parsed.linkedin ?? null : existing.linkedin ?? null,
+        tags: has("tags") ? parsed.tags ?? [] : existing.tags ?? [],
+      });
+    }
+
+    if (
+      has("addressLine1") ||
+      has("addressLine2") ||
+      has("city") ||
+      has("state") ||
+      has("postalCode") ||
+      has("country")
+    ) {
+      await upsertLabLocation(id, {
+        addressLine1: has("addressLine1") ? parsed.addressLine1 ?? null : existing.addressLine1 ?? null,
+        addressLine2: has("addressLine2") ? parsed.addressLine2 ?? null : existing.addressLine2 ?? null,
+        city: has("city") ? parsed.city ?? null : existing.city ?? null,
+        state: has("state") ? parsed.state ?? null : existing.state ?? null,
+        postalCode: has("postalCode") ? parsed.postalCode ?? null : existing.postalCode ?? null,
+        country: has("country") ? parsed.country ?? null : existing.country ?? null,
+      });
+    }
+
+    if (
+      has("labManager") ||
+      has("siretNumber") ||
+      has("descriptionShort") ||
+      has("descriptionLong") ||
+      has("field") ||
+      has("public") ||
+      has("alternateNames") ||
+      has("logoUrl") ||
+      has("halStructureId") ||
+      has("halPersonId")
+    ) {
+      await upsertLabProfile(id, {
+        labManager: has("labManager") ? parsed.labManager ?? null : existing.labManager ?? null,
+        siretNumber: has("siretNumber") ? parsed.siretNumber ?? null : existing.siretNumber ?? null,
+        descriptionShort: has("descriptionShort") ? parsed.descriptionShort ?? null : existing.descriptionShort ?? null,
+        descriptionLong: has("descriptionLong") ? parsed.descriptionLong ?? null : existing.descriptionLong ?? null,
+        field: has("field") ? parsed.field ?? null : existing.field ?? null,
+        public: has("public") ? parsed.public ?? null : existing.public ?? null,
+        alternateNames: has("alternateNames") ? parsed.alternateNames ?? [] : existing.alternateNames ?? [],
+        logoUrl: has("logoUrl") ? parsed.logoUrl ?? null : existing.logoUrl ?? null,
+        halStructureId: has("halStructureId") ? parsed.halStructureId ?? null : existing.halStructureId ?? null,
+        halPersonId: has("halPersonId") ? parsed.halPersonId ?? null : existing.halPersonId ?? null,
+      });
+    }
+
+    if (has("offersLabSpace")) {
+      await upsertLabSettings(id, { offersLabSpace: parsed.offersLabSpace ?? true });
     }
 
     if (Object.prototype.hasOwnProperty.call(updates, "photos")) await replaceLabPhotos(id, parsed.photos ?? []);

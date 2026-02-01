@@ -27,7 +27,7 @@ import {
 } from "@shared/labs";
 
 type VerificationOption = "yes" | "no";
-type PricePrivacyOption = "yes" | "no";
+type LabStatusOption = "listed" | "confirmed" | "verified_passive" | "verified_active" | "premier";
 
 interface LabFormState {
   name: string;
@@ -49,14 +49,12 @@ interface LabFormState {
   partnerLogos: PartnerLogo[];
   compliance: string;
   verification: VerificationOption;
-  pricePrivacy: PricePrivacyOption;
+  labStatus: LabStatusOption;
   equipment: string;
   focusAreas: string;
   halStructureId: string;
   halPersonId: string;
   offers: OfferOption[];
-  minimumStay: string;
-  rating: string;
   photoUrlInput: string;
   complianceDocUrlInput: string;
   isVisible: "yes" | "no";
@@ -82,14 +80,12 @@ const emptyForm: LabFormState = {
   partnerLogos: [],
   compliance: "",
   verification: "no",
-  pricePrivacy: "no",
+  labStatus: "listed",
   equipment: "",
   focusAreas: "",
   halStructureId: "",
   halPersonId: "",
   offers: [],
-  minimumStay: "",
-  rating: "",
   photoUrlInput: "",
   complianceDocUrlInput: "",
   isVisible: "yes",
@@ -115,15 +111,13 @@ function labToForm(lab: LabPartner): LabFormState {
     linkedin: lab.linkedin || "",
     partnerLogos: lab.partnerLogos || [],
     compliance: lab.compliance.join(", "),
-    verification: lab.isVerified ? "yes" : "no",
-    pricePrivacy: lab.pricePrivacy ? "yes" : "no",
+    verification: lab.auditPassed ? "yes" : "no",
+    labStatus: (lab.labStatus || "listed") as LabStatusOption,
     equipment: lab.equipment.join(", "),
     focusAreas: lab.focusAreas.join(", "),
     halStructureId: lab.halStructureId || "",
     halPersonId: lab.halPersonId || "",
     offers: [...lab.offers],
-    minimumStay: lab.minimumStay,
-    rating: lab.rating.toString(),
     photoUrlInput: "",
     complianceDocUrlInput: "",
     isVisible: lab.isVisible === false ? "no" : "yes",
@@ -169,11 +163,6 @@ function formToPayload(
   complianceDocs: MediaAsset[],
   partnerLogos: PartnerLogo[],
 ) {
-  const ratingValue = form.rating.trim() === "" ? 0 : Number(form.rating);
-  if (form.rating.trim() !== "" && (Number.isNaN(ratingValue) || ratingValue < 0 || ratingValue > 5)) {
-    throw new Error("Rating must be a number between 0 and 5");
-  }
-
   return {
     name: form.name.trim(),
     labManager: form.labManager.trim(),
@@ -193,13 +182,11 @@ function formToPayload(
     linkedin: form.linkedin.trim() || null,
     partnerLogos,
     compliance: parseList(form.compliance),
-    isVerified: form.verification === "yes",
+    auditPassed: form.verification === "yes",
+    labStatus: form.labStatus,
     equipment: parseList(form.equipment),
     focusAreas: parseList(form.focusAreas),
     offers: form.offers,
-    pricePrivacy: form.pricePrivacy === "yes",
-    minimumStay: form.minimumStay.trim(),
-    rating: form.rating.trim() === "" ? 0 : ratingValue,
     photos,
     complianceDocs,
     isVisible: form.isVisible === "yes",
@@ -588,7 +575,18 @@ export default function AdminLabs() {
                 No labs match that search.
               </div>
             ) : (
-              filteredLabs.map(lab => (
+              filteredLabs.map(lab => {
+                const status = (lab.labStatus || "listed").toLowerCase();
+                const isVerified = ["verified_passive", "verified_active", "premier"].includes(status);
+                const badgeLabel =
+                  status === "premier"
+                    ? "Premier"
+                    : isVerified
+                      ? "Verified"
+                      : status === "confirmed"
+                        ? "Confirmed"
+                        : "Listed";
+                return (
                 <div
                   key={lab.id}
                   className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm"
@@ -604,20 +602,22 @@ export default function AdminLabs() {
                     <div className="flex flex-wrap justify-end gap-2">
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
-                          lab.isVerified
+                          isVerified
                             ? "bg-emerald-50 text-emerald-700"
-                            : "bg-amber-50 text-amber-700"
+                            : status === "confirmed"
+                              ? "bg-amber-50 text-amber-700"
+                              : "bg-slate-100 text-slate-700"
                         }`}
                       >
-                        {lab.isVerified ? (
+                        {isVerified ? (
                           <>
                             <CheckCircle2 className="h-3.5 w-3.5" />
-                            Verified
+                            {badgeLabel}
                           </>
                         ) : (
                           <>
                             <ShieldAlert className="h-3.5 w-3.5" />
-                            Pending
+                            {badgeLabel}
                           </>
                         )}
                       </span>
@@ -661,14 +661,6 @@ export default function AdminLabs() {
                       <span>{lab.equipment.join(", ") || "—"}</span>
                     </div>
                     <div className="flex flex-col gap-1">
-                      <span className="font-medium text-foreground">Minimum stay</span>
-                      <span>{lab.minimumStay || "—"}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium text-foreground">Pricing</span>
-                      <span>{lab.pricePrivacy ? "Quotes required" : "Rates published"}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
                       <span className="font-medium text-foreground">Photos</span>
                       <span>{lab.photos.length ? `${lab.photos.length} supplied` : "—"}</span>
                     </div>
@@ -698,7 +690,8 @@ export default function AdminLabs() {
                     </button>
                   </div>
                 </div>
-              ))
+                );
+              })
             )}
           </motion.div>
 
@@ -1066,7 +1059,7 @@ export default function AdminLabs() {
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground" htmlFor="lab-verification">
-                    Verification status
+                    Audit status
                   </label>
                   <select
                     id="lab-verification"
@@ -1074,8 +1067,26 @@ export default function AdminLabs() {
                     onChange={event => handleChange("verification", event.target.value as VerificationOption)}
                     className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
-                    <option value="yes">Verified</option>
-                    <option value="no">Pending verification</option>
+                    <option value="yes">Audit passed</option>
+                    <option value="no">Audit pending</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground" htmlFor="lab-status">
+                    Lab status
+                  </label>
+                  <select
+                    id="lab-status"
+                    value={formState.labStatus}
+                    onChange={event => handleChange("labStatus", event.target.value as LabStatusOption)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <option value="listed">Listed (unverified)</option>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="verified_passive">Verified — passive</option>
+                    <option value="verified_active">Verified — active</option>
+                    <option value="premier">Premier</option>
                   </select>
                 </div>
 
@@ -1091,21 +1102,6 @@ export default function AdminLabs() {
                   >
                     <option value="yes">Visible in directory</option>
                     <option value="no">Hidden (admin only)</option>
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-pricePrivacy">
-                    Price privacy
-                  </label>
-                  <select
-                    id="lab-pricePrivacy"
-                    value={formState.pricePrivacy}
-                    onChange={event => handleChange("pricePrivacy", event.target.value as PricePrivacyOption)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    <option value="no">Rates published</option>
-                    <option value="yes">Quotes required</option>
                   </select>
                 </div>
 
@@ -1221,20 +1217,6 @@ export default function AdminLabs() {
                   <p className="text-xs text-muted-foreground">
                     List flagship instrumentation available to teams.
                   </p>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-minimumStay">
-                    Minimum stay / commitment
-                  </label>
-                  <input
-                    id="lab-minimumStay"
-                    type="text"
-                    value={formState.minimumStay}
-                    onChange={event => handleChange("minimumStay", event.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    placeholder="20 lab hours per month"
-                  />
                 </div>
 
                 <div className="space-y-2">

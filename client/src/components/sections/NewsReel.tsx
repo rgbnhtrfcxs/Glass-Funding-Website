@@ -8,7 +8,7 @@ type NewsItem = {
   category?: string | null;
   images?: Array<{ url: string; name?: string }>;
   created_at?: string;
-  labs?: { name?: string | null; subscription_tier?: string | null };
+  labs?: { name?: string | null; lab_status?: string | null };
 };
 
 interface NewsReelProps {

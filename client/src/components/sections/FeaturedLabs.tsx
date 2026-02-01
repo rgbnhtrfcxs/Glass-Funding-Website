@@ -8,8 +8,8 @@ type LabItem = {
   name: string;
   city?: string | null;
   country?: string | null;
-  subscriptionTier?: string | null;
-  subscription_tier?: string | null;
+  labStatus?: string | null;
+  lab_status?: string | null;
   isVisible?: boolean | null;
   logoUrl?: string | null;
   photos?: LabAsset[];
@@ -54,8 +54,8 @@ export function FeaturedLabs({ title = "Featured labs", description, className =
 
   const featured = useMemo(() => {
     return labs.filter(l => {
-      const tier = (l.subscriptionTier ?? l.subscription_tier ?? "base")?.toLowerCase?.() || "base";
-      return (tier === "premier" || tier === "custom") && l.isVisible !== false;
+      const status = (l.labStatus ?? l.lab_status ?? "listed")?.toLowerCase?.() || "listed";
+      return status === "premier" && l.isVisible !== false;
     });
   }, [labs]);
 
@@ -87,7 +87,7 @@ export function FeaturedLabs({ title = "Featured labs", description, className =
               </div>
             )}
             {featured.map(lab => {
-              const tier = (lab.subscriptionTier ?? lab.subscription_tier ?? "base")?.toLowerCase?.() || "base";
+              const status = (lab.labStatus ?? lab.lab_status ?? "listed")?.toLowerCase?.() || "listed";
               const image = lab.logoUrl || lab.photos?.[0]?.url;
               return (
                 <div
@@ -95,7 +95,7 @@ export function FeaturedLabs({ title = "Featured labs", description, className =
                   className="min-w-[260px] max-w-[280px] rounded-2xl border border-border bg-background/70 p-4 flex flex-col gap-3"
                 >
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary capitalize">{tier}</span>
+                    <span className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary capitalize">{status.replace("_", " ")}</span>
                     <span className="text-[11px] text-muted-foreground flex items-center gap-1">
                       <Sparkles className="h-3 w-3" />
                       Featured

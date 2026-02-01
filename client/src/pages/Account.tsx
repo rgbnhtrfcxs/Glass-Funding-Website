@@ -12,9 +12,14 @@ type Profile = {
   email: string | null;
   display_name: string | null;
   name: string | null;
-  role: string | null;
-  subscription_status: string | null;
-  subscription_tier?: string | null;
+  is_admin?: boolean | null;
+  can_create_lab?: boolean | null;
+  can_manage_multiple_labs?: boolean | null;
+  can_manage_teams?: boolean | null;
+  can_manage_multiple_teams?: boolean | null;
+  can_post_news?: boolean | null;
+  can_broker_requests?: boolean | null;
+  can_receive_investor?: boolean | null;
   avatar_url?: string | null;
   created_at?: string;
   updated_at?: string;
@@ -52,7 +57,7 @@ export default function Account() {
     Array<{
       id: number;
       name: string;
-      subscriptionTier?: string | null;
+      labStatus?: string | null;
       isVisible?: boolean | null;
       views7d: number;
       views30d: number;
@@ -84,11 +89,14 @@ export default function Account() {
       status?: string | null;
       images?: Array<{ url: string; name?: string }>;
       created_at?: string;
-      labs?: { name?: string | null; subscription_tier?: string | null };
+      labs?: { name?: string | null; lab_status?: string | null };
     }>
   >([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsFeedError, setNewsFeedError] = useState<string | null>(null);
+
+  const toBool = (value: unknown) =>
+    value === true || value === "true" || value === 1 || value === "1";
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [verifyLabId, setVerifyLabId] = useState<number | null>(null);
   const [verifySubmitting, setVerifySubmitting] = useState(false);
@@ -142,7 +150,23 @@ export default function Account() {
       const { data, error } = await supabase
         .from("profiles")
         .select(
-          "user_id,email,display_name,name,role,subscription_status,subscription_tier,avatar_url,created_at,updated_at",
+          [
+            "user_id",
+            "email",
+            "display_name",
+            "name",
+            "is_admin",
+            "can_create_lab",
+            "can_manage_multiple_labs",
+            "can_manage_teams",
+            "can_manage_multiple_teams",
+            "can_post_news",
+            "can_broker_requests",
+            "can_receive_investor",
+            "avatar_url",
+            "created_at",
+            "updated_at",
+          ].join(","),
         )
         .eq("user_id", user.id)
         .maybeSingle();
@@ -213,13 +237,10 @@ export default function Account() {
     if (!authLoading) loadLabsAndFavorites();
   }, [authLoading, user?.id]);
 
-  const tierLabel = (() => {
-    const tier = profile?.subscription_tier?.toLowerCase?.() ?? "base";
-    if (tier === "premier") return "Premier";
-    if (tier === "verified") return "Verified";
-    if (tier === "custom") return "Custom";
-    return "Base";
-  })();
+  const labStatusValue = (lab: { labStatus?: string | null; lab_status?: string | null }) =>
+    (lab.labStatus || lab.lab_status || "listed").toLowerCase();
+  const isPremierLab = (lab: { labStatus?: string | null }) =>
+    labStatusValue(lab) === "premier";
 
   const sendPasswordReset = async () => {
     const email = profile?.email || user?.email;
@@ -252,7 +273,7 @@ export default function Account() {
 
   const labsVisibleCount = labStats.filter(l => l.isVisible !== false).length;
   const labsHiddenCount = labStats.filter(l => l.isVisible === false).length;
-  const premiumLabs = labStats.filter(l => (l.subscriptionTier || "").toLowerCase() === "premier");
+  const premiumLabs = labStats.filter(isPremierLab);
   const totalViews7d = labStats.reduce((sum, lab) => sum + (lab.views7d || 0), 0);
   const totalViews30d = labStats.reduce((sum, lab) => sum + (lab.views30d || 0), 0);
   const totalFavorites = labStats.reduce((sum, lab) => sum + (lab.favorites || 0), 0);
@@ -265,20 +286,21 @@ export default function Account() {
     labStats.length ? labStats[0] : null,
   );
   const favoriteLabs = favoriteIds.length ? allLabs.filter(l => favoriteIds.includes(l.id)) : [];
-  const canSeeDashboard = profile && (profile.role === "admin" || profile.role === "multi-lab" || premiumLabs.length > 0);
-  const canPostNews = canSeeDashboard;
+  const hasPremierLab = premiumLabs.length > 0;
+  const canSeeDashboard = toBool(profile?.can_create_lab);
+  const canPostNews = canSeeDashboard && hasPremierLab;
   const isLabVerified = (labId: number) => {
     const fromStats = labStats.find(l => l.id === labId);
-    if (fromStats && (fromStats as any).isVerified !== undefined) {
-      const val = (fromStats as any).isVerified;
-      return val === true || val === "true" || val === 1 || val === "1";
+    const statusFromStats = (fromStats as any)?.labStatus;
+    if (statusFromStats) {
+      return ["verified_passive", "verified_active", "premier"].includes(statusFromStats);
     }
-    const fromAll = allLabs.find(l => l.id === labId);
-    const val = (fromAll as any)?.isVerified ?? (fromAll as any)?.is_verified;
-    return val === true || val === "true" || val === 1 || val === "1";
+    const fromAll = allLabs.find(l => l.id === labId) as any;
+    const statusFromAll = fromAll?.labStatus ?? fromAll?.lab_status;
+    return ["verified_passive", "verified_active", "premier"].includes(statusFromAll);
   };
   const premierLabs = useMemo(
-    () => labStats.filter(l => (l.subscriptionTier || "").toLowerCase() === "premier"),
+    () => labStats.filter(isPremierLab),
     [labStats],
   );
   const ownedLabs = useMemo(() => {
@@ -287,8 +309,7 @@ export default function Account() {
     );
   }, [allLabs, labStats, user?.id]);
   const ownedUnverifiedLabs = useMemo(() => ownedLabs.filter(l => !isLabVerified(l.id)), [ownedLabs]);
-  const canManageLabs =
-    profile && (profile.role === "lab" || profile.role === "admin" || profile.role === "multi-lab");
+  const canManageLabs = toBool(profile?.can_create_lab);
   const emptyTeamForm: TeamMemberForm = {
     name: "",
     title: "",
@@ -307,10 +328,10 @@ export default function Account() {
   };
 
   useEffect(() => {
-    if (premierLabs.length && !newsLabId) {
-      setNewsLabId(premierLabs[0].id);
-    }
-  }, [premierLabs, newsLabId]);
+    if (newsLabId) return;
+    const fallbackId = ownedLabs[0]?.id ?? labStats[0]?.id ?? null;
+    if (fallbackId) setNewsLabId(fallbackId);
+  }, [ownedLabs, labStats, newsLabId]);
 
   useEffect(() => {
     if (!ownedLabs.length) {
@@ -668,9 +689,6 @@ export default function Account() {
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-2xl md:text-3xl font-semibold text-foreground">{displayLabel}</h1>
-                <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                  {tierLabel}
-                </span>
               </div>
               <p className="text-xs md:text-sm text-muted-foreground">Your Glass profile overview.</p>
             </div>
@@ -682,15 +700,7 @@ export default function Account() {
             >
               Edit account
             </Link>
-            <button
-              type="button"
-              onClick={sendPasswordReset}
-              disabled={resettingPassword}
-              className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:text-primary hover:border-primary disabled:opacity-60"
-            >
-              {resettingPassword ? "Sending reset…" : "Reset password"}
-            </button>
-            {profile && profile.role !== "user" && (
+            {profile && toBool(profile.can_broker_requests) && (
               <Link
                 href="/requests"
                 className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:text-primary hover:border-primary"
@@ -698,7 +708,7 @@ export default function Account() {
                 Requests
               </Link>
             )}
-            {profile && (profile.role === "lab" || profile.role === "admin" || profile.role === "multi-lab") && (
+            {profile && toBool(profile.can_create_lab) && (
               <Link
                 href="/lab/manage"
                 className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
@@ -706,7 +716,7 @@ export default function Account() {
                 Manage lab
               </Link>
             )}
-            {profile && profile.role !== "user" && (
+            {profile && toBool(profile.can_manage_teams) && (
               <Link
                 href="/team/manage"
                 className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
@@ -714,7 +724,7 @@ export default function Account() {
                 Manage teams
               </Link>
             )}
-            {profile && profile.role === "admin" && (
+            {profile && toBool(profile.is_admin) && (
               <Link
                 href="/admin/labs"
                 className="inline-flex items-center justify-center rounded-full border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10"
@@ -742,13 +752,7 @@ export default function Account() {
               <span className="mr-2 flex h-7 w-7 items-center justify-center rounded-full border border-border text-muted-foreground">♥</span>
               Favorites ({favoriteLabs.length})
             </Link>
-            <Link
-              href="/subscriptions"
-              className="inline-flex items-center justify-center rounded-full border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary"
-            >
-              Change plan
-            </Link>
-            {profile && (profile.role === "lab" || profile.role === "multi-lab" || profile.role === "admin") && (
+            {profile && (toBool(profile.can_create_lab) || toBool(profile.can_manage_teams)) && (
               <button
                 type="button"
                 onClick={() => {
@@ -1171,7 +1175,6 @@ export default function Account() {
                     {showDashboard && (
                       <>
                         <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                          <CardStat label="Tier" value={tierLabel} hint={profile?.subscription_status || ""} />
                           <CardStat label="Labs linked" value={labStats.length.toString()} hint={labsHiddenCount ? `${labsHiddenCount} hidden` : ""} />
                           <CardStat label="Views (7d total)" value={totalViews7d.toString()} />
                           <CardStat label="Views (30d total)" value={totalViews30d.toString()} />
@@ -1193,7 +1196,7 @@ export default function Account() {
                                 subtitle="Most views (30d)"
                                 primary={`${bestViewLab.views30d} views`}
                                 secondary={bestViewLab.name}
-                                badge={(bestViewLab.subscriptionTier || "").toLowerCase() === "premier" ? "Premium" : undefined}
+                                badge={isPremierLab(bestViewLab) ? "Premium" : undefined}
                               />
                             )}
                             {bestFavoriteLab && (
@@ -1202,7 +1205,7 @@ export default function Account() {
                                 subtitle="Total favorites"
                                 primary={`${bestFavoriteLab.favorites} favorites`}
                                 secondary={bestFavoriteLab.name}
-                                badge={(bestFavoriteLab.subscriptionTier || "").toLowerCase() === "premier" ? "Premium" : undefined}
+                                badge={isPremierLab(bestFavoriteLab) ? "Premium" : undefined}
                               />
                             )}
                           </div>
@@ -1213,8 +1216,8 @@ export default function Account() {
                             <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Linked labs</p>
                             <div className="mt-3 grid gap-3 md:grid-cols-2">
                               {labStats.map(lab => {
-                                const tier = (lab.subscriptionTier || "").toLowerCase();
-                                const premium = tier === "premier" || tier === "custom";
+                                const status = labStatusValue(lab);
+                                const premium = status === "premier";
                                 return (
                                   <div
                                     key={lab.id}
@@ -1224,7 +1227,7 @@ export default function Account() {
                                       <div>
                                         <p className="font-semibold text-foreground">{lab.name}</p>
                                         <p className="text-xs text-muted-foreground">
-                                          {premium ? "Premier/Custom" : tier ? tier : "Base"} • {lab.isVisible === false ? "Hidden" : "Visible"}
+                                          {premium ? "Premier" : status} • {lab.isVisible === false ? "Hidden" : "Visible"}
                                         </p>
                                       </div>
                                       <Link href={`/lab/manage/${lab.id}`} className="text-xs font-medium text-primary hover:underline">
@@ -1271,7 +1274,7 @@ export default function Account() {
               ) : (
                 ownedLabs.map(lab => {
                   const location = [lab.city, lab.country].filter(Boolean).join(", ");
-                  const tier = (lab.subscriptionTier || "").toLowerCase();
+                  const status = labStatusValue(lab);
                   const verified = isLabVerified(lab.id);
                   return (
                     <div key={lab.id} className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm space-y-4">
@@ -1285,8 +1288,8 @@ export default function Account() {
                           )}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                            {tier ? tier : "base"}
+                          <span className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground capitalize">
+                            {status.replace("_", " ")}
                           </span>
                           {verified && (
                             <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">

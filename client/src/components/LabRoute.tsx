@@ -17,7 +17,7 @@ export default function LabRoute({ path, component: Component }: { path: string;
       }
       const { data, error } = await supabase
         .from("profiles")
-        .select("role")
+        .select("can_create_lab")
         .eq("user_id", user.id)
         .maybeSingle();
       if (!mounted) return;
@@ -25,8 +25,7 @@ export default function LabRoute({ path, component: Component }: { path: string;
         setAllowed(false);
         return;
       }
-      const role = (data?.role as string) || "user";
-      setAllowed(role === "lab" || role === "admin" || role === "multi-lab");
+      setAllowed(Boolean((data as any)?.can_create_lab));
     }
     if (!loading) check();
     return () => {

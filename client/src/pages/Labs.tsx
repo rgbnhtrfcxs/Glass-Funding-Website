@@ -22,10 +22,13 @@ export default function Labs() {
   const [verifiedOnly, setVerifiedOnly] = useState(true);
   const [favoritesError, setFavoritesError] = useState<string | null>(null);
   const [favoritesLoading, setFavoritesLoading] = useState(false);
+  const statusValue = (lab: any) => ((lab?.labStatus ?? "listed") as string).toLowerCase();
+  const isVerifiedStatus = (status?: string | null) =>
+    ["verified_passive", "verified_active", "premier"].includes((status || "").toLowerCase());
 
   const visibleLabs = useMemo(() => labs.filter(lab => lab.isVisible !== false), [labs]);
   const labCount = visibleLabs.length;
-  const verifiedCount = visibleLabs.filter(lab => lab.isVerified).length;
+  const verifiedCount = visibleLabs.filter(lab => isVerifiedStatus(lab.labStatus)).length;
   const formatLocation = (lab: { city?: string | null; country?: string | null }) =>
     [lab.city, lab.country].filter(Boolean).join(", ");
   const uniqueEquipmentCount = useMemo(() => {
@@ -103,12 +106,18 @@ export default function Labs() {
     }
   };
 
-  const tierValue = (lab: any) => ((lab?.subscriptionTier ?? lab?.subscription_tier ?? "base") as string).toLowerCase();
   const filteredLabs = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     let subset = term
       ? visibleLabs.filter(lab => {
-          const haystack = [lab.name, formatLocation(lab), lab.equipment.join(" "), lab.focusAreas.join(" ")]
+          const haystack = [
+            lab.name,
+            ...(lab.alternateNames ?? []),
+            formatLocation(lab),
+            lab.equipment.join(" "),
+            lab.focusAreas.join(" "),
+            (lab.tags ?? []).join(" "),
+          ]
             .filter(Boolean)
             .join(" ")
             .toLowerCase();
@@ -117,18 +126,15 @@ export default function Labs() {
       : visibleLabs;
     if (verifiedOnly) {
       subset = subset.filter(lab => {
-        const isVerified = lab.isVerified === true || lab.isVerified === "true" || lab.isVerified === 1;
-        const tier = tierValue(lab);
-        const isPending = !isVerified && tier !== "base";
-        return isVerified || isPending;
+        return isVerifiedStatus(statusValue(lab));
       });
     }
     if (favoritesOnly) {
       subset = subset.filter(lab => favorites.has(lab.id));
     }
     return [...subset].sort((a, b) => {
-      const aPremium = tierValue(a) === "premier";
-      const bPremium = tierValue(b) === "premier";
+      const aPremium = statusValue(a) === "premier";
+      const bPremium = statusValue(b) === "premier";
       if (aPremium === bPremium) return 0;
       return aPremium ? -1 : 1;
     });
@@ -263,18 +269,17 @@ export default function Labs() {
           ) : (
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
               {filteredLabs.map((lab, index) => {
-                const tier = (lab as any).subscriptionTier ?? (lab as any).subscription_tier ?? "base";
-                const tierLower = (tier as string).toLowerCase();
-                const isPremier = ["premier", "custom"].includes(tierLower);
-                const status = lab.isVerified ? "verified" : tierLower === "base" ? "unverified" : "pending";
+                const status = statusValue(lab);
+                const isPremier = status === "premier";
+                const isVerified = isVerifiedStatus(status);
                 const offersLabSpace = ["true", "1", true, 1].includes(lab.offersLabSpace as any);
                 const badgeClass =
-                  status === "verified"
+                  isVerified
                     ? "bg-emerald-50 text-emerald-700"
-                    : status === "pending"
+                    : status === "confirmed"
                       ? "bg-amber-50 text-amber-700"
                       : "bg-slate-100 text-slate-700";
-                const badgeLabel = status === "verified" ? "Verified" : status === "pending" ? "Verification pending" : "Unverified";
+                const badgeLabel = isVerified ? "Verified" : status === "confirmed" ? "Confirmed" : "Listed";
                 return (
                   <motion.div
                     key={lab.id}
@@ -296,7 +301,7 @@ export default function Labs() {
                         <span
                           className={`absolute right-3 top-3 inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${badgeClass}`}
                         >
-                          {status === "verified" ? (
+                          {isVerified ? (
                             <>
                               <CheckCircle2 className="h-3.5 w-3.5" />
                               {badgeLabel}
@@ -308,7 +313,7 @@ export default function Labs() {
                             </>
                           )}
                         </span>
-                        {(lab.logoUrl || ["premier", "custom"].includes(tierLower)) && (
+                        {lab.logoUrl && (
                           <div className="absolute bottom-3 left-3 h-12 w-12 overflow-hidden rounded-full bg-white text-[11px] text-muted-foreground flex items-center justify-center ring-1 ring-white/80 shadow-sm">
                             {lab.logoUrl ? (
                               <img src={lab.logoUrl} alt={`${lab.name} logo`} className="h-full w-full object-cover" />
