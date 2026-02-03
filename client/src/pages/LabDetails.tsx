@@ -18,6 +18,7 @@ import {
 import { Link } from "wouter";
 import { useLabs } from "@/context/LabsContext";
 import { useAuth } from "@/context/AuthContext";
+import { useConsent } from "@/context/ConsentContext";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { nanoid } from "nanoid";
@@ -32,6 +33,7 @@ interface LabDetailsProps {
 export default function LabDetails({ params }: LabDetailsProps) {
   const { labs, isLoading } = useLabs();
   const { user } = useAuth();
+  const { hasAnalyticsConsent } = useConsent();
   const lab = labs.find(item => item.id === Number(params.id));
   const labId = lab?.id;
   const [canCollaborate, setCanCollaborate] = useState(false);
@@ -73,6 +75,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [showTeamsModal, setShowTeamsModal] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<{ url: string; alt: string } | null>(null);
+  const [showClaimInfo, setShowClaimInfo] = useState(false);
   const [halItems, setHalItems] = useState<
     Array<{ title: string; url: string; year?: number | null; doi?: string | null }>
   >([]);
@@ -260,7 +263,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   }, [showHalModal, halModalType, labId]);
 
   useEffect(() => {
-    if (viewRecorded || !labId) return;
+    if (!hasAnalyticsConsent || viewRecorded || !labId) return;
     const sessionKey = "glass-view-session";
     let sessionId = localStorage.getItem(sessionKey);
     if (!sessionId) {
@@ -296,7 +299,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
         // ignore
       }
     })();
-  }, [labId, viewRecorded]);
+  }, [labId, viewRecorded, hasAnalyticsConsent]);
 
   if (isLoading && !lab) {
     return (
@@ -360,7 +363,10 @@ export default function LabDetails({ params }: LabDetailsProps) {
         ? "Verified"
         : status === "confirmed"
           ? "Confirmed"
-          : "Listed";
+          : "Added by GLASS";
+  const listedDisclaimer = "Profile details compiled by GLASS from publicly available sources.";
+  const claimEmail = "contact@glass-funding.com";
+  const isListedOnly = status === "listed";
   const partnerLogos = lab.partnerLogos ?? [];
   const website = lab.website || null;
   const linkedin = lab.linkedin || null;
@@ -563,7 +569,10 @@ export default function LabDetails({ params }: LabDetailsProps) {
                   lab.country,
                 ].filter(Boolean).join(", ") || "Location not set"}
               </span>
-              <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${badgeClass}`}>
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${badgeClass}`}
+                title={isListedOnly ? listedDisclaimer : undefined}
+              >
                 {status === "verified" ? (
                   <>
                     <CheckCircle2 className="h-3.5 w-3.5" />
@@ -582,33 +591,44 @@ export default function LabDetails({ params }: LabDetailsProps) {
                   Offers lab space
                 </span>
               )}
-              <button
-                type="button"
-                onClick={toggleFavorite}
-                disabled={favoriteLoading}
-                className={`ml-auto inline-flex h-8 w-8 items-center justify-center rounded-full border transition disabled:opacity-60 disabled:cursor-not-allowed ${
-                  isFavorite ? "border-red-500 bg-red-50 text-red-500" : "border-border text-muted-foreground hover:border-primary hover:text-primary"
-                }`}
-                aria-label={isFavorite ? "Unfavorite lab" : "Favorite lab"}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill={isFavorite ? "currentColor" : "none"}
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="h-4 w-4"
+              <div className="ml-auto flex items-center gap-2">
+                {isListedOnly && (
+                  <button
+                    type="button"
+                    onClick={() => setShowClaimInfo(prev => !prev)}
+                    className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-1.5 text-xs font-medium text-foreground transition hover:border-primary hover:text-primary"
+                  >
+                    Claim this lab
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={toggleFavorite}
+                  disabled={favoriteLoading}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition disabled:opacity-60 disabled:cursor-not-allowed ${
+                    isFavorite ? "border-red-500 bg-red-50 text-red-500" : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+                  }`}
+                  aria-label={isFavorite ? "Unfavorite lab" : "Favorite lab"}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M12 21s-6.5-4.35-9-8.5C1 7.5 3.5 4 7 4c1.9 0 3.2 1.2 4 2.4C11.8 5.2 13.1 4 15 4c3.5 0 6 3.5 4 8.5-2.5 4.15-9 8.5-9 8.5Z"
-                  />
-                </svg>
-              </button>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill={isFavorite ? "currentColor" : "none"}
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    className="h-4 w-4"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 21s-6.5-4.35-9-8.5C1 7.5 3.5 4 7 4c1.9 0 3.2 1.2 4 2.4C11.8 5.2 13.1 4 15 4c3.5 0 6 3.5 4 8.5-2.5 4.15-9 8.5-9 8.5Z"
+                    />
+                  </svg>
+                </button>
+              </div>
             </div>
             <div className="flex items-center gap-3">
-        {(logoUrl || isPremier) && (
+              {(logoUrl || isPremier) && (
                 <div className="h-12 w-12 overflow-hidden rounded-full border border-dashed border-border bg-muted/30 text-[11px] text-muted-foreground flex items-center justify-center flex-shrink-0">
                   {logoUrl ? (
                     <img src={logoUrl} alt={`${lab.name} logo`} className="h-full w-full object-cover" />
@@ -625,6 +645,15 @@ export default function LabDetails({ params }: LabDetailsProps) {
               <p className="text-muted-foreground text-base leading-relaxed">
                 Review compliance, offers, and baseline expectations before requesting space.
               </p>
+            )}
+            {isListedOnly && showClaimInfo && (
+              <div className="rounded-2xl border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                To claim this lab, email{" "}
+                <a className="text-primary underline" href={`mailto:${claimEmail}`}>
+                  {claimEmail}
+                </a>{" "}
+                and tell us you&rsquo;d like to claim the listing.
+              </div>
             )}
             {favoriteError && <span className="text-xs text-destructive">{favoriteError}</span>}
           </header>
@@ -1596,6 +1625,11 @@ export default function LabDetails({ params }: LabDetailsProps) {
                 </div>
               </div>
             </div>
+          )}
+          {isListedOnly && (
+            <p className="mt-10 text-xs text-muted-foreground">
+              {listedDisclaimer}
+            </p>
           )}
         </motion.div>
       </div>

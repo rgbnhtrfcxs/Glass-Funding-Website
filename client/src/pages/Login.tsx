@@ -2,23 +2,47 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLocation, Link } from "wouter";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Login() {
   const { user, loading: authLoading } = useAuth();
+  const { toast } = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const [loading, setLoading] = useState(false);
   // Destination after successful login: honor ?next=... or default to /account
-  const next = useMemo(() => {
+  const { next, confirmed } = useMemo(() => {
     try {
       const params = new URLSearchParams(window.location.search);
-      return params.get("next") || "/account";
+      return {
+        next: params.get("next") || "/account",
+        confirmed: params.get("confirmed") === "1" || params.get("confirmed") === "true",
+      };
     } catch {
-      return "/account";
+      return { next: "/account", confirmed: false };
     }
   }, []);
+
+  useEffect(() => {
+    if (!confirmed) return;
+    toast({
+      title: "Email confirmed",
+      description: "You can sign in now.",
+    });
+    try {
+      const params = new URLSearchParams(window.location.search);
+      params.delete("confirmed");
+      const query = params.toString();
+      const target = query ? `/login?${query}` : "/login";
+      if (target !== location) {
+        navigate(target, { replace: true });
+      }
+    } catch {
+      navigate("/login", { replace: true });
+    }
+  }, [confirmed, toast, navigate, location]);
 
   // If already authenticated, send the user to their profile immediately
   useEffect(() => {

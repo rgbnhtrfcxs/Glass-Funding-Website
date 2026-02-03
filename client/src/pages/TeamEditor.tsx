@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { ArrowLeft, Plus, Star, Trash2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useConsent } from "@/context/ConsentContext";
 import { supabase } from "@/lib/supabaseClient";
 import type { Team, TeamMember, TeamMediaAsset, TeamTechnique } from "@shared/teams";
 
@@ -46,6 +47,7 @@ const normalizeUrl = (value: string | null | undefined) => {
 
 export default function TeamEditor({ params }: { params?: { id?: string } }) {
   const { user } = useAuth();
+  const { hasFunctionalConsent } = useConsent();
   const [, setLocation] = useLocation();
   const hasId = params?.id !== undefined;
   const teamId = hasId ? Number(params.id) : null;
@@ -164,7 +166,7 @@ export default function TeamEditor({ params }: { params?: { id?: string } }) {
   }, [isEditing, teamId]);
 
   useEffect(() => {
-    if (loading || draftLoaded) return;
+    if (!hasFunctionalConsent || loading || draftLoaded) return;
     try {
       const raw = localStorage.getItem(draftKey);
       if (!raw) {
@@ -185,10 +187,10 @@ export default function TeamEditor({ params }: { params?: { id?: string } }) {
     } finally {
       setDraftLoaded(true);
     }
-  }, [draftKey, draftLoaded, loading]);
+  }, [draftKey, draftLoaded, loading, hasFunctionalConsent]);
 
   useEffect(() => {
-    if (!draftLoaded) return;
+    if (!hasFunctionalConsent || !draftLoaded) return;
     const handle = window.setTimeout(() => {
       const payload = {
         form,
@@ -201,7 +203,7 @@ export default function TeamEditor({ params }: { params?: { id?: string } }) {
       localStorage.setItem(draftKey, JSON.stringify(payload));
     }, 250);
     return () => window.clearTimeout(handle);
-  }, [draftKey, draftLoaded, form, equipmentInput, focusInput, memberInput, techniqueInput, photoUrlInput]);
+  }, [draftKey, draftLoaded, form, equipmentInput, focusInput, memberInput, techniqueInput, photoUrlInput, hasFunctionalConsent]);
 
   useEffect(() => {
     if (!isEditing || !teamId) return;

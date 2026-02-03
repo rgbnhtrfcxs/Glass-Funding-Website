@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useConsent } from "@/context/ConsentContext"
 import {
   Tooltip,
   TooltipContent,
@@ -66,6 +67,7 @@ const SidebarProvider = React.forwardRef<
     ref
   ) => {
     const isMobile = useIsMobile()
+    const { hasFunctionalConsent } = useConsent()
     const [openMobile, setOpenMobile] = React.useState(false)
 
     // This is the internal state of the sidebar.
@@ -83,9 +85,11 @@ const SidebarProvider = React.forwardRef<
         _setOpen(value)
 
         // This sets the cookie to keep the sidebar state.
-        document.cookie = `${SIDEBAR_COOKIE_NAME}=${open}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+        if (hasFunctionalConsent) {
+          document.cookie = `${SIDEBAR_COOKIE_NAME}=${open}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+        }
       },
-      [setOpenProp, open]
+      [setOpenProp, open, hasFunctionalConsent]
     )
 
     // Helper to toggle the sidebar.
