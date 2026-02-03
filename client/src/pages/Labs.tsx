@@ -8,10 +8,12 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Link } from "wouter";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useLabs } from "@/context/LabsContext";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
+import { MapboxMap, type MapMarker } from "@/components/maps/MapboxMap";
+import { buildAddress, geocodeAddress, mapboxToken } from "@/lib/mapbox";
 
 export default function Labs() {
   const { labs, isLoading, error, refresh } = useLabs();
@@ -22,6 +24,14 @@ export default function Labs() {
   const [verifiedOnly, setVerifiedOnly] = useState(true);
   const [favoritesError, setFavoritesError] = useState<string | null>(null);
   const [favoritesLoading, setFavoritesLoading] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const [mapMarkers, setMapMarkers] = useState<MapMarker[]>([]);
+  const [mapLoading, setMapLoading] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [mapMissingLabs, setMapMissingLabs] = useState<string[]>([]);
+  const [selectedMarker, setSelectedMarker] = useState<MapMarker | null>(null);
+  const handleMapClose = () => setSelectedMarker(null);
+  const geocodeCache = useRef(new Map<number, MapMarker>());
   const statusValue = (lab: any) => ((lab?.labStatus ?? "listed") as string).toLowerCase();
   const isVerifiedStatus = (status?: string | null) =>
     ["verified_passive", "verified_active", "premier"].includes((status || "").toLowerCase());
@@ -141,6 +151,148 @@ export default function Labs() {
   }, [visibleLabs, searchTerm, favoritesOnly, favorites, verifiedOnly]);
   // Potential future premium search: include labManager, focusAreas, equipment, offers.
 
+  useEffect(() => {
+    if (!showMap) return;
+    if (!mapboxToken) {
+      setMapMarkers([]);
+      setMapError("Mapbox token missing. Add VITE_MAPBOX_TOKEN to enable maps.");
+      return;
+    }
+
+    let active = true;
+    const resolveLabs = async () => {
+      setMapLoading(true);
+      setMapError(null);
+
+      const nextMarkers: MapMarker[] = [];
+      const markerBuckets = new Map<string, MapMarker>();
+      const missingLabs: string[] = [];
+      for (const lab of filteredLabs) {
+        const cached = geocodeCache.current.get(lab.id);
+        if (cached) {
+          const key = `${cached.lat.toFixed(5)}|${cached.lng.toFixed(5)}`;
+          const bucket = markerBuckets.get(key);
+          if (bucket) {
+            bucket.items = bucket.items ?? [];
+            bucket.items.push({
+              id: lab.id,
+              label: lab.name,
+              subtitle: formatLocation(lab) || "Location not set",
+              href: `/labs/${lab.id}`,
+              imageUrl: lab.photos?.[0]?.url ? getImageUrl(lab.photos[0].url, 600) : undefined,
+            });
+          } else {
+            markerBuckets.set(key, {
+              ...cached,
+              items: [
+                {
+                  id: lab.id,
+                  label: lab.name,
+                  subtitle: formatLocation(lab) || "Location not set",
+                  href: `/labs/${lab.id}`,
+                  imageUrl: lab.photos?.[0]?.url ? getImageUrl(lab.photos[0].url, 600) : undefined,
+                },
+              ],
+            });
+          }
+          continue;
+        }
+
+        const address = buildAddress([
+          lab.addressLine1,
+          lab.addressLine2,
+          lab.city,
+          lab.state,
+          lab.postalCode,
+          lab.country,
+        ]);
+        if (!address) {
+          missingLabs.push(lab.name);
+          continue;
+        }
+
+        const point = await geocodeAddress(address);
+        if (!point) {
+          missingLabs.push(lab.name);
+          continue;
+        }
+
+        const marker = {
+          id: lab.id,
+          ...point,
+          label: lab.name,
+          subtitle: formatLocation(lab) || "Location not set",
+          href: `/labs/${lab.id}`,
+          imageUrl: lab.photos?.[0]?.url ? getImageUrl(lab.photos[0].url, 600) : undefined,
+        };
+        geocodeCache.current.set(lab.id, marker);
+        const key = `${marker.lat.toFixed(5)}|${marker.lng.toFixed(5)}`;
+        const bucket = markerBuckets.get(key);
+        if (bucket) {
+          bucket.items = bucket.items ?? [];
+          bucket.items.push({
+            id: lab.id,
+            label: lab.name,
+            subtitle: marker.subtitle,
+            href: marker.href,
+            imageUrl: marker.imageUrl,
+          });
+        } else {
+          markerBuckets.set(key, {
+            ...marker,
+            items: [
+              {
+                id: lab.id,
+                label: lab.name,
+                subtitle: marker.subtitle,
+                href: marker.href,
+                imageUrl: marker.imageUrl,
+              },
+            ],
+          });
+        }
+      }
+
+      markerBuckets.forEach(value => {
+        if (value.items && value.items.length > 1) {
+          value.label = `${value.items.length} labs`;
+          value.subtitle = "Shared address";
+          value.imageUrl = undefined;
+          value.href = undefined;
+        } else if (value.items?.length === 1) {
+          const [single] = value.items;
+          value.label = single.label;
+          value.subtitle = single.subtitle;
+          value.imageUrl = single.imageUrl;
+          value.href = single.href;
+        }
+        nextMarkers.push(value);
+      });
+
+      if (!active) return;
+      if (nextMarkers.length === 0) {
+        setMapError("No lab locations available yet.");
+      }
+      if (missingLabs.length > 0) {
+        console.info("[Labs map] Missing/ungeocoded labs:", missingLabs);
+      }
+      setMapMarkers(nextMarkers);
+      setMapMissingLabs(missingLabs);
+      setMapLoading(false);
+    };
+
+    resolveLabs();
+    return () => {
+      active = false;
+    };
+  }, [filteredLabs, showMap]);
+
+  useEffect(() => {
+    if (!showMap) {
+      setSelectedMarker(null);
+    }
+  }, [showMap]);
+
   return (
     <section className="bg-background min-h-screen">
       <div className="container mx-auto px-4 py-12 lg:py-16">
@@ -234,9 +386,92 @@ export default function Labs() {
               <ShieldCheck className="h-4 w-4" />
               {verifiedOnly ? "GLASS verified only" : "Include unverified"}
             </button>
+            <button
+              type="button"
+              onClick={() => setShowMap(prev => !prev)}
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
+                showMap
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+              }`}
+            >
+              <MapPin className="h-4 w-4" />
+              {showMap ? "Hide map" : "Show map"}
+            </button>
           </div>
         </div>
         {favoritesError && <p className="mt-2 text-xs text-destructive">{favoritesError}</p>}
+        {showMap && (
+          <div className="mt-6 space-y-3">
+            <div className="relative">
+              <MapboxMap
+                markers={mapMarkers}
+                resizeKey={showMap}
+                className="h-[520px] w-full rounded-3xl border border-border"
+                interactive
+                showPopups={false}
+                onMarkerClick={marker => setSelectedMarker(marker)}
+                onMapClick={handleMapClose}
+              />
+              {(selectedMarker?.items?.length ?? 0) > 0 && (
+                <div className="absolute inset-x-4 bottom-4 labs-map-overlay">
+                  <div className="rounded-2xl border border-border/80 bg-background/90 p-2 shadow-lg backdrop-blur">
+                    <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+                      <span>Labs at this location</span>
+                      <div className="flex items-center gap-2">
+                        <span>{selectedMarker?.items?.length} labs</span>
+                        <button
+                          type="button"
+                          onClick={handleMapClose}
+                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border/70 text-[10px] text-muted-foreground hover:border-primary hover:text-primary transition"
+                          aria-label="Close list"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex gap-3 overflow-x-auto pb-1">
+                      {(selectedMarker?.items ?? []).map(item => (
+                        <Link key={item.id} href={item.href ?? "#"}>
+                          <a className="w-36 min-w-36 max-w-36 h-40 flex-shrink-0 rounded-xl border border-border/70 bg-background/80 hover:border-primary transition overflow-hidden">
+                            {item.imageUrl && (
+                              <img
+                                src={item.imageUrl}
+                                alt={`${item.label} photo`}
+                                className="h-20 w-full rounded-t-xl object-cover"
+                                loading="lazy"
+                              />
+                            )}
+                            <div className={`px-3 py-2 ${item.imageUrl ? "h-16" : "h-28"}`}>
+                              <p className="text-sm font-semibold text-foreground break-words leading-snug h-10 overflow-hidden">
+                                {item.label}
+                              </p>
+                              {item.subtitle && (
+                                <p className="text-xs text-muted-foreground truncate">{item.subtitle}</p>
+                              )}
+                            </div>
+                          </a>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            {mapLoading && <p className="text-xs text-muted-foreground">Resolving lab locations…</p>}
+            {mapError && <p className="text-xs text-muted-foreground">{mapError}</p>}
+            {!mapLoading && !mapError && (
+              <p className="text-xs text-muted-foreground">
+                {mapMarkers.length} mapped, {mapMissingLabs.length} missing address or not found.
+              </p>
+            )}
+            {mapMissingLabs.length > 0 && (
+              <div className="text-xs text-muted-foreground">
+                Missing: {mapMissingLabs.join(", ")}
+              </div>
+            )}
+          </div>
+        )}
 
         {error && (
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">

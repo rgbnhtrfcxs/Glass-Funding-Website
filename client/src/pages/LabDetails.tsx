@@ -20,6 +20,8 @@ import { useLabs } from "@/context/LabsContext";
 import { useAuth } from "@/context/AuthContext";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { MapboxMap, type MapMarker } from "@/components/maps/MapboxMap";
+import { buildAddress, geocodeAddress, mapboxToken } from "@/lib/mapbox";
 import { nanoid } from "nanoid";
 import type { Team } from "@shared/teams";
 
@@ -73,11 +75,61 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [showTeamsModal, setShowTeamsModal] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<{ url: string; alt: string } | null>(null);
+  const [labMarker, setLabMarker] = useState<MapMarker | null>(null);
+  const [labMapLoading, setLabMapLoading] = useState(false);
+  const [labMapError, setLabMapError] = useState<string | null>(null);
   const [halItems, setHalItems] = useState<
     Array<{ title: string; url: string; year?: number | null; doi?: string | null }>
   >([]);
   const [halLoading, setHalLoading] = useState(false);
   const [halError, setHalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!lab) return;
+    if (!mapboxToken) {
+      setLabMarker(null);
+      setLabMapError("Mapbox token missing. Add VITE_MAPBOX_TOKEN to enable maps.");
+      return;
+    }
+
+    let active = true;
+    const resolveLab = async () => {
+      setLabMapLoading(true);
+      setLabMapError(null);
+
+      const address = buildAddress([
+        lab.addressLine1,
+        lab.addressLine2,
+        lab.city,
+        lab.state,
+        lab.postalCode,
+        lab.country,
+      ]);
+      if (!address) {
+        setLabMarker(null);
+        setLabMapError("No address on file for this lab.");
+        setLabMapLoading(false);
+        return;
+      }
+
+      const point = await geocodeAddress(address);
+      if (!active) return;
+      if (!point) {
+        setLabMarker(null);
+        setLabMapError("Unable to locate this address.");
+        setLabMapLoading(false);
+        return;
+      }
+
+      setLabMarker({ id: lab.id, ...point, label: lab.name });
+      setLabMapLoading(false);
+    };
+
+    resolveLab();
+    return () => {
+      active = false;
+    };
+  }, [lab]);
   const [viewRecorded, setViewRecorded] = useState(false);
   const [showInvestor, setShowInvestor] = useState(false);
   const [investorName, setInvestorName] = useState("");
@@ -364,6 +416,14 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const partnerLogos = lab.partnerLogos ?? [];
   const website = lab.website || null;
   const linkedin = lab.linkedin || null;
+  const fullAddress = buildAddress([
+    lab.addressLine1,
+    lab.addressLine2,
+    lab.city,
+    lab.state,
+    lab.postalCode,
+    lab.country,
+  ]);
 
   const submitRequest = async () => {
     if (!requestForm.requesterName.trim() || !requestForm.requesterEmail.trim() || !requestForm.projectSummary.trim()) {
@@ -1173,6 +1233,42 @@ export default function LabDetails({ params }: LabDetailsProps) {
             </div>
           </div>
         )}
+
+          <div className="rounded-2xl border border-border/80 bg-background/60 p-6 space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Lab location</h3>
+                <p className="text-sm text-muted-foreground">
+                  A quick visual for where this lab is based.
+                </p>
+              </div>
+              {fullAddress ? (
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex max-w-full rounded-full border border-border bg-background/90 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur transition hover:border-primary hover:text-primary"
+                >
+                  {fullAddress}
+                </a>
+              ) : (
+                <div className="inline-flex max-w-full rounded-full border border-border bg-background/90 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur">
+                  Address not set
+                </div>
+              )}
+            </div>
+            <div className="relative">
+              <MapboxMap
+                markers={labMarker ? [labMarker] : []}
+                resizeKey={labMarker?.id ?? lab?.id ?? "lab"}
+                interactive={false}
+                className="h-56 w-full rounded-2xl border border-border"
+                zoom={12}
+              />
+            </div>
+            {labMapLoading && <p className="text-xs text-muted-foreground">Loading location…</p>}
+            {labMapError && <p className="text-xs text-muted-foreground">{labMapError}</p>}
+          </div>
 
           <footer className="flex flex-wrap gap-3 mt-6">
             {canRequestLab && (
