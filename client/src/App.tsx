@@ -14,6 +14,7 @@ import Signup from "@/pages/Signup";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ForgotPasswordConfirmation from "@/pages/ForgotPasswordConfirmation";
 import ResetPassword from "@/pages/ResetPassword";
+import ConfirmEmail from "@/pages/ConfirmEmail";
 
 import Labs from "@/pages/Labs";
 import Terms from "@/pages/terms";
@@ -53,6 +54,8 @@ import LabRoute from "@/components/LabRoute";
 import AdminRoute from "@/components/AdminRoute";
 import StripeCheckout from "@/pages/StripeCheckout";
 import { Footer } from "@/components/sections/footer";
+import { ConsentProvider } from "@/context/ConsentContext";
+import { ConsentBanner } from "@/components/ConsentBanner";
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -131,6 +134,7 @@ function Router() {
       {/* Auth Pages */}
       <Route path="/login" component={Login} />
       <Route path="/signup" component={Signup} />
+      <Route path="/confirm-email" component={ConfirmEmail} />
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/forgot-password/confirmation" component={ForgotPasswordConfirmation} />
       <Route path="/reset-password" component={ResetPassword} />
@@ -156,22 +160,25 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <LabsProvider>
-          <TeamsProvider>
-            <BetaBanner />
-            <Navbar />
-            <ScrollToTop />
-            <div className="pt-28">
-              <PageTransition>
-                <Router />
-              </PageTransition>
-            </div>
-            <Footer />
-            <Toaster />
-          </TeamsProvider>
-        </LabsProvider>
-      </AuthProvider>
+      <ConsentProvider>
+        <AuthProvider>
+          <LabsProvider>
+            <TeamsProvider>
+              <BetaBanner />
+              <Navbar />
+              <ScrollToTop />
+              <div className="pt-28">
+                <PageTransition>
+                  <Router />
+                </PageTransition>
+              </div>
+              <Footer />
+              <ConsentBanner />
+              <Toaster />
+            </TeamsProvider>
+          </LabsProvider>
+        </AuthProvider>
+      </ConsentProvider>
     </QueryClientProvider>
   );
 }

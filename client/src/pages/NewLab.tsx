@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { useLocation } from "wouter";
 import { useLabs } from "@/context/LabsContext";
 import { useAuth } from "@/context/AuthContext";
+import { useConsent } from "@/context/ConsentContext";
 import { offerOptions, type OfferOption, type PartnerLogo } from "@shared/labs";
 import type { MediaAsset } from "@shared/labs";
 import { supabase } from "@/lib/supabaseClient";
@@ -31,6 +32,7 @@ const ROLE_RANK_HELP = [
 export default function NewLab() {
   const { addLab } = useLabs();
   const { user } = useAuth();
+  const { hasFunctionalConsent } = useConsent();
   const [, setLocation] = useLocation();
   const [form, setForm] = useState({
     name: "",
@@ -162,6 +164,7 @@ export default function NewLab() {
   }, [user?.id]);
 
   useEffect(() => {
+    if (!hasFunctionalConsent) return;
     try {
       const raw = localStorage.getItem(draftKey);
       if (!raw) return;
@@ -178,9 +181,10 @@ export default function NewLab() {
     } catch {
       // Ignore invalid drafts.
     }
-  }, [draftKey, tabOrder]);
+  }, [draftKey, tabOrder, hasFunctionalConsent]);
 
   useEffect(() => {
+    if (!hasFunctionalConsent) return;
     const handle = window.setTimeout(() => {
       const payload = {
         form,
@@ -192,7 +196,7 @@ export default function NewLab() {
       localStorage.setItem(draftKey, JSON.stringify(payload));
     }, 250);
     return () => window.clearTimeout(handle);
-  }, [draftKey, form, photos, partnerLogos, complianceDocs, activeTab]);
+  }, [draftKey, form, photos, partnerLogos, complianceDocs, activeTab, hasFunctionalConsent]);
 
   const handleChange = (field: keyof typeof form, value: string | boolean | OfferOption[] | string[]) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -300,7 +304,9 @@ export default function NewLab() {
         halPersonId: form.halPersonId.trim() || null,
         teamMembers: form.teamMembers,
       });
-      localStorage.removeItem(draftKey);
+      if (hasFunctionalConsent) {
+        localStorage.removeItem(draftKey);
+      }
       setLocation(`/lab/manage/${created.id}`);
     } catch (err: any) {
       setError(err?.message || "Unable to create lab");

@@ -1,10 +1,13 @@
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { Linkedin, Instagram, X as XIcon } from "lucide-react";
+import { useConsent } from "@/context/ConsentContext";
 
 // TODO add footer to all pages
 
 export function Footer() {
+  const { openPreferences } = useConsent();
+
   return (
     <footer className="bg-muted py-12">
       <div className="container mx-auto px-4">
@@ -55,6 +58,15 @@ export function Footer() {
                 <Link href="/terms" className="text-muted-foreground hover:text-primary transition-colors">
                   Terms of Service
                 </Link>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={openPreferences}
+                  className="text-muted-foreground hover:text-primary transition-colors"
+                >
+                  Cookie Preferences
+                </button>
               </li>
             </ul>
           </div>
