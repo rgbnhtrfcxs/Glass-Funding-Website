@@ -1935,12 +1935,21 @@ app.post("/api/profile/:id", async (req, res) => {
 app.post("/api/signup", async (req, res) => {
   try {
     const { email, password, display_name } = req.body;
+    const originHeader = typeof req.headers.origin === "string" ? req.headers.origin : "";
+    const hostHeader = req.get("host");
+    const origin = (
+      originHeader ||
+      (hostHeader ? `${req.protocol}://${hostHeader}` : "") ||
+      process.env.PUBLIC_SITE_URL ||
+      "https://glass-connect.com"
+    ).replace(/\/+$/, "");
 
     const { data, error } = await supabasePublic.auth.signUp({
       email,
       password,
       options: {
         data: { display_name },
+        emailRedirectTo: `${origin}/confirm-email`,
       },
     });
 

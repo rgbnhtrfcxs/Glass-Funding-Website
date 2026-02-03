@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { FileDown, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useConsent } from "@/context/ConsentContext";
 import { supabase } from "@/lib/supabaseClient";
 import { offerOptions, type OfferOption, type MediaAsset, type PartnerLogo } from "@shared/labs";
 import { Link, useLocation } from "wouter";
@@ -67,6 +68,7 @@ type Form = {
 export default function MyLab({ params }: { params: { id: string } }) {
   const labIdParam = Number(params?.id);
   const { user } = useAuth();
+  const { hasFunctionalConsent } = useConsent();
   const [, setLocation] = useLocation();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -243,7 +245,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
   };
 
   useEffect(() => {
-    if (loading || draftLoaded || !labId) return;
+    if (!hasFunctionalConsent || loading || draftLoaded || !labId) return;
     try {
       const raw = localStorage.getItem(draftKey);
       if (!raw) {
@@ -280,10 +282,10 @@ export default function MyLab({ params }: { params: { id: string } }) {
     } finally {
       setDraftLoaded(true);
     }
-  }, [draftKey, draftLoaded, labId, loading]);
+  }, [draftKey, draftLoaded, labId, loading, hasFunctionalConsent]);
 
   useEffect(() => {
-    if (!draftLoaded || !labId) return;
+    if (!hasFunctionalConsent || !draftLoaded || !labId) return;
     const handle = window.setTimeout(() => {
       const payload = {
         form,
@@ -295,7 +297,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
       localStorage.setItem(draftKey, JSON.stringify(payload));
     }, 250);
     return () => window.clearTimeout(handle);
-  }, [draftKey, draftLoaded, form, photos, partnerLogos, complianceDocs, activeTab, labId]);
+  }, [draftKey, draftLoaded, form, photos, partnerLogos, complianceDocs, activeTab, labId, hasFunctionalConsent]);
 
   function parseList(value: string) {
     return value
@@ -658,7 +660,9 @@ export default function MyLab({ params }: { params: { id: string } }) {
         }
         throw new Error(msg);
       }
-      localStorage.removeItem(draftKey);
+      if (hasFunctionalConsent) {
+        localStorage.removeItem(draftKey);
+      }
       return true;
     } catch (err: any) {
       setError(err.message || "Failed to save");
@@ -696,7 +700,9 @@ export default function MyLab({ params }: { params: { id: string } }) {
         }
         throw new Error(msg);
       }
-      localStorage.removeItem(draftKey);
+      if (hasFunctionalConsent) {
+        localStorage.removeItem(draftKey);
+      }
       setLocation("/lab/manage");
     } catch (err: any) {
       setDeleteError(err.message || "Failed to delete lab");

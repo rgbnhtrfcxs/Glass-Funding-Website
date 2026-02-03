@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/context/AuthContext";
+import { useConsent } from "@/context/ConsentContext";
 
 const PRESET_AMOUNTS = [25, 50, 100, 250];
 
@@ -11,6 +12,7 @@ function isValidEmail(value: string) {
 
 export default function DonateFlow() {
   const { user } = useAuth();
+  const { hasFunctionalConsent } = useConsent();
   const [location, navigate] = useLocation();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [donorType, setDonorType] = useState<"individual" | "company">("individual");
@@ -55,10 +57,10 @@ export default function DonateFlow() {
   const stripeElements = useRef<any>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!hasFunctionalConsent || typeof window === "undefined") return;
     const savedEmail = window.localStorage.getItem("glass-demo-email") || window.sessionStorage.getItem("glass-demo-email");
     if (savedEmail) setStoredEmail(savedEmail);
-  }, []);
+  }, [hasFunctionalConsent]);
 
   // Load Stripe.js once
   useEffect(() => {

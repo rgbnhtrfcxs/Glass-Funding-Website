@@ -272,14 +272,25 @@ export default function Labs() {
                 const status = statusValue(lab);
                 const isPremier = status === "premier";
                 const isVerified = isVerifiedStatus(status);
+                const hasAuditFlag = lab.auditPassed !== undefined && lab.auditPassed !== null;
+                const auditPassed = ["true", true, 1, "1"].includes(lab.auditPassed as any);
+                const isAuditPending = isVerified && hasAuditFlag && !auditPassed;
                 const offersLabSpace = ["true", "1", true, 1].includes(lab.offersLabSpace as any);
                 const badgeClass =
-                  isVerified
+                  isAuditPending
+                    ? "bg-amber-50 text-amber-700"
+                    : isVerified
                     ? "bg-emerald-50 text-emerald-700"
                     : status === "confirmed"
                       ? "bg-amber-50 text-amber-700"
                       : "bg-slate-100 text-slate-700";
-                const badgeLabel = isVerified ? "Verified" : status === "confirmed" ? "Confirmed" : "Listed";
+                const badgeLabel = isAuditPending
+                  ? "Pending"
+                  : isVerified
+                    ? "Verified"
+                    : status === "confirmed"
+                      ? "Confirmed"
+                      : "Listed";
                 return (
                   <motion.div
                     key={lab.id}
@@ -301,7 +312,7 @@ export default function Labs() {
                         <span
                           className={`absolute right-3 top-3 inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${badgeClass}`}
                         >
-                          {isVerified ? (
+                          {isVerified && !isAuditPending ? (
                             <>
                               <CheckCircle2 className="h-3.5 w-3.5" />
                               {badgeLabel}
