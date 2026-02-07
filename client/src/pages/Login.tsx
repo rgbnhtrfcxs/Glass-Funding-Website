@@ -83,7 +83,7 @@ export default function Login() {
   };
 
   return (
-    <section className="bg-background min-h-screen">
+    <section className="bg-background min-h-screen pt-11">
       <div className="container mx-auto px-4 pb-20">
         <div className="mx-auto max-w-4xl grid gap-12 items-center lg:grid-cols-[1.1fr_0.9fr]">
           <div className="space-y-6">

@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/context/AuthContext";
 import type { Team } from "@shared/teams";
 
-export default function ManageTeams() {
+export default function ManageTeams({ embedded = false }: { embedded?: boolean }) {
   const { user } = useAuth();
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,12 +61,14 @@ export default function ManageTeams() {
     });
   }, [teams, search]);
 
+  const sectionClass = embedded ? "bg-transparent" : "bg-background min-h-screen";
+  const containerClass = embedded
+    ? "w-full px-0 py-0"
+    : "container mx-auto px-4 py-20 lg:py-24 max-w-6xl";
+
   return (
-    <section className="bg-background min-h-screen">
-      <div className="container mx-auto px-4 py-20 lg:py-24 max-w-6xl">
-        <Link href="/account" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-4">
-          {"<- Back to profile"}
-        </Link>
+    <section className={sectionClass}>
+      <div className={containerClass}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
             <h1 className="text-3xl font-semibold text-foreground">Manage your teams</h1>

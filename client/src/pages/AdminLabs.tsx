@@ -198,7 +198,7 @@ function formToPayload(
 type StatusMessage = { type: "success" | "error"; text: string } | null;
 type EditingState = number | "new" | null;
 
-export default function AdminLabs() {
+export default function AdminLabs({ embedded = false }: { embedded?: boolean }) {
   const {
     labs,
     addLab,
@@ -485,9 +485,14 @@ export default function AdminLabs() {
     }
   };
 
+  const sectionClass = embedded ? "bg-transparent" : "bg-background min-h-screen";
+  const containerClass = embedded
+    ? "w-full px-0 py-0"
+    : "container mx-auto px-4 py-20 lg:py-24";
+
   return (
-    <section className="bg-background min-h-screen">
-      <div className="container mx-auto px-4 py-20 lg:py-24">
+    <section className={sectionClass}>
+      <div className={containerClass}>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <span className="text-sm uppercase tracking-[0.35em] text-muted-foreground">

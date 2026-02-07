@@ -6,7 +6,7 @@ import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "@/context/AuthContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
-export default function ProfilePortal() {
+export default function ProfilePortal({ embedded = false }: { embedded?: boolean }) {
   const inputClasses =
     "w-full rounded-2xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
 
@@ -193,9 +193,14 @@ export default function ProfilePortal() {
     }
   }
 
+  const sectionClass = embedded ? "bg-transparent" : "bg-background min-h-screen";
+  const containerClass = embedded
+    ? "w-full px-0 py-0"
+    : "container mx-auto px-4 py-20 lg:py-24 max-w-5xl";
+
   return (
-    <section className="bg-background min-h-screen">
-      <div className="container mx-auto px-4 py-20 lg:py-24 max-w-5xl">
+    <section className={sectionClass}>
+      <div className={containerClass}>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="max-w-2xl space-y-4">
             <span className="text-xs uppercase tracking-[0.35em] text-muted-foreground">
