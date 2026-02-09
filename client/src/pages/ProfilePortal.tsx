@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "@/context/AuthContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { User, UserCog } from "lucide-react";
 
 export default function ProfilePortal({ embedded = false }: { embedded?: boolean }) {
   const inputClasses =
@@ -204,9 +205,9 @@ export default function ProfilePortal({ embedded = false }: { embedded?: boolean
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="max-w-2xl space-y-4">
             <span className="text-xs uppercase tracking-[0.35em] text-muted-foreground">
-              Account preview
             </span>
-            <h1 className="text-4xl font-semibold text-foreground">
+            <h1 className="flex items-center gap-2 text-4xl font-semibold text-foreground">
+              <User className="h-6 w-6 text-primary" />
               Your Glass profile
             </h1>
             <p className="text-muted-foreground">
@@ -214,11 +215,6 @@ export default function ProfilePortal({ embedded = false }: { embedded?: boolean
               requests, and billing.
             </p>
           </div>
-          <Link href="/labs">
-            <a className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:text-primary hover:border-primary">
-              Browse labs
-            </a>
-          </Link>
           <button
             type="button"
             onClick={handlePasswordReset}
@@ -237,7 +233,8 @@ export default function ProfilePortal({ embedded = false }: { embedded?: boolean
             transition={{ duration: 0.5 }}
             className="rounded-3xl border border-border bg-card/80 p-8 shadow-sm"
           >
-            <h2 className="text-xl font-semibold text-foreground">
+            <h2 className="flex items-center gap-2 text-xl font-semibold text-foreground">
+              <User className="h-5 w-5 text-primary" />
               Profile Info
             </h2>
 
@@ -279,7 +276,8 @@ export default function ProfilePortal({ embedded = false }: { embedded?: boolean
             transition={{ duration: 0.5, delay: 0.1 }}
             className="rounded-3xl border border-border bg-card/80 p-8 shadow-sm"
           >
-            <h2 className="text-xl font-semibold text-foreground">
+            <h2 className="flex items-center gap-2 text-xl font-semibold text-foreground">
+              <UserCog className="h-5 w-5 text-primary" />
               {profileData ? "Edit your profile" : "Create your profile"}
             </h2>
             {error && <p className="text-sm text-destructive mt-2">{error}</p>}

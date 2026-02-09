@@ -318,7 +318,7 @@ export default function NewLab() {
   return (
     <section className="bg-background min-h-screen">
       <div className="container mx-auto px-4 py-20 lg:py-24 max-w-3xl">
-        <Link href="/lab/manage" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-4 rounded-full border border-border px-3 py-1">
+        <Link href="/account?tab=manageLab" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-4 rounded-full border border-border px-3 py-1">
           ← Back to manage labs
         </Link>
         <motion.div

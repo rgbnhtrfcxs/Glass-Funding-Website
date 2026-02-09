@@ -11,6 +11,7 @@ import {
   Plus,
   Save,
   ShieldAlert,
+  ShieldCheck,
   Trash2,
   Upload,
   Users,
@@ -498,7 +499,8 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
             <span className="text-sm uppercase tracking-[0.35em] text-muted-foreground">
               Lab directory
             </span>
-            <h1 className="mt-3 text-4xl font-semibold text-foreground">
+            <h1 className="mt-3 flex items-center gap-2 text-4xl font-semibold text-foreground">
+              <ShieldCheck className="h-6 w-6 text-primary" />
               Admin: manage partner labs
             </h1>
             <p className="mt-2 max-w-2xl text-muted-foreground">

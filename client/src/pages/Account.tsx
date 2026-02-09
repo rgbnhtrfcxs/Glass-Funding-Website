@@ -1,12 +1,24 @@
 import { motion } from "framer-motion";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import { useLabs } from "@/context/LabsContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import { Activity } from "lucide-react";
+import {
+  Activity,
+  ArrowLeft,
+  Box,
+  ClipboardList,
+  FlaskConical,
+  Heart,
+  Mail,
+  ShieldCheck,
+  ShieldAlert,
+  UserCog,
+  Users,
+} from "lucide-react";
 import ProfilePortal from "@/pages/ProfilePortal";
 import Requests from "@/pages/Requests";
 import ManageSelect from "@/pages/ManageSelect";
@@ -53,6 +65,7 @@ type TeamMemberForm = {
 };
 
 export default function Account() {
+  const [location] = useLocation();
   const { user, loading: authLoading } = useAuth();
   const { labs: allLabs, updateLab } = useLabs();
   const { toast } = useToast();
@@ -101,6 +114,8 @@ export default function Account() {
   >([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsFeedError, setNewsFeedError] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
 
   const toBool = (value: unknown) =>
     value === true || value === "true" || value === 1 || value === "1";
@@ -137,6 +152,22 @@ export default function Account() {
   const [teamSaving, setTeamSaving] = useState<Record<number, boolean>>({});
   const [teamError, setTeamError] = useState<Record<number, string | null>>({});
   const [resettingPassword, setResettingPassword] = useState(false);
+  const teamMemberCount = useMemo(
+    () => Object.values(teamDrafts).reduce((acc, members) => acc + (members?.length ?? 0), 0),
+    [teamDrafts],
+  );
+  const labsWithTeamCount = useMemo(
+    () => Object.values(teamDrafts).filter(members => (members?.length ?? 0) > 0).length,
+    [teamDrafts],
+  );
+  const equipmentCount = useMemo(
+    () => Object.values(equipmentDrafts).reduce((acc, items) => acc + (items?.length ?? 0), 0),
+    [equipmentDrafts],
+  );
+  const labsWithEquipmentCount = useMemo(
+    () => Object.values(equipmentDrafts).filter(items => (items?.length ?? 0) > 0).length,
+    [equipmentDrafts],
+  );
 
   const profileName = useMemo(() => {
     return profile?.display_name || profile?.name || null;
@@ -167,6 +198,32 @@ export default function Account() {
     const letters = parts.length >= 2 ? parts[0][0] + parts[1][0] : parts[0][0];
     return letters.toUpperCase();
   }, [profileName, user?.email]);
+
+  const handleAvatarUpload = async (file: File | null) => {
+    if (!file || !user) return;
+    setAvatarError(null);
+    setAvatarUploading(true);
+    try {
+      const extension = file.name.split(".").pop()?.toLowerCase() || "png";
+      const path = `${user.id}/${Date.now()}.${extension}`;
+      const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, {
+        upsert: true,
+        contentType: file.type,
+      });
+      if (uploadError) throw uploadError;
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      const publicUrl = data.publicUrl;
+      const { error: profileErr } = await supabase
+        .from("profiles")
+        .upsert({ user_id: user.id, email: user.email, avatar_url: publicUrl }, { onConflict: "user_id" });
+      if (profileErr) throw profileErr;
+      setProfile(prev => (prev ? { ...prev, avatar_url: publicUrl } : prev));
+    } catch (err: any) {
+      setAvatarError(err?.message || "Failed to upload avatar.");
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
 
   useEffect(() => {
     async function load() {
@@ -730,6 +787,33 @@ export default function Account() {
     if (!authLoading) loadNews();
   }, [authLoading, user?.id]);
 
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get("tab");
+      const sub = params.get("sub");
+      const allowedTabs = [
+        "overview",
+        "edit",
+        "requests",
+        "manageLab",
+        "manageTeams",
+        "adminLabs",
+        "favorites",
+        "legal",
+      ] as const;
+      const allowedOverview = ["overview", "labs", "equipment", "team", "activity"] as const;
+      if (tab && (allowedTabs as readonly string[]).includes(tab)) {
+        setActiveTab(tab as typeof allowedTabs[number]);
+        if (tab === "overview" && sub && (allowedOverview as readonly string[]).includes(sub)) {
+          setOverviewTab(sub as typeof allowedOverview[number]);
+        }
+      }
+    } catch {
+      // ignore invalid query params
+    }
+  }, [location]);
+
   const tabs: Array<{ id: typeof activeTab; label: ReactNode; hidden?: boolean }> = [
     { id: "overview", label: "Overview" },
     { id: "edit", label: "Edit account" },
@@ -742,11 +826,10 @@ export default function Account() {
   ];
 
   const overviewTabs = [
-    { id: "overview", label: "Dashboard" },
-    { id: "labs", label: "Labs" },
-    { id: "equipment", label: "Equipment" },
-    { id: "team", label: "Team" },
-    { id: "activity", label: "Activity" },
+    { id: "overview", label: "Dashboard", icon: Activity },
+    { id: "labs", label: "Labs", icon: FlaskConical },
+    { id: "team", label: "Team", icon: Users },
+    { id: "activity", label: "Activity", icon: ClipboardList },
   ] as const;
 
 
@@ -755,12 +838,34 @@ export default function Account() {
       <div className="container mx-auto px-4 py-20 lg:py-24 max-w-5xl">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <Avatar className="h-14 w-14">
-              <AvatarImage src={profile?.avatar_url ?? undefined} alt={avatarLabel} />
-              <AvatarFallback className="text-base font-semibold bg-gradient-to-br from-indigo-500/20 to-pink-500/20 text-foreground">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
+            <label className="group relative cursor-pointer">
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={e => {
+                  const file = e.target.files?.[0] ?? null;
+                  void handleAvatarUpload(file);
+                  if (e.target) e.target.value = "";
+                }}
+                disabled={avatarUploading}
+              />
+              <Avatar className="h-14 w-14">
+                <AvatarImage src={profile?.avatar_url ?? undefined} alt={avatarLabel} />
+                <AvatarFallback className="text-base font-semibold bg-gradient-to-br from-indigo-500/20 to-pink-500/20 text-foreground">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <span className="pointer-events-none absolute inset-0 rounded-full bg-black/0 transition group-hover:bg-black/10" />
+              <span className="pointer-events-none absolute left-1/2 top-full mt-2 w-max -translate-x-1/2 rounded-full bg-foreground px-3 py-1 text-[10px] font-medium uppercase tracking-[0.2em] text-background opacity-0 transition group-hover:opacity-100">
+                Click to upload
+              </span>
+              {avatarUploading && (
+                <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-background/70 text-[10px] font-medium text-muted-foreground">
+                  Uploading…
+                </span>
+              )}
+            </label>
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-2xl md:text-3xl font-semibold text-foreground">
@@ -776,21 +881,52 @@ export default function Account() {
               ) : (
                 <p className="text-[11px] md:text-xs text-muted-foreground">{profileEmail}</p>
               )}
+              {avatarError && <p className="text-xs text-destructive">{avatarError}</p>}
             </div>
           </div>
-          {ownedUnverifiedLabs.length > 0 && (
+          <div className="flex items-center gap-3">
+            {profile && toBool(profile.can_broker_requests) && (
+              <button
+                type="button"
+                onClick={() => setActiveTab("requests")}
+                className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${
+                  activeTab === "requests"
+                    ? "border-primary/50 bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+                }`}
+                aria-label="Requests"
+                title="Requests"
+              >
+                <Mail className="h-5 w-5" />
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => {
-                setVerifyLabId(ownedUnverifiedLabs[0]?.id ?? null);
-                setShowVerifyModal(true);
-                setVerifyError(null);
-              }}
-              className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+              onClick={() => setActiveTab("favorites")}
+              className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${
+                activeTab === "favorites"
+                  ? "border-primary/50 bg-primary/10 text-primary"
+                  : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+              }`}
+              aria-label="Favorites"
+              title="Favorites"
             >
-              Get Verified by GLASS
+              <Heart className="h-5 w-5" />
             </button>
-          )}
+            {ownedUnverifiedLabs.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setVerifyLabId(ownedUnverifiedLabs[0]?.id ?? null);
+                  setShowVerifyModal(true);
+                  setVerifyError(null);
+                }}
+                className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+              >
+                Get Verified by GLASS
+              </button>
+            )}
+          </div>
         </div>
 
         {showNewsModal && (
@@ -926,7 +1062,12 @@ export default function Account() {
               <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Overview</p>
               <div className="space-y-1">
                 {overviewTabs.map(tab => {
-                  const isActive = activeTab === "overview" && overviewTab === tab.id;
+                  const isActive =
+                    (activeTab === "overview" && overviewTab === tab.id) ||
+                    (activeTab === "overview" && overviewTab === "equipment" && tab.id === "labs") ||
+                    (activeTab === "manageLab" && tab.id === "labs") ||
+                    (activeTab === "manageTeams" && tab.id === "team");
+                  const Icon = tab.icon;
                   return (
                     <button
                       key={tab.id}
@@ -941,7 +1082,10 @@ export default function Account() {
                           : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
                       }`}
                     >
-                      {tab.label}
+                      <span className="flex items-center gap-2">
+                        <Icon className="h-4 w-4" />
+                        {tab.label}
+                      </span>
                     </button>
                   );
                 })}
@@ -960,45 +1104,25 @@ export default function Account() {
                       : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
                   }`}
                 >
-                  Edit account
+                  <span className="flex items-center gap-2">
+                    <UserCog className="h-4 w-4" />
+                    Edit account
+                  </span>
                 </button>
-                {profile && toBool(profile.can_broker_requests) && (
+                {profile && (toBool(profile.can_create_lab) || toBool(profile.can_manage_teams)) && (
                   <button
                     type="button"
-                    onClick={() => setActiveTab("requests")}
+                    onClick={() => setActiveTab("legal")}
                     className={`w-full rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
-                      activeTab === "requests"
+                      activeTab === "legal"
                         ? "border-primary/40 bg-primary/10 text-primary"
                         : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
                     }`}
                   >
-                    Requests
-                  </button>
-                )}
-                {profile && toBool(profile.can_create_lab) && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("manageLab")}
-                    className={`w-full rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
-                      activeTab === "manageLab"
-                        ? "border-primary/40 bg-primary/10 text-primary"
-                        : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
-                    }`}
-                  >
-                    Manage lab
-                  </button>
-                )}
-                {profile && toBool(profile.can_manage_teams) && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("manageTeams")}
-                    className={`w-full rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
-                      activeTab === "manageTeams"
-                        ? "border-primary/40 bg-primary/10 text-primary"
-                        : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
-                    }`}
-                  >
-                    Manage teams
+                    <span className="flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4" />
+                      Legal assistance
+                    </span>
                   </button>
                 )}
                 {profile && toBool(profile.is_admin) && (
@@ -1011,31 +1135,10 @@ export default function Account() {
                         : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
                     }`}
                   >
-                    Admin labs
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("favorites")}
-                  className={`w-full rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
-                    activeTab === "favorites"
-                      ? "border-primary/40 bg-primary/10 text-primary"
-                      : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
-                  }`}
-                >
-                  Favorites
-                </button>
-                {profile && (toBool(profile.can_create_lab) || toBool(profile.can_manage_teams)) && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("legal")}
-                    className={`w-full rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
-                      activeTab === "legal"
-                        ? "border-primary/40 bg-primary/10 text-primary"
-                        : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
-                    }`}
-                  >
-                    Legal assistance
+                    <span className="flex items-center gap-2">
+                      <ShieldAlert className="h-4 w-4" />
+                      Admin labs
+                    </span>
                   </button>
                 )}
               </div>
@@ -1180,87 +1283,66 @@ export default function Account() {
                   transition={{ duration: 0.4 }}
                   className="space-y-6"
                 >
-                  {ownedLabs.length === 0 ? (
-                    <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground">
-                      You don’t have any labs linked yet. Create your first lab to unlock equipment, team, and verification tools.
-                      <div className="mt-4">
-                        <Link
-                          href="/lab/manage"
-                          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+                  <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="flex items-center gap-2 text-xl font-semibold text-foreground">
+                          <FlaskConical className="h-5 w-5 text-primary" />
+                          Your lab overview
+                        </h3>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          A structured snapshot of your linked labs, visibility, and equipment.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setOverviewTab("equipment")}
+                          className="inline-flex items-center justify-center rounded-full border border-border bg-background px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
                         >
-                          Create a lab profile
-                        </Link>
+                          Add equipments
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("manageLab")}
+                          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90"
+                        >
+                          Manage labs
+                        </button>
                       </div>
                     </div>
-                  ) : (
-                    ownedLabs.map(lab => {
-                      const location = [lab.city, lab.country].filter(Boolean).join(", ");
-                      const status = labStatusValue(lab);
-                      const verified = isLabVerified(lab.id);
-                      return (
-                        <div key={lab.id} className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm space-y-4">
-                          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                            <div>
-                              <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Lab</p>
-                              <h3 className="text-lg font-semibold text-foreground">{lab.name}</h3>
-                              {location && <p className="text-sm text-muted-foreground">{location}</p>}
-                              {lab.descriptionShort && (
-                                <p className="mt-2 text-sm text-muted-foreground">{lab.descriptionShort}</p>
-                              )}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground capitalize">
-                                {status.replace("_", " ")}
-                              </span>
-                              {verified && (
-                                <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                                  Verified by GLASS
-                                </span>
-                              )}
-                              <Link
-                                href={`/lab/manage/${lab.id}`}
-                                className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                              >
-                                Manage lab
-                              </Link>
-                            </div>
-                          </div>
-                          {verified ? (
-                            <div className="flex flex-wrap items-center gap-3">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  toast({
-                                    title: "Verification PDF coming soon",
-                                    description: `We’ll enable verified PDF downloads for ${lab.name} shortly.`,
-                                  })
-                                }
-                                className="inline-flex items-center justify-center rounded-full bg-foreground px-4 py-2 text-xs font-medium text-background transition hover:bg-foreground/90"
-                              >
-                                Download verified PDF
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  toast({
-                                    title: "Badge assets coming soon",
-                                    description: `Email and website badges for ${lab.name} will be available soon.`,
-                                  })
-                                }
-                                className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                              >
-                                Get badge assets
-                              </button>
-                            </div>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">
-                              Verification assets unlock once GLASS verifies this lab.
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
+
+                    <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      <InfoTile label="Labs linked" value={labStats.length.toString()} />
+                      <InfoTile label="Visible" value={labsVisibleCount.toString()} />
+                      <InfoTile label="Hidden" value={labsHiddenCount.toString()} />
+                      <InfoTile label="Equipment" value={equipmentCount.toString()} />
+                      <InfoTile label="Labs with equipment" value={labsWithEquipmentCount.toString()} />
+                    </div>
+
+                    {labStats.length > 0 && (
+                      <div className="mt-6 grid gap-4 md:grid-cols-2">
+                        {bestViewLab && (
+                          <HighlightCard
+                            title="Best performing"
+                            subtitle="Most views (30d)"
+                            primary={`${bestViewLab.views30d} views`}
+                            secondary={bestViewLab.name}
+                            badge={isPremierLab(bestViewLab) ? "Premium" : undefined}
+                          />
+                        )}
+                        {bestFavoriteLab && (
+                          <HighlightCard
+                            title="Most favorited"
+                            subtitle="Total favorites"
+                            primary={`${bestFavoriteLab.favorites} favorites`}
+                            secondary={bestFavoriteLab.name}
+                            badge={isPremierLab(bestFavoriteLab) ? "Premium" : undefined}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </motion.div>
               )}
 
@@ -1271,6 +1353,21 @@ export default function Account() {
                   transition={{ duration: 0.4 }}
                   className="space-y-6"
                 >
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setOverviewTab("labs")}
+                      className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                    >
+                      <ArrowLeft className="h-3 w-3" />
+                      Back
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <Box className="h-4 w-4 text-primary" />
+                      <h3 className="text-lg font-semibold text-foreground">Equipment</h3>
+                    </div>
+                    <p className="text-sm text-muted-foreground">Manage equipment lists for each lab.</p>
+                  </div>
                   {ownedLabs.length === 0 ? (
                     <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground">
                       Add a lab profile to start listing equipment and capabilities.
@@ -1352,188 +1449,30 @@ export default function Account() {
                   transition={{ duration: 0.4 }}
                   className="space-y-6"
                 >
-                  {ownedLabs.length === 0 ? (
-                    <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground">
-                      Add a lab profile to build your team directory.
+                  <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                          <Users className="h-4 w-4 text-primary" />
+                          Your team overview
+                        </h3>
+                        <p className="mt-1 text-sm text-muted-foreground">Quick snapshot of team members across labs.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("manageTeams")}
+                        className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90"
+                      >
+                        Manage teams
+                      </button>
                     </div>
-                  ) : (
-                    ownedLabs.map(lab => {
-                      const members = teamDrafts[lab.id] ?? [];
-                      const form = teamForms[lab.id] ?? emptyTeamForm;
-                      const editing = teamEditingIndex[lab.id];
-                      return (
-                        <div key={lab.id} className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm space-y-6">
-                          <div>
-                            <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Team</p>
-                            <h3 className="text-lg font-semibold text-foreground">{lab.name}</h3>
-                          </div>
 
-                          <div className="space-y-3">
-                            {members.length ? (
-                              members.map((member, index) => (
-                                <div
-                                  key={`${member.name}-${index}`}
-                                  className="flex flex-col gap-2 rounded-2xl border border-border bg-background/60 px-4 py-3 text-sm md:flex-row md:items-center md:justify-between"
-                                >
-                                  <div className="space-y-1">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <p className="font-semibold text-foreground">{member.name}</p>
-                                      {member.isLead && (
-                                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                                          Lead
-                                        </span>
-                                      )}
-                                    </div>
-                                    <p className="text-xs text-muted-foreground">{member.title}</p>
-                                    {member.teamName && (
-                                      <p className="text-xs text-muted-foreground">Team: {member.teamName}</p>
-                                    )}
-                                    {(member.linkedin || member.website) && (
-                                      <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                                        {member.linkedin && (
-                                          <a
-                                            href={member.linkedin}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="hover:text-primary"
-                                          >
-                                            LinkedIn
-                                          </a>
-                                        )}
-                                        {member.website && (
-                                          <a
-                                            href={member.website}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="hover:text-primary"
-                                          >
-                                            Website
-                                          </a>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                  {canManageLabs && (
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      {!member.isLead && (
-                                        <button
-                                          type="button"
-                                          onClick={() => setLeadMember(lab.id, index)}
-                                          className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-primary hover:text-primary"
-                                        >
-                                          Make lead
-                                        </button>
-                                      )}
-                                      <button
-                                        type="button"
-                                        onClick={() => editTeamMember(lab.id, index)}
-                                        className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-primary hover:text-primary"
-                                      >
-                                        Edit
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => removeTeamMember(lab.id, index)}
-                                        className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-destructive hover:text-destructive"
-                                      >
-                                        Remove
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              ))
-                            ) : (
-                              <p className="text-sm text-muted-foreground">No team members added yet.</p>
-                            )}
-                          </div>
-
-                          {canManageLabs && (
-                            <div className="rounded-2xl border border-border bg-background/70 p-4 space-y-4">
-                              <div className="grid gap-3 md:grid-cols-2">
-                                <div className="grid gap-1">
-                                  <label className="text-xs font-medium text-muted-foreground">Name</label>
-                                  <input
-                                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                                    value={form.name}
-                                    onChange={e => updateTeamForm(lab.id, { name: e.target.value })}
-                                  />
-                                </div>
-                                <div className="grid gap-1">
-                                  <label className="text-xs font-medium text-muted-foreground">Title</label>
-                                  <input
-                                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                                    value={form.title}
-                                    onChange={e => updateTeamForm(lab.id, { title: e.target.value })}
-                                  />
-                                </div>
-                                <div className="grid gap-1">
-                                  <label className="text-xs font-medium text-muted-foreground">Team name</label>
-                                  <input
-                                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                                    value={form.teamName}
-                                    onChange={e => updateTeamForm(lab.id, { teamName: e.target.value })}
-                                  />
-                                </div>
-                                <div className="grid gap-1">
-                                  <label className="text-xs font-medium text-muted-foreground">Role rank (1-8)</label>
-                                  <input
-                                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                                    value={form.roleRank}
-                                    onChange={e => updateTeamForm(lab.id, { roleRank: e.target.value })}
-                                  />
-                                </div>
-                                <div className="grid gap-1">
-                                  <label className="text-xs font-medium text-muted-foreground">LinkedIn (optional)</label>
-                                  <input
-                                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                                    value={form.linkedin}
-                                    onChange={e => updateTeamForm(lab.id, { linkedin: e.target.value })}
-                                    placeholder="linkedin.com/in/..."
-                                  />
-                                </div>
-                                <div className="grid gap-1">
-                                  <label className="text-xs font-medium text-muted-foreground">Website (optional)</label>
-                                  <input
-                                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                                    value={form.website}
-                                    onChange={e => updateTeamForm(lab.id, { website: e.target.value })}
-                                    placeholder="labsite.com"
-                                  />
-                                </div>
-                              </div>
-                              <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <input
-                                  type="checkbox"
-                                  checked={form.isLead}
-                                  onChange={e => updateTeamForm(lab.id, { isLead: e.target.checked })}
-                                />
-                                Mark as lead
-                              </label>
-                              {teamError[lab.id] && <p className="text-xs text-destructive">{teamError[lab.id]}</p>}
-                              <div className="flex flex-wrap items-center gap-3">
-                                <button
-                                  type="button"
-                                  onClick={() => submitTeamMember(lab.id)}
-                                  disabled={teamSaving[lab.id]}
-                                  className="rounded-full bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-70"
-                                >
-                                  {editing !== null && editing !== undefined ? "Update team member" : "Save team member"}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => resetTeamForm(lab.id)}
-                                  className="rounded-full border border-border px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                                >
-                                  Clear form
-                                </button>
-                                {teamSaving[lab.id] && <span className="text-xs text-muted-foreground">Saving…</span>}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
+                    <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      <InfoTile label="Team members" value={teamMemberCount.toString()} />
+                      <InfoTile label="Labs with team" value={labsWithTeamCount.toString()} />
+                      <InfoTile label="Labs linked" value={labStats.length.toString()} />
+                    </div>
+                  </div>
                 </motion.div>
               )}
 
@@ -1549,7 +1488,10 @@ export default function Account() {
                       <div className="mb-4 flex items-center justify-between gap-3">
                         <div>
                           <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">News</p>
-                          <h3 className="text-lg font-semibold text-foreground">Recent updates from your labs</h3>
+                          <h3 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                            <ClipboardList className="h-4 w-4 text-primary" />
+                            Recent updates from your labs
+                          </h3>
                         </div>
                       </div>
 
@@ -1629,9 +1571,34 @@ export default function Account() {
 
           {activeTab === "requests" && <Requests embedded />}
 
-          {activeTab === "manageLab" && <ManageSelect embedded />}
+          {activeTab === "manageLab" && (
+            <div className="space-y-4">
+              <div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("overview");
+                    setOverviewTab("labs");
+                  }}
+                  className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                >
+                  <ArrowLeft className="h-3 w-3" />
+                  Back
+                </button>
+              </div>
+              <ManageSelect embedded />
+            </div>
+          )}
 
-          {activeTab === "manageTeams" && <ManageTeams embedded />}
+          {activeTab === "manageTeams" && (
+            <ManageTeams
+              embedded
+              onBack={() => {
+                setActiveTab("overview");
+                setOverviewTab("team");
+              }}
+            />
+          )}
 
           {activeTab === "adminLabs" && <AdminLabs embedded />}
 
@@ -1639,7 +1606,10 @@ export default function Account() {
 
           {activeTab === "legal" && (
             <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm">
-              <h3 className="text-lg font-semibold text-foreground">Connect with legal support</h3>
+              <h3 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                <ShieldCheck className="h-4 w-4 text-primary" />
+                Connect with legal support
+              </h3>
               <p className="text-sm text-muted-foreground">We’ll connect you with our legal expert for contract help.</p>
 
               <div className="mt-4 grid gap-3">
@@ -1725,7 +1695,7 @@ function Row({ label, value }: { label: string; value: string }) {
 function InfoTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-border/70 bg-background/70 px-4 py-3">
-      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{label}</p>
+      <p className="text-sm font-medium text-foreground/80">{label}</p>
       <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
     </div>
   );
@@ -1734,7 +1704,7 @@ function InfoTile({ label, value }: { label: string; value: string }) {
 function CardStat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="rounded-2xl border border-border bg-background/70 px-4 py-3">
-      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{label}</p>
+      <p className="text-sm font-medium text-foreground/80">{label}</p>
       <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
       {hint ? <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{hint}</p> : null}
     </div>
@@ -1758,7 +1728,7 @@ function HighlightCard({
     <div className="rounded-2xl border border-border bg-background/70 px-4 py-3">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{title}</p>
+          <p className="text-sm font-medium text-foreground/80">{title}</p>
           <p className="text-sm text-muted-foreground">{subtitle}</p>
         </div>
         {badge ? <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">{badge}</span> : null}

@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/context/AuthContext";
 import { useLabs } from "@/context/LabsContext";
+import { Heart } from "lucide-react";
 
 export default function Favorites({ embedded = false }: { embedded?: boolean }) {
   const { user } = useAuth();
@@ -57,8 +58,10 @@ export default function Favorites({ embedded = false }: { embedded?: boolean }) 
       <div className={containerClass}>
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Favorites</p>
-            <h1 className="text-2xl font-semibold text-foreground">Saved labs</h1>
+            <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
+              <Heart className="h-5 w-5 text-primary" />
+              Favorites
+            </h1>
             <p className="text-sm text-muted-foreground">Labs you have favorited for quick access.</p>
           </div>
         </div>

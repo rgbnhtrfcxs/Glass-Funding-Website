@@ -435,7 +435,7 @@ export default function TeamEditor({ params }: { params?: { id?: string } }) {
       const saved = (await res.json()) as Team;
       setSuccess(isEditing ? "Team updated." : "Team created.");
       if (!isEditing) {
-        setLocation(`/team/manage/${saved.id}`);
+        setLocation(`/account?tab=manageTeams`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save team");
@@ -501,7 +501,7 @@ export default function TeamEditor({ params }: { params?: { id?: string } }) {
   return (
     <section className="bg-background min-h-screen">
       <div className="container mx-auto px-4 py-16 lg:py-20 max-w-5xl">
-        <Link href="/team/manage" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-2">
+        <Link href="/account?tab=manageTeams" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-2">
           <ArrowLeft className="h-4 w-4" />
           Back to teams
         </Link>

@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
-import { Plus, Users } from "lucide-react";
+import { ArrowLeft, Plus, Users } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/context/AuthContext";
 import type { Team } from "@shared/teams";
 
-export default function ManageTeams({ embedded = false }: { embedded?: boolean }) {
+export default function ManageTeams({
+  embedded = false,
+  onBack,
+}: {
+  embedded?: boolean;
+  onBack?: () => void;
+}) {
   const { user } = useAuth();
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,9 +75,22 @@ export default function ManageTeams({ embedded = false }: { embedded?: boolean }
   return (
     <section className={sectionClass}>
       <div className={containerClass}>
+        {embedded && onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="mb-4 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-muted-foreground hover:border-primary hover:text-primary"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back
+          </button>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
-            <h1 className="text-3xl font-semibold text-foreground">Manage your teams</h1>
+            <h1 className="flex items-center gap-2 text-3xl font-semibold text-foreground">
+              <Users className="h-5 w-5 text-primary" />
+              Manage your teams
+            </h1>
             <p className="text-sm text-muted-foreground">Create and update research teams linked to labs.</p>
           </div>
           <div className="relative w-full sm:w-80">

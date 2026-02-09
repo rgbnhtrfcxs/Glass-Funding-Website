@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
-import { MapPin, ShieldCheck, ShieldAlert, Plus } from "lucide-react";
+import { FlaskConical, MapPin, ShieldCheck, ShieldAlert, Plus } from "lucide-react";
 
 type LabSummary = {
   id: number;
@@ -109,7 +109,10 @@ export default function ManageSelect({ embedded = false }: { embedded?: boolean 
       <div className={containerClass}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
-            <h1 className="text-3xl font-semibold text-foreground">Manage your labs</h1>
+            <h1 className="flex items-center gap-2 text-3xl font-semibold text-foreground">
+              <FlaskConical className="h-5 w-5 text-primary" />
+              Manage your labs
+            </h1>
             <p className="text-sm text-muted-foreground">Pick a lab to edit. Premier labs keep their analytics and partner features.</p>
           </div>
           <div className="relative w-full sm:w-80">

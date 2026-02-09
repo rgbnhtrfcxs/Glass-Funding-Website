@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
+import { Mail } from "lucide-react";
 
 type RequestRecord = {
   id?: number | string;
@@ -206,7 +207,10 @@ export default function Requests({ embedded = false }: { embedded?: boolean }) {
       <div className={containerClass}>
         <div>
           <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Requests</p>
-          <h1 className="text-3xl font-semibold text-foreground">Inbox</h1>
+          <h1 className="flex items-center gap-2 text-3xl font-semibold text-foreground">
+            <Mail className="h-5 w-5 text-primary" />
+            Inbox
+          </h1>
           <p className="text-sm text-muted-foreground">Collaboration or rental requests linked to your labs.</p>
         </div>
 
