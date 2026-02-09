@@ -8,12 +8,14 @@ export type MapMarker = {
   lat: number;
   label?: string;
   subtitle?: string;
+  address?: string;
   href?: string;
   imageUrl?: string;
   items?: Array<{
     id: number | string;
     label: string;
     subtitle?: string;
+    address?: string;
     href?: string;
     imageUrl?: string;
   }>;

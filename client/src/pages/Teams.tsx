@@ -105,15 +105,18 @@ export default function Teams() {
                   key={team.id}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3 }}
-                  className="flex h-full flex-col overflow-hidden rounded-3xl border border-border bg-card/80 shadow-sm"
+                  transition={{ duration: 0.3, ease: "easeOut" }}
+                  whileHover={{ scale: 1.02 }}
+                  className="group relative flex h-full flex-col overflow-hidden rounded-3xl border border-border bg-card/80 shadow-sm will-change-transform"
                 >
-                  {cover && (
-                    <div className="h-36 w-full overflow-hidden border-b border-border/60 bg-background/40">
-                      <img src={cover} alt={team.name} className="h-full w-full object-cover" />
-                    </div>
-                  )}
-                  <div className="flex flex-1 flex-col gap-4 p-5">
+                  <div className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-white/80 via-white/70 to-sky-100/80 opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-100" />
+                  <div className="relative z-10 flex h-full flex-col">
+                    {cover && (
+                      <div className="h-36 w-full overflow-hidden border-b border-border/60 bg-background/40">
+                        <img src={cover} alt={team.name} className="h-full w-full object-cover" />
+                      </div>
+                    )}
+                    <div className="flex flex-1 flex-col gap-4 p-5">
                     <div className="space-y-2">
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -163,6 +166,7 @@ export default function Teams() {
                       View team
                       <ArrowUpRight className="h-4 w-4" />
                     </Link>
+                    </div>
                   </div>
                 </motion.div>
               );
