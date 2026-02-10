@@ -30,7 +30,8 @@ const LAB_SELECT = `
   lab_compliance_labels (label),
   lab_compliance_docs (name, url),
   lab_team_members (name, title, linkedin, website, is_lead, team_name, role_rank),
-  lab_equipment (item),
+  lab_equipment (item, is_priority),
+  lab_techniques (name, description),
   lab_focus_areas (focus_area),
   lab_offers (offer)
 `;
@@ -84,7 +85,8 @@ type LabRow = {
     team_name: string | null;
     role_rank: number | string | null;
   }> | null;
-  lab_equipment: Array<{ item: string }> | null;
+  lab_equipment: Array<{ item: string; is_priority: boolean | string | null }> | null;
+  lab_techniques: Array<{ name: string; description: string | null }> | null;
   lab_focus_areas: Array<{ focus_area: string }> | null;
   lab_offers: Array<{ offer: OfferOption }> | null;
 };
@@ -137,6 +139,12 @@ function mapLabRow(row: LabRow): LabPartner {
       url: logo.url,
       website: logo.website ?? null,
     }));
+  const equipmentRows = row.lab_equipment ?? [];
+  const equipment = equipmentRows.map(item => item.item).filter(Boolean);
+  const priorityEquipment = equipmentRows
+    .filter(item => parseBoolean(item.is_priority, false))
+    .map(item => item.item)
+    .filter(Boolean);
   const mapped = {
     id: Number(row.id),
     name: row.name,
@@ -187,7 +195,12 @@ function mapLabRow(row: LabRow): LabPartner {
     auditPassedAt: row.audit_passed_at || null,
     labStatus: normalizeLabStatus(row.lab_status),
     isVisible: parseBoolean(row.is_visible, true),
-    equipment: (row.lab_equipment ?? []).map(item => item.item),
+    equipment,
+    priorityEquipment,
+    techniques: (row.lab_techniques ?? []).map(item => ({
+      name: item.name,
+      description: item.description ?? null,
+    })),
     focusAreas: (row.lab_focus_areas ?? []).map(item => item.focus_area),
     offers: (row.lab_offers ?? []).map(item => item.offer),
     field: profileRow?.field || null,
@@ -256,13 +269,28 @@ async function replaceLabTeamMembers(labId: number, members: Array<{
   if (ins.error) throw ins.error;
 }
 
-async function replaceLabEquipment(labId: number, equipment: string[]) {
+async function replaceLabEquipment(labId: number, equipment: string[], priorityEquipment: string[] = []) {
   const del = await supabase.from("lab_equipment").delete().eq("lab_id", labId);
   if (del.error) throw del.error;
   if (!equipment.length) return;
+  const prioritySet = new Set(priorityEquipment);
   const ins = await supabase
     .from("lab_equipment")
-    .insert(equipment.map(item => ({ lab_id: labId, item })));
+    .insert(equipment.map(item => ({ lab_id: labId, item, is_priority: prioritySet.has(item) })));
+  if (ins.error) throw ins.error;
+}
+
+async function replaceLabTechniques(labId: number, techniques: InsertLab["techniques"]) {
+  const del = await supabase.from("lab_techniques").delete().eq("lab_id", labId);
+  if (del.error) throw del.error;
+  if (!techniques.length) return;
+  const ins = await supabase.from("lab_techniques").insert(
+    techniques.map(technique => ({
+      lab_id: labId,
+      name: technique.name,
+      description: technique.description ?? null,
+    })),
+  );
   if (ins.error) throw ins.error;
 }
 
@@ -399,7 +427,8 @@ async function writeLabRelations(labId: number, lab: InsertLab | LabPartner) {
   await replaceLabComplianceLabels(labId, lab.compliance);
   await replaceLabComplianceDocs(labId, lab.complianceDocs);
   await replaceLabTeamMembers(labId, (lab as any).teamMembers ?? []);
-  await replaceLabEquipment(labId, lab.equipment);
+  await replaceLabEquipment(labId, lab.equipment, (lab as any).priorityEquipment ?? []);
+  await replaceLabTechniques(labId, (lab as any).techniques ?? []);
   await replaceLabFocusAreas(labId, lab.focusAreas);
   await replaceLabOffers(labId, lab.offers);
 }
@@ -597,7 +626,21 @@ export class LabStore {
     if (Object.prototype.hasOwnProperty.call(updates, "photos")) await replaceLabPhotos(id, parsed.photos ?? []);
     if (Object.prototype.hasOwnProperty.call(updates, "compliance")) await replaceLabComplianceLabels(id, parsed.compliance ?? []);
     if (Object.prototype.hasOwnProperty.call(updates, "complianceDocs")) await replaceLabComplianceDocs(id, parsed.complianceDocs ?? []);
-    if (Object.prototype.hasOwnProperty.call(updates, "equipment")) await replaceLabEquipment(id, parsed.equipment ?? []);
+    if (
+      Object.prototype.hasOwnProperty.call(updates, "equipment") ||
+      Object.prototype.hasOwnProperty.call(updates, "priorityEquipment")
+    ) {
+      const equipment = Object.prototype.hasOwnProperty.call(updates, "equipment")
+        ? parsed.equipment ?? []
+        : existing.equipment ?? [];
+      const priority = Object.prototype.hasOwnProperty.call(updates, "priorityEquipment")
+        ? parsed.priorityEquipment ?? []
+        : existing.priorityEquipment ?? [];
+      await replaceLabEquipment(id, equipment, priority);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "techniques")) {
+      await replaceLabTechniques(id, parsed.techniques ?? []);
+    }
     if (Object.prototype.hasOwnProperty.call(updates, "focusAreas")) await replaceLabFocusAreas(id, parsed.focusAreas ?? []);
     if (Object.prototype.hasOwnProperty.call(updates, "offers")) await replaceLabOffers(id, parsed.offers ?? []);
     if (Object.prototype.hasOwnProperty.call(updates, "partnerLogos"))

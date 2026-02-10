@@ -24,7 +24,7 @@ export default function StripeCheckout() {
   useEffect(() => {
     if (loading) return;
     if (!validPlan) {
-      setLocation("/pricing");
+      setLocation("/subscriptions");
       return;
     }
     if (!user) {
@@ -81,9 +81,9 @@ export default function StripeCheckout() {
             </ul>
           </div>
           <div className="flex flex-wrap justify-center gap-3 text-sm">
-            <Link href="/pricing">
+            <Link href="/subscriptions">
               <a className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-muted-foreground transition hover:border-primary hover:text-primary">
-                Back to pricing
+                Back to subscriptions
               </a>
             </Link>
             <Link href="/payments">

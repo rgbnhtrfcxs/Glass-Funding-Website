@@ -14,7 +14,7 @@ type LabSummary = {
   logo_url?: string | null;
   is_visible?: boolean | null;
   lab_photos?: Array<{ url: string; name: string }>;
-  lab_equipment?: Array<{ item: string }>;
+  lab_equipment?: Array<{ item: string; is_priority?: boolean | null }>;
   isVerified?: boolean;
 };
 
