@@ -89,7 +89,6 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [showTeamsModal, setShowTeamsModal] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<{ index: number } | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<{ url: string; alt: string } | null>(null);
   const [showClaimInfo, setShowClaimInfo] = useState(false);
   const [labMarker, setLabMarker] = useState<MapMarker | null>(null);
 
