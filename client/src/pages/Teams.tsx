@@ -1,12 +1,21 @@
 import { motion } from "framer-motion";
 import { ArrowUpRight, Beaker, MapPin, Users } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useMemo, useState } from "react";
 import { useTeams } from "@/context/TeamsContext";
 
 export default function Teams() {
   const { teams, isLoading, error, refresh } = useTeams();
   const [searchTerm, setSearchTerm] = useState("");
+  const [, setLocation] = useLocation();
+  const getInitials = (name: string) =>
+    name
+      .split(" ")
+      .map(part => part.trim()[0])
+      .filter(Boolean)
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
 
   const visibleTeams = useMemo(() => teams.filter(team => team.isVisible !== false), [teams]);
   const teamCount = visibleTeams.length;
@@ -94,12 +103,22 @@ export default function Teams() {
           </div>
         ) : (
           <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {filteredTeams.map(team => {
+            {filteredTeams
+              .slice()
+              .sort((a, b) => {
+                const aHasPhoto = (a.photos?.[0]?.url ?? "").trim().length > 0;
+                const bHasPhoto = (b.photos?.[0]?.url ?? "").trim().length > 0;
+                if (aHasPhoto === bHasPhoto) return 0;
+                return aHasPhoto ? -1 : 1;
+              })
+              .map(team => {
               const featuredEquipment = team.priorityEquipment.length > 0
                 ? team.priorityEquipment.slice(0, 3)
                 : team.equipment.slice(0, 3);
               const location = formatLocation(team);
-              const cover = team.logoUrl || team.labs[0]?.logoUrl || null;
+              const hasTeamPhoto = (team.photos?.[0]?.url ?? "").trim().length > 0;
+              const cover = hasTeamPhoto ? team.photos[0]?.url : "/images/team-placeholder.png";
+              const avatar = team.logoUrl || team.labs[0]?.logoUrl || null;
               return (
                 <motion.div
                   key={team.id}
@@ -107,31 +126,71 @@ export default function Teams() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, ease: "easeOut" }}
                   whileHover={{ scale: 1.02 }}
-                  className="group relative flex h-full flex-col overflow-hidden rounded-3xl border border-border bg-card/80 shadow-sm will-change-transform"
+                  className="group relative flex h-full min-h-[420px] flex-col overflow-hidden rounded-3xl border border-border bg-card/80 shadow-sm will-change-transform cursor-pointer"
+                  role="link"
+                  tabIndex={0}
+                  onClick={() => setLocation(`/teams/${team.id}`)}
+                  onKeyDown={event => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    setLocation(`/teams/${team.id}`);
+                  }}
                 >
                   <div className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-white/80 via-white/70 to-sky-100/80 opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-100" />
                   <div className="relative z-10 flex h-full flex-col">
                     {cover && (
                       <div className="h-36 w-full overflow-hidden border-b border-border/60 bg-background/40">
-                        <img src={cover} alt={team.name} className="h-full w-full object-cover" />
+                        <img
+                          src={cover}
+                          alt={team.name}
+                          className={`h-full w-full object-cover ${hasTeamPhoto ? "" : "object-bottom"}`}
+                        />
                       </div>
                     )}
-                    <div className="flex flex-1 flex-col gap-4 p-5">
+                    <div className="flex flex-1 flex-col gap-4 p-6">
                     <div className="space-y-2">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <h2 className="text-lg font-semibold text-foreground">{team.name}</h2>
+                          <div className="mb-3 flex items-center gap-3">
+                            <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-white/70 px-3 py-1.5 text-[11px] font-medium text-muted-foreground">
+                              <span className="inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border border-white/80 bg-white text-[10px] text-muted-foreground">
+                                {avatar ? (
+                                  <img src={avatar} alt={`${team.name} avatar`} className="h-full w-full object-cover" />
+                                ) : (
+                                  getInitials(team.name)
+                                )}
+                              </span>
+                              Team
+                            </span>
+                            <h2 className="text-lg font-semibold text-foreground">{team.name}</h2>
+                          </div>
                           {team.descriptionShort && (
-                            <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
+                            <p className="mt-2 text-sm text-muted-foreground line-clamp-2">
                               {team.descriptionShort}
                             </p>
                           )}
+                          {team.field && (
+                            <div className="mt-3 flex flex-col gap-2">
+                              <span className="text-[10px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">
+                                Focus on
+                              </span>
+                              <div className="flex flex-wrap gap-2">
+                                {team.field
+                                  .split("/")
+                                  .map(item => item.trim())
+                                  .filter(Boolean)
+                                  .map(item => (
+                                    <span
+                                      key={item}
+                                      className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
+                                    >
+                                      {item}
+                                    </span>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        {team.field && (
-                          <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">
-                            {team.field}
-                          </span>
-                        )}
                       </div>
                       <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                         {featuredEquipment.map(item => (
@@ -141,31 +200,26 @@ export default function Teams() {
                         ))}
                       </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1">
-                        <Users className="h-3.5 w-3.5 text-primary" />
-                        {team.members.length} members
-                      </span>
-                      {location && (
+                    <div className="mt-auto space-y-2">
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                         <span className="inline-flex items-center gap-1">
-                          <MapPin className="h-3.5 w-3.5 text-primary" />
-                          {location}
+                          <Users className="h-3.5 w-3.5 text-primary" />
+                          {team.members.length} members
                         </span>
-                      )}
-                      {team.techniques.length > 0 && (
-                        <span className="inline-flex items-center gap-1">
-                          <Beaker className="h-3.5 w-3.5 text-primary" />
-                          {team.techniques.length} techniques
-                        </span>
-                      )}
+                        {location && (
+                          <span className="inline-flex items-center gap-1">
+                            <MapPin className="h-3.5 w-3.5 text-primary" />
+                            {location}
+                          </span>
+                        )}
+                        {team.techniques.length > 0 && (
+                          <span className="inline-flex items-center gap-1">
+                            <Beaker className="h-3.5 w-3.5 text-primary" />
+                            {team.techniques.length} techniques
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <Link
-                      href={`/teams/${team.id}`}
-                      className="mt-auto inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
-                    >
-                      View team
-                      <ArrowUpRight className="h-4 w-4" />
-                    </Link>
                     </div>
                   </div>
                 </motion.div>
