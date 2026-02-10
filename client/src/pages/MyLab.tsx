@@ -675,7 +675,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
   async function confirmAndSave() {
     const success = await save();
     if (success) {
-      setLocation("/lab/manage");
+      setLocation("/account?tab=manageLab");
     }
   }
 
@@ -703,7 +703,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
       if (hasFunctionalConsent) {
         localStorage.removeItem(draftKey);
       }
-      setLocation("/lab/manage");
+      setLocation("/account?tab=manageLab");
     } catch (err: any) {
       setDeleteError(err.message || "Failed to delete lab");
     } finally {
@@ -714,7 +714,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
   return (
     <section className="bg-background min-h-screen">
       <div className="container mx-auto px-4 py-20 lg:py-24 max-w-3xl">
-        <Link href="/lab/manage" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-4 rounded-full border border-border px-3 py-1">
+        <Link href="/account?tab=manageLab" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-4 rounded-full border border-border px-3 py-1">
           ← Back to manage labs
         </Link>
         <h1 className="text-3xl font-semibold text-foreground">Manage my lab</h1>
@@ -727,7 +727,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
         {!labId && (
           <p className="mt-4 text-sm text-destructive">
             No lab selected. Go back and choose a lab to manage.
-            <Link href="/lab/manage">
+            <Link href="/account?tab=manageLab">
               <a className="ml-2 underline text-primary">Back to lab selection</a>
             </Link>
           </p>

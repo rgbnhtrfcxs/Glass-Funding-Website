@@ -1,11 +1,30 @@
 import { motion } from "framer-motion";
-import { Link } from "wouter";
-import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import { useLabs } from "@/context/LabsContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Activity,
+  ArrowLeft,
+  Box,
+  ClipboardList,
+  FlaskConical,
+  Heart,
+  Mail,
+  ShieldCheck,
+  ShieldAlert,
+  UserCog,
+  Users,
+} from "lucide-react";
+import ProfilePortal from "@/pages/ProfilePortal";
+import Requests from "@/pages/Requests";
+import ManageSelect from "@/pages/ManageSelect";
+import ManageTeams from "@/pages/ManageTeams";
+import AdminLabs from "@/pages/AdminLabs";
+import Favorites from "@/pages/Favorites";
 
 type Profile = {
   user_id: string;
@@ -46,6 +65,7 @@ type TeamMemberForm = {
 };
 
 export default function Account() {
+  const [location] = useLocation();
   const { user, loading: authLoading } = useAuth();
   const { labs: allLabs, updateLab } = useLabs();
   const { toast } = useToast();
@@ -94,6 +114,8 @@ export default function Account() {
   >([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsFeedError, setNewsFeedError] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
 
   const toBool = (value: unknown) =>
     value === true || value === "true" || value === 1 || value === "1";
@@ -110,14 +132,16 @@ export default function Account() {
     postalCode: "",
     country: "",
   });
-  const [showLegal, setShowLegal] = useState(false);
   const [legalTopic, setLegalTopic] = useState("");
   const [legalDetails, setLegalDetails] = useState("");
   const [legalLabId, setLegalLabId] = useState<number | null>(null);
   const [legalError, setLegalError] = useState<string | null>(null);
   const [legalSuccess, setLegalSuccess] = useState<string | null>(null);
   const [legalSubmitting, setLegalSubmitting] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "labs" | "equipment" | "team" | "activity">("overview");
+  const [activeTab, setActiveTab] = useState<
+    "overview" | "edit" | "requests" | "manageLab" | "manageTeams" | "adminLabs" | "favorites" | "legal"
+  >("overview");
+  const [overviewTab, setOverviewTab] = useState<"overview" | "labs" | "equipment" | "team" | "activity">("overview");
   const [equipmentDrafts, setEquipmentDrafts] = useState<Record<number, string[]>>({});
   const [equipmentInput, setEquipmentInput] = useState<Record<number, string>>({});
   const [equipmentSaving, setEquipmentSaving] = useState<Record<number, boolean>>({});
@@ -128,17 +152,78 @@ export default function Account() {
   const [teamSaving, setTeamSaving] = useState<Record<number, boolean>>({});
   const [teamError, setTeamError] = useState<Record<number, string | null>>({});
   const [resettingPassword, setResettingPassword] = useState(false);
+  const teamMemberCount = useMemo(
+    () => Object.values(teamDrafts).reduce((acc, members) => acc + (members?.length ?? 0), 0),
+    [teamDrafts],
+  );
+  const labsWithTeamCount = useMemo(
+    () => Object.values(teamDrafts).filter(members => (members?.length ?? 0) > 0).length,
+    [teamDrafts],
+  );
+  const equipmentCount = useMemo(
+    () => Object.values(equipmentDrafts).reduce((acc, items) => acc + (items?.length ?? 0), 0),
+    [equipmentDrafts],
+  );
+  const labsWithEquipmentCount = useMemo(
+    () => Object.values(equipmentDrafts).filter(items => (items?.length ?? 0) > 0).length,
+    [equipmentDrafts],
+  );
+
+  const profileName = useMemo(() => {
+    return profile?.display_name || profile?.name || null;
+  }, [profile?.display_name, profile?.name]);
+
+  const isProfileLoading = loading || authLoading;
 
   const displayLabel = useMemo(() => {
-    return profile?.display_name || profile?.name || user?.email || "Your Account";
-  }, [profile?.display_name, profile?.name, user?.email]);
+    if (isProfileLoading) return "";
+    return profileName || "Your Account";
+  }, [isProfileLoading, profileName]);
+
+  const profileEmail = useMemo(() => {
+    return profile?.email || user?.email || "";
+  }, [profile?.email, user?.email]);
+
+  const avatarLabel = useMemo(() => {
+    return profileName || profileEmail || "Your Account";
+  }, [profileName, profileEmail]);
+
+  const requesterName = useMemo(() => {
+    return profileName || profileEmail || "Unknown";
+  }, [profileName, profileEmail]);
 
   const initials = useMemo(() => {
-    const from = profile?.display_name || profile?.name || user?.email || "?";
+    const from = profileName || user?.email || "?";
     const parts = from.replace(/@.*/, "").trim().split(/\s+/);
     const letters = parts.length >= 2 ? parts[0][0] + parts[1][0] : parts[0][0];
     return letters.toUpperCase();
-  }, [profile?.display_name, profile?.name, user?.email]);
+  }, [profileName, user?.email]);
+
+  const handleAvatarUpload = async (file: File | null) => {
+    if (!file || !user) return;
+    setAvatarError(null);
+    setAvatarUploading(true);
+    try {
+      const extension = file.name.split(".").pop()?.toLowerCase() || "png";
+      const path = `${user.id}/${Date.now()}.${extension}`;
+      const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, {
+        upsert: true,
+        contentType: file.type,
+      });
+      if (uploadError) throw uploadError;
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      const publicUrl = data.publicUrl;
+      const { error: profileErr } = await supabase
+        .from("profiles")
+        .upsert({ user_id: user.id, email: user.email, avatar_url: publicUrl }, { onConflict: "user_id" });
+      if (profileErr) throw profileErr;
+      setProfile(prev => (prev ? { ...prev, avatar_url: publicUrl } : prev));
+    } catch (err: any) {
+      setAvatarError(err?.message || "Failed to upload avatar.");
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
 
   useEffect(() => {
     async function load() {
@@ -640,6 +725,41 @@ export default function Account() {
     }
   }
 
+  async function submitLegalRequest() {
+    if (!legalTopic.trim() || !legalDetails.trim()) {
+      setLegalError("Topic and details are required.");
+      return;
+    }
+    setLegalSubmitting(true);
+    setLegalError(null);
+    setLegalSuccess(null);
+    try {
+      const res = await fetch("/api/legal-assist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: legalTopic.trim(),
+          details: legalDetails.trim(),
+          labId: legalLabId || undefined,
+          name: requesterName,
+          email: profile?.email || user?.email || "",
+        }),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || "Unable to send request");
+      }
+      setLegalSuccess("Sent! We’ll connect you with our legal contact shortly.");
+      setLegalTopic("");
+      setLegalDetails("");
+      setLegalLabId(labStats[0]?.id ?? null);
+    } catch (err: any) {
+      setLegalError(err?.message || "Unable to send request");
+    } finally {
+      setLegalSubmitting(false);
+    }
+  }
+
   useEffect(() => {
     async function loadNews() {
       if (!user) return;
@@ -667,71 +787,132 @@ export default function Account() {
     if (!authLoading) loadNews();
   }, [authLoading, user?.id]);
 
-  const tabs = [
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get("tab");
+      const sub = params.get("sub");
+      const allowedTabs = [
+        "overview",
+        "edit",
+        "requests",
+        "manageLab",
+        "manageTeams",
+        "adminLabs",
+        "favorites",
+        "legal",
+      ] as const;
+      const allowedOverview = ["overview", "labs", "equipment", "team", "activity"] as const;
+      if (tab && (allowedTabs as readonly string[]).includes(tab)) {
+        setActiveTab(tab as typeof allowedTabs[number]);
+        if (tab === "overview" && sub && (allowedOverview as readonly string[]).includes(sub)) {
+          setOverviewTab(sub as typeof allowedOverview[number]);
+        }
+      }
+    } catch {
+      // ignore invalid query params
+    }
+  }, [location]);
+
+  const tabs: Array<{ id: typeof activeTab; label: ReactNode; hidden?: boolean }> = [
     { id: "overview", label: "Overview" },
-    { id: "labs", label: "Labs" },
-    { id: "equipment", label: "Equipment" },
-    { id: "team", label: "Team" },
-    { id: "activity", label: "Activity" },
+    { id: "edit", label: "Edit account" },
+    { id: "requests", label: "Requests", hidden: !(profile && toBool(profile.can_broker_requests)) },
+    { id: "manageLab", label: "Manage lab", hidden: !(profile && toBool(profile.can_create_lab)) },
+    { id: "manageTeams", label: "Manage teams", hidden: !(profile && toBool(profile.can_manage_teams)) },
+    { id: "adminLabs", label: "Admin labs", hidden: !(profile && toBool(profile.is_admin)) },
+    { id: "favorites", label: `Favorites (${favoriteLabs.length})` },
+    { id: "legal", label: "Legal assistance", hidden: !(profile && (toBool(profile.can_create_lab) || toBool(profile.can_manage_teams))) },
+  ];
+
+  const overviewTabs = [
+    { id: "overview", label: "Dashboard", icon: Activity },
+    { id: "labs", label: "Labs", icon: FlaskConical },
+    { id: "team", label: "Team", icon: Users },
+    { id: "activity", label: "Activity", icon: ClipboardList },
   ] as const;
+
 
   return (
     <section className="bg-background min-h-screen">
       <div className="container mx-auto px-4 py-20 lg:py-24 max-w-5xl">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <Avatar className="h-14 w-14">
-              <AvatarImage src={profile?.avatar_url ?? undefined} alt={displayLabel} />
-              <AvatarFallback className="text-base font-semibold bg-gradient-to-br from-indigo-500/20 to-pink-500/20 text-foreground">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
+            <label className="group relative cursor-pointer">
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={e => {
+                  const file = e.target.files?.[0] ?? null;
+                  void handleAvatarUpload(file);
+                  if (e.target) e.target.value = "";
+                }}
+                disabled={avatarUploading}
+              />
+              <Avatar className="h-14 w-14">
+                <AvatarImage src={profile?.avatar_url ?? undefined} alt={avatarLabel} />
+                <AvatarFallback className="text-base font-semibold bg-gradient-to-br from-indigo-500/20 to-pink-500/20 text-foreground">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <span className="pointer-events-none absolute inset-0 rounded-full bg-black/0 transition group-hover:bg-black/10" />
+              <span className="pointer-events-none absolute left-1/2 top-full mt-2 w-max -translate-x-1/2 rounded-full bg-foreground px-3 py-1 text-[10px] font-medium uppercase tracking-[0.2em] text-background opacity-0 transition group-hover:opacity-100">
+                Click to upload
+              </span>
+              {avatarUploading && (
+                <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-background/70 text-[10px] font-medium text-muted-foreground">
+                  Uploading…
+                </span>
+              )}
+            </label>
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl md:text-3xl font-semibold text-foreground">{displayLabel}</h1>
+                <h1 className="text-2xl md:text-3xl font-semibold text-foreground">
+                  {isProfileLoading ? (
+                    <span className="inline-block h-7 w-40 rounded bg-muted animate-pulse" />
+                  ) : (
+                    displayLabel
+                  )}
+                </h1>
               </div>
-              <p className="text-xs md:text-sm text-muted-foreground">Your Glass profile overview.</p>
+              {isProfileLoading ? (
+                <span className="inline-block h-3 w-36 rounded bg-muted animate-pulse" />
+              ) : (
+                <p className="text-[11px] md:text-xs text-muted-foreground">{profileEmail}</p>
+              )}
+              {avatarError && <p className="text-xs text-destructive">{avatarError}</p>}
             </div>
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <Link
-              href="/account/edit"
-              className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:text-primary hover:border-primary"
-            >
-              Edit account
-            </Link>
+          <div className="flex items-center gap-3">
             {profile && toBool(profile.can_broker_requests) && (
-              <Link
-                href="/requests"
-                className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:text-primary hover:border-primary"
+              <button
+                type="button"
+                onClick={() => setActiveTab("requests")}
+                className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${
+                  activeTab === "requests"
+                    ? "border-primary/50 bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+                }`}
+                aria-label="Requests"
+                title="Requests"
               >
-                Requests
-              </Link>
+                <Mail className="h-5 w-5" />
+              </button>
             )}
-            {profile && toBool(profile.can_create_lab) && (
-              <Link
-                href="/lab/manage"
-                className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
-              >
-                Manage lab
-              </Link>
-            )}
-            {profile && toBool(profile.can_manage_teams) && (
-              <Link
-                href="/team/manage"
-                className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-              >
-                Manage teams
-              </Link>
-            )}
-            {profile && toBool(profile.is_admin) && (
-              <Link
-                href="/admin/labs"
-                className="inline-flex items-center justify-center rounded-full border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10"
-              >
-                Admin labs
-              </Link>
-            )}
+            <button
+              type="button"
+              onClick={() => setActiveTab("favorites")}
+              className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${
+                activeTab === "favorites"
+                  ? "border-primary/50 bg-primary/10 text-primary"
+                  : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+              }`}
+              aria-label="Favorites"
+              title="Favorites"
+            >
+              <Heart className="h-5 w-5" />
+            </button>
             {ownedUnverifiedLabs.length > 0 && (
               <button
                 type="button"
@@ -743,27 +924,6 @@ export default function Account() {
                 className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
               >
                 Get Verified by GLASS
-              </button>
-            )}
-            <Link
-              href="/favorites"
-              className="inline-flex items-center justify-center rounded-full border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary"
-            >
-              <span className="mr-2 flex h-7 w-7 items-center justify-center rounded-full border border-border text-muted-foreground">♥</span>
-              Favorites ({favoriteLabs.length})
-            </Link>
-            {profile && (toBool(profile.can_create_lab) || toBool(profile.can_manage_teams)) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowLegal(true);
-                  setLegalError(null);
-                  setLegalSuccess(null);
-                  setLegalLabId(labStats[0]?.id ?? null);
-                }}
-                className="inline-flex items-center justify-center rounded-full border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary"
-              >
-                Legal assistance
               </button>
             )}
           </div>
@@ -870,16 +1030,8 @@ export default function Account() {
                   </div>
                 </div>
 
-                {newsError && (
-                  <div className="rounded-xl border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    {newsError}
-                  </div>
-                )}
-                {newsSuccess && (
-                  <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                    {newsSuccess}
-                  </div>
-                )}
+                {newsError && <p className="text-sm text-destructive">{newsError}</p>}
+                {newsSuccess && <p className="text-sm text-emerald-600">{newsSuccess}</p>}
 
                 <div className="flex items-center justify-end gap-3">
                   <button
@@ -893,10 +1045,10 @@ export default function Account() {
                   <button
                     type="button"
                     onClick={submitNews}
+                    className="rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-70"
                     disabled={newsSubmitting}
-                    className="rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-70"
                   >
-                    {newsSubmitting ? "Sending…" : "Send update"}
+                    {newsSubmitting ? "Posting…" : "Post update"}
                   </button>
                 </div>
               </div>
@@ -904,137 +1056,560 @@ export default function Account() {
           </div>
         )}
 
-        {showVerifyModal && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4 py-10">
-            <div className="relative w-full max-w-2xl rounded-3xl border border-border bg-card p-6 shadow-2xl">
-              <button
-                type="button"
-                className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"
-                onClick={() => setShowVerifyModal(false)}
-              >
-                ✕
-              </button>
-              <h3 className="text-lg font-semibold text-foreground">Get verified by GLASS</h3>
-              <p className="text-sm text-muted-foreground">
-                Verification includes an on-site visit and carries an additional cost. Choose a lab and provide an address if missing.
-              </p>
-
-              <div className="mt-4 grid gap-4">
-                <div className="grid gap-2">
-                  <label className="text-sm font-medium text-foreground">Lab</label>
-                  <select
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                    value={verifyLabId ?? ""}
-                    onChange={e => setVerifyLabId(Number(e.target.value))}
-                  >
-                    {ownedUnverifiedLabs.map(l => (
-                      <option key={l.id} value={l.id}>
-                        {l.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="grid gap-2">
-                  <label className="text-sm font-medium text-foreground">Address line 1</label>
-                  <input
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                    placeholder="Street address"
-                    value={verifyAddress.addressLine1}
-                    onChange={e => setVerifyAddress(prev => ({ ...prev, addressLine1: e.target.value }))}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <label className="text-sm font-medium text-foreground">Address line 2</label>
-                  <input
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                    placeholder="Suite / Unit (optional)"
-                    value={verifyAddress.addressLine2}
-                    onChange={e => setVerifyAddress(prev => ({ ...prev, addressLine2: e.target.value }))}
-                  />
-                </div>
-                <div className="grid gap-2 md:grid-cols-2 md:gap-4">
-                  <div className="grid gap-2">
-                    <label className="text-sm font-medium text-foreground">City</label>
-                    <input
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                      value={verifyAddress.city}
-                      onChange={e => setVerifyAddress(prev => ({ ...prev, city: e.target.value }))}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <label className="text-sm font-medium text-foreground">State/Region</label>
-                    <input
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                      value={verifyAddress.state}
-                      onChange={e => setVerifyAddress(prev => ({ ...prev, state: e.target.value }))}
-                    />
-                  </div>
-                </div>
-                <div className="grid gap-2 md:grid-cols-2 md:gap-4">
-                  <div className="grid gap-2">
-                    <label className="text-sm font-medium text-foreground">Postal code</label>
-                    <input
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                      value={verifyAddress.postalCode}
-                      onChange={e => setVerifyAddress(prev => ({ ...prev, postalCode: e.target.value }))}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <label className="text-sm font-medium text-foreground">Country</label>
-                    <input
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                      value={verifyAddress.country}
-                      onChange={e => setVerifyAddress(prev => ({ ...prev, country: e.target.value }))}
-                    />
-                  </div>
-                </div>
-
-                {verifyError && (
-                  <div className="rounded-xl border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    {verifyError}
-                  </div>
-                )}
-                {verifySuccess && (
-                  <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                    {verifySuccess}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-end gap-3">
-                  <button
-                    type="button"
-                    className="rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary"
-                    onClick={() => setShowVerifyModal(false)}
-                    disabled={verifySubmitting}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={submitVerificationRequest}
-                    disabled={verifySubmitting}
-                    className="rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-70"
-                  >
-                    {verifySubmitting ? "Sending…" : "Submit request"}
-                  </button>
-                </div>
+        <div className="mt-6 grid gap-6 lg:grid-cols-[220px_1fr]">
+          <aside className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Overview</p>
+              <div className="space-y-1">
+                {overviewTabs.map(tab => {
+                  const isActive =
+                    (activeTab === "overview" && overviewTab === tab.id) ||
+                    (activeTab === "overview" && overviewTab === "equipment" && tab.id === "labs") ||
+                    (activeTab === "manageLab" && tab.id === "labs") ||
+                    (activeTab === "manageTeams" && tab.id === "team");
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveTab("overview");
+                        setOverviewTab(tab.id);
+                      }}
+                      className={`w-full rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
+                        isActive
+                          ? "border-primary/40 bg-primary/10 text-primary"
+                          : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Icon className="h-4 w-4" />
+                        {tab.label}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
-          </div>
-        )}
 
-        {showLegal && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4 py-10">
-            <div className="relative w-full max-w-2xl rounded-3xl border border-border bg-card p-6 shadow-2xl">
-              <button
-                type="button"
-                className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"
-                onClick={() => setShowLegal(false)}
-              >
-                ✕
-              </button>
-              <h3 className="text-lg font-semibold text-foreground">Connect with legal support</h3>
+            <div className="space-y-2">
+              <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Account</p>
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("edit")}
+                  className={`w-full rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
+                    activeTab === "edit"
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <UserCog className="h-4 w-4" />
+                    Edit account
+                  </span>
+                </button>
+                {profile && (toBool(profile.can_create_lab) || toBool(profile.can_manage_teams)) && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("legal")}
+                    className={`w-full rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
+                      activeTab === "legal"
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4" />
+                      Legal assistance
+                    </span>
+                  </button>
+                )}
+                {profile && toBool(profile.is_admin) && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("adminLabs")}
+                    className={`w-full rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
+                      activeTab === "adminLabs"
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <ShieldAlert className="h-4 w-4" />
+                      Admin labs
+                    </span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </aside>
+
+          <div className="space-y-8">
+            {ownedUnverifiedLabs.length > 0 && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVerifyLabId(ownedUnverifiedLabs[0]?.id ?? null);
+                    setShowVerifyModal(true);
+                    setVerifyError(null);
+                  }}
+                  className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+                >
+                  Get Verified by GLASS
+                </button>
+              </div>
+            )}
+          {activeTab === "overview" && (
+            <>
+              {overviewTab === "overview" && (
+                <>
+                  {canSeeDashboard ? (
+                    <div className="flex flex-col gap-6 lg:flex-row">
+                      <motion.div
+                        initial={{ opacity: 0, y: 18 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5 }}
+                        className="flex-1 rounded-3xl border border-border bg-gradient-to-br from-primary/5 via-background to-primary/10 p-8 shadow-sm"
+                      >
+                        <div
+                          className="flex items-center justify-between gap-3 cursor-pointer select-none"
+                          onClick={() => setShowDashboard(prev => !prev)}
+                        >
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                <Activity className="h-4 w-4" />
+                              </span>
+                              <div>
+                                <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Dashboard</p>
+                                <h2 className="text-xl font-semibold text-foreground">Your activity at a glance</h2>
+                              </div>
+                            </div>
+                          <span className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
+                            {showDashboard ? "Collapse" : "Expand"}
+                          </span>
+                        </div>
+
+                        {showDashboard && (
+                          <>
+                            <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                              <CardStat label="Labs linked" value={labStats.length.toString()} hint={labsHiddenCount ? `${labsHiddenCount} hidden` : ""} />
+                              <CardStat label="Views (7d total)" value={totalViews7d.toString()} />
+                              <CardStat label="Views (30d total)" value={totalViews30d.toString()} />
+                              <CardStat label="Favorites total" value={totalFavorites.toString()} />
+                              <CardStat label="Collab requests" value={collabCount.toString()} />
+                              <CardStat label="Rent/contact requests" value={contactCount.toString()} />
+                              {analyticsError && (
+                                <div className="col-span-full rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                  {analyticsError}
+                                </div>
+                              )}
+                            </div>
+
+                            {labStats.length > 0 && (
+                              <div className="mt-8 grid gap-4 md:grid-cols-2">
+                                {bestViewLab && (
+                                  <HighlightCard
+                                    title="Best performing"
+                                    subtitle="Most views (30d)"
+                                    primary={`${bestViewLab.views30d} views`}
+                                    secondary={bestViewLab.name}
+                                    badge={isPremierLab(bestViewLab) ? "Premium" : undefined}
+                                  />
+                                )}
+                                {bestFavoriteLab && (
+                                  <HighlightCard
+                                    title="Most favorited"
+                                    subtitle="Total favorites"
+                                    primary={`${bestFavoriteLab.favorites} favorites`}
+                                    secondary={bestFavoriteLab.name}
+                                    badge={isPremierLab(bestFavoriteLab) ? "Premium" : undefined}
+                                  />
+                                )}
+                              </div>
+                            )}
+
+                            {labStats.length > 0 && (
+                              <div className="mt-8">
+                                <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Linked labs</p>
+                                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                  {labStats.map(lab => {
+                                    const status = labStatusValue(lab);
+                                    const premium = status === "premier";
+                                    return (
+                                      <div
+                                        key={lab.id}
+                                        className="rounded-2xl border border-border bg-background/60 px-4 py-3 text-sm flex flex-col gap-2"
+                                      >
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div>
+                                            <p className="font-semibold text-foreground">{lab.name}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                              {premium ? "Premier" : status} • {lab.isVisible === false ? "Hidden" : "Visible"}
+                                            </p>
+                                          </div>
+                                          <Link href={`/lab/manage/${lab.id}`} className="text-xs font-medium text-primary hover:underline">
+                                            Manage
+                                          </Link>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                                          <span className="rounded-full border border-border px-2 py-1">7d views: {lab.views7d}</span>
+                                          <span className="rounded-full border border-border px-2 py-1">30d views: {lab.views30d}</span>
+                                          <span className="rounded-full border border-border px-2 py-1">Favorites: {lab.favorites}</span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </motion.div>
+                    </div>
+                  ) : (
+                    <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground">
+                      Your dashboard unlocks once you have a premier lab or a multi-lab account.
+                    </div>
+                  )}
+                </>
+              )}
+
+              {overviewTab === "labs" && (
+                <motion.div
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4 }}
+                  className="space-y-6"
+                >
+                  <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="flex items-center gap-2 text-xl font-semibold text-foreground">
+                          <FlaskConical className="h-5 w-5 text-primary" />
+                          Your lab overview
+                        </h3>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          A structured snapshot of your linked labs, visibility, and equipment.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setOverviewTab("equipment")}
+                          className="inline-flex items-center justify-center rounded-full border border-border bg-background px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                        >
+                          Add equipments
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("manageLab")}
+                          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90"
+                        >
+                          Manage labs
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      <InfoTile label="Labs linked" value={labStats.length.toString()} />
+                      <InfoTile label="Visible" value={labsVisibleCount.toString()} />
+                      <InfoTile label="Hidden" value={labsHiddenCount.toString()} />
+                      <InfoTile label="Equipment" value={equipmentCount.toString()} />
+                      <InfoTile label="Labs with equipment" value={labsWithEquipmentCount.toString()} />
+                    </div>
+
+                    {labStats.length > 0 && (
+                      <div className="mt-6 grid gap-4 md:grid-cols-2">
+                        {bestViewLab && (
+                          <HighlightCard
+                            title="Best performing"
+                            subtitle="Most views (30d)"
+                            primary={`${bestViewLab.views30d} views`}
+                            secondary={bestViewLab.name}
+                            badge={isPremierLab(bestViewLab) ? "Premium" : undefined}
+                          />
+                        )}
+                        {bestFavoriteLab && (
+                          <HighlightCard
+                            title="Most favorited"
+                            subtitle="Total favorites"
+                            primary={`${bestFavoriteLab.favorites} favorites`}
+                            secondary={bestFavoriteLab.name}
+                            badge={isPremierLab(bestFavoriteLab) ? "Premium" : undefined}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+
+              {overviewTab === "equipment" && (
+                <motion.div
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4 }}
+                  className="space-y-6"
+                >
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setOverviewTab("labs")}
+                      className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                    >
+                      <ArrowLeft className="h-3 w-3" />
+                      Back
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <Box className="h-4 w-4 text-primary" />
+                      <h3 className="text-lg font-semibold text-foreground">Equipment</h3>
+                    </div>
+                    <p className="text-sm text-muted-foreground">Manage equipment lists for each lab.</p>
+                  </div>
+                  {ownedLabs.length === 0 ? (
+                    <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground">
+                      Add a lab profile to start listing equipment and capabilities.
+                    </div>
+                  ) : (
+                    ownedLabs.map(lab => {
+                      const equipment = equipmentDrafts[lab.id] ?? [];
+                      return (
+                        <div key={lab.id} className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm space-y-4">
+                          <div className="flex flex-col gap-2">
+                            <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Equipment</p>
+                            <h3 className="text-lg font-semibold text-foreground">{lab.name}</h3>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {equipment.length ? (
+                              equipment.map(item => (
+                                <span
+                                  key={item}
+                                  className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground"
+                                >
+                                  {item}
+                                  {canManageLabs && (
+                                    <button
+                                      type="button"
+                                      onClick={() => removeEquipment(lab.id, item)}
+                                      className="text-muted-foreground hover:text-destructive"
+                                    >
+                                      ×
+                                    </button>
+                                  )}
+                                </span>
+                              ))
+                            ) : (
+                              <p className="text-sm text-muted-foreground">No equipment listed yet.</p>
+                            )}
+                          </div>
+                          {canManageLabs && (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <input
+                                className="w-full max-w-sm rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                                placeholder="Add equipment and press Enter"
+                                value={equipmentInput[lab.id] ?? ""}
+                                onChange={e =>
+                                  setEquipmentInput(prev => ({ ...prev, [lab.id]: e.target.value }))
+                                }
+                                onKeyDown={e => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    addEquipment(lab.id);
+                                  }
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => addEquipment(lab.id)}
+                                className="rounded-full bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90"
+                              >
+                                Add equipment
+                              </button>
+                              {equipmentSaving[lab.id] && (
+                                <span className="text-xs text-muted-foreground">Saving…</span>
+                              )}
+                            </div>
+                          )}
+                          {equipmentError[lab.id] && (
+                            <p className="text-xs text-destructive">{equipmentError[lab.id]}</p>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </motion.div>
+              )}
+
+              {overviewTab === "team" && (
+                <motion.div
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4 }}
+                  className="space-y-6"
+                >
+                  <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                          <Users className="h-4 w-4 text-primary" />
+                          Your team overview
+                        </h3>
+                        <p className="mt-1 text-sm text-muted-foreground">Quick snapshot of team members across labs.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("manageTeams")}
+                        className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90"
+                      >
+                        Manage teams
+                      </button>
+                    </div>
+
+                    <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      <InfoTile label="Team members" value={teamMemberCount.toString()} />
+                      <InfoTile label="Labs with team" value={labsWithTeamCount.toString()} />
+                      <InfoTile label="Labs linked" value={labStats.length.toString()} />
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {overviewTab === "activity" && (
+                <motion.div
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4 }}
+                  className="space-y-6"
+                >
+                  {canPostNews ? (
+                    <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm">
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">News</p>
+                          <h3 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                            <ClipboardList className="h-4 w-4 text-primary" />
+                            Recent updates from your labs
+                          </h3>
+                        </div>
+                      </div>
+
+                      {newsLoading && (
+                        <div className="rounded-2xl border border-border bg-background/70 px-4 py-3 text-sm text-muted-foreground">Loading news…</div>
+                      )}
+                      {newsFeedError && (
+                        <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                          {newsFeedError}. You can still post a new update below.
+                        </div>
+                      )}
+
+                      {!newsLoading && (
+                        <div className="overflow-x-auto">
+                          <div className="flex gap-4 min-w-full">
+                            <div className="min-w-[260px] rounded-2xl border border-dashed border-border bg-background/60 px-4 py-4 flex flex-col justify-between">
+                              <div>
+                                <p className="text-sm font-semibold text-foreground mb-1">Share an update</p>
+                                <p className="text-xs text-muted-foreground">Post equipment arrivals, collaborations, or milestones.</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowNewsModal(true);
+                                  setNewsError(null);
+                                }}
+                                className="mt-3 inline-flex items-center justify-center rounded-full bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90"
+                              >
+                                Create post
+                              </button>
+                            </div>
+
+                            {newsFeed.length > 0 &&
+                              newsFeed.map(item => {
+                                const labName = item.labs?.name || `Lab ${item.lab_id}`;
+                                const created = item.created_at ? new Date(item.created_at).toLocaleDateString() : "";
+                                return (
+                                  <div key={item.id} className="min-w-[260px] max-w-[280px] rounded-2xl border border-border bg-background/70 p-4 flex flex-col gap-3">
+                                    <div className="flex items-center text-xs text-muted-foreground">
+                                      <span className="rounded-full bg-muted/60 px-2 py-1 text-[11px] capitalize">{item.category || "update"}</span>
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-semibold text-foreground line-clamp-2">{item.title}</p>
+                                      <p className="mt-1 text-xs text-muted-foreground line-clamp-3">{item.summary}</p>
+                                    </div>
+                                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                      <span className="truncate">{labName}</span>
+                                      <span className="text-[11px]">{created}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {item.images?.slice(0, 2).map(img => (
+                                        <img
+                                          key={img.url}
+                                          src={img.url}
+                                          alt={img.name || "news"}
+                                          className="h-14 w-14 rounded-lg object-cover border border-border"
+                                        />
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground">
+                      News updates are available for premier and multi-lab accounts.
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </>
+          )}
+          {activeTab === "edit" && <ProfilePortal embedded />}
+
+          {activeTab === "requests" && <Requests embedded />}
+
+          {activeTab === "manageLab" && (
+            <div className="space-y-4">
+              <div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("overview");
+                    setOverviewTab("labs");
+                  }}
+                  className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                >
+                  <ArrowLeft className="h-3 w-3" />
+                  Back
+                </button>
+              </div>
+              <ManageSelect embedded />
+            </div>
+          )}
+
+          {activeTab === "manageTeams" && (
+            <ManageTeams
+              embedded
+              onBack={() => {
+                setActiveTab("overview");
+                setOverviewTab("team");
+              }}
+            />
+          )}
+
+          {activeTab === "adminLabs" && <AdminLabs embedded />}
+
+          {activeTab === "favorites" && <Favorites embedded />}
+
+          {activeTab === "legal" && (
+            <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm">
+              <h3 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                <ShieldCheck className="h-4 w-4 text-primary" />
+                Connect with legal support
+              </h3>
               <p className="text-sm text-muted-foreground">We’ll connect you with our legal expert for contract help.</p>
 
               <div className="mt-4 grid gap-3">
@@ -1074,52 +1649,24 @@ export default function Account() {
                 )}
                 {legalError && <p className="text-sm text-destructive">{legalError}</p>}
                 {legalSuccess && <p className="text-sm text-emerald-600">{legalSuccess}</p>}
-                <div className="flex items-center justify-end gap-3">
+                <div className="flex flex-wrap items-center justify-end gap-3">
                   <button
                     type="button"
                     className="rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary"
-                    onClick={() => setShowLegal(false)}
+                    onClick={() => {
+                      setLegalError(null);
+                      setLegalSuccess(null);
+                      setLegalTopic("");
+                      setLegalDetails("");
+                      setLegalLabId(labStats[0]?.id ?? null);
+                    }}
                     disabled={legalSubmitting}
                   >
-                    Cancel
+                    Clear
                   </button>
                   <button
                     type="button"
-                    onClick={async () => {
-                      if (!legalTopic.trim() || !legalDetails.trim()) {
-                        setLegalError("Topic and details are required.");
-                        return;
-                      }
-                      setLegalSubmitting(true);
-                      setLegalError(null);
-                      setLegalSuccess(null);
-                      try {
-                        const res = await fetch("/api/legal-assist", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            topic: legalTopic.trim(),
-                            details: legalDetails.trim(),
-                            labId: legalLabId || undefined,
-                            name: displayLabel,
-                            email: profile?.email || user?.email || "",
-                          }),
-                        });
-                        if (!res.ok) {
-                          const txt = await res.text();
-                          throw new Error(txt || "Unable to send request");
-                        }
-                        setLegalSuccess("Sent! We’ll connect you with our legal contact shortly.");
-                        setLegalTopic("");
-                        setLegalDetails("");
-                        setLegalLabId(labStats[0]?.id ?? null);
-                        setShowLegal(false);
-                      } catch (err: any) {
-                        setLegalError(err?.message || "Unable to send request");
-                      } finally {
-                        setLegalSubmitting(false);
-                      }
-                    }}
+                    onClick={submitLegalRequest}
                     className="rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-70"
                     disabled={legalSubmitting}
                   >
@@ -1128,565 +1675,8 @@ export default function Account() {
                 </div>
               </div>
             </div>
+          )}
           </div>
-        )}
-
-        <div className="mt-10 flex flex-wrap gap-2 border-b border-border pb-4">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                activeTab === tab.id
-                  ? "bg-primary text-primary-foreground"
-                  : "border border-border text-muted-foreground hover:border-primary hover:text-primary"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-8 space-y-8">
-          {activeTab === "overview" && (
-            <>
-              {canSeeDashboard ? (
-                <div className="flex flex-col gap-6 lg:flex-row">
-                  <motion.div
-                    initial={{ opacity: 0, y: 18 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5 }}
-                    className="flex-1 rounded-3xl border border-border bg-card/80 p-8 shadow-sm"
-                  >
-                    <div
-                      className="flex items-center justify-between gap-3 cursor-pointer select-none"
-                      onClick={() => setShowDashboard(prev => !prev)}
-                    >
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Dashboard</p>
-                        <h2 className="text-xl font-semibold text-foreground">Your activity at a glance</h2>
-                      </div>
-                      <span className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-                        {showDashboard ? "Collapse" : "Expand"}
-                      </span>
-                    </div>
-
-                    {showDashboard && (
-                      <>
-                        <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                          <CardStat label="Labs linked" value={labStats.length.toString()} hint={labsHiddenCount ? `${labsHiddenCount} hidden` : ""} />
-                          <CardStat label="Views (7d total)" value={totalViews7d.toString()} />
-                          <CardStat label="Views (30d total)" value={totalViews30d.toString()} />
-                          <CardStat label="Favorites total" value={totalFavorites.toString()} />
-                          <CardStat label="Collab requests" value={collabCount.toString()} />
-                          <CardStat label="Rent/contact requests" value={contactCount.toString()} />
-                          {analyticsError && (
-                            <div className="col-span-full rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                              {analyticsError}
-                            </div>
-                          )}
-                        </div>
-
-                        {labStats.length > 0 && (
-                          <div className="mt-8 grid gap-4 md:grid-cols-2">
-                            {bestViewLab && (
-                              <HighlightCard
-                                title="Best performing"
-                                subtitle="Most views (30d)"
-                                primary={`${bestViewLab.views30d} views`}
-                                secondary={bestViewLab.name}
-                                badge={isPremierLab(bestViewLab) ? "Premium" : undefined}
-                              />
-                            )}
-                            {bestFavoriteLab && (
-                              <HighlightCard
-                                title="Most favorited"
-                                subtitle="Total favorites"
-                                primary={`${bestFavoriteLab.favorites} favorites`}
-                                secondary={bestFavoriteLab.name}
-                                badge={isPremierLab(bestFavoriteLab) ? "Premium" : undefined}
-                              />
-                            )}
-                          </div>
-                        )}
-
-                        {labStats.length > 0 && (
-                          <div className="mt-8">
-                            <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Linked labs</p>
-                            <div className="mt-3 grid gap-3 md:grid-cols-2">
-                              {labStats.map(lab => {
-                                const status = labStatusValue(lab);
-                                const premium = status === "premier";
-                                return (
-                                  <div
-                                    key={lab.id}
-                                    className="rounded-2xl border border-border bg-background/60 px-4 py-3 text-sm flex flex-col gap-2"
-                                  >
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div>
-                                        <p className="font-semibold text-foreground">{lab.name}</p>
-                                        <p className="text-xs text-muted-foreground">
-                                          {premium ? "Premier" : status} • {lab.isVisible === false ? "Hidden" : "Visible"}
-                                        </p>
-                                      </div>
-                                      <Link href={`/lab/manage/${lab.id}`} className="text-xs font-medium text-primary hover:underline">
-                                        Manage
-                                      </Link>
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                                      <span className="rounded-full border border-border px-2 py-1">7d views: {lab.views7d}</span>
-                                      <span className="rounded-full border border-border px-2 py-1">30d views: {lab.views30d}</span>
-                                      <span className="rounded-full border border-border px-2 py-1">Favorites: {lab.favorites}</span>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </motion.div>
-                </div>
-              ) : (
-                <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground">
-                  Your dashboard unlocks once you have a premier lab or a multi-lab account.
-                </div>
-              )}
-            </>
-          )}
-
-          {activeTab === "labs" && (
-            <div className="space-y-6">
-              {ownedLabs.length === 0 ? (
-                <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground">
-                  You don’t have any labs linked yet. Create your first lab to unlock equipment, team, and verification tools.
-                  <div className="mt-4">
-                    <Link
-                      href="/lab/manage"
-                      className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
-                    >
-                      Create a lab profile
-                    </Link>
-                  </div>
-                </div>
-              ) : (
-                ownedLabs.map(lab => {
-                  const location = [lab.city, lab.country].filter(Boolean).join(", ");
-                  const status = labStatusValue(lab);
-                  const verified = isLabVerified(lab.id);
-                  return (
-                    <div key={lab.id} className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm space-y-4">
-                      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Lab</p>
-                          <h3 className="text-lg font-semibold text-foreground">{lab.name}</h3>
-                          {location && <p className="text-sm text-muted-foreground">{location}</p>}
-                          {lab.descriptionShort && (
-                            <p className="mt-2 text-sm text-muted-foreground">{lab.descriptionShort}</p>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground capitalize">
-                            {status.replace("_", " ")}
-                          </span>
-                          {verified && (
-                            <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                              Verified by GLASS
-                            </span>
-                          )}
-                          <Link
-                            href={`/lab/manage/${lab.id}`}
-                            className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                          >
-                            Manage lab
-                          </Link>
-                        </div>
-                      </div>
-                      {verified ? (
-                        <div className="flex flex-wrap items-center gap-3">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              toast({
-                                title: "Verification PDF coming soon",
-                                description: `We’ll enable verified PDF downloads for ${lab.name} shortly.`,
-                              })
-                            }
-                            className="inline-flex items-center justify-center rounded-full bg-foreground px-4 py-2 text-xs font-medium text-background transition hover:bg-foreground/90"
-                          >
-                            Download verified PDF
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              toast({
-                                title: "Badge assets coming soon",
-                                description: `Email and website badges for ${lab.name} will be available soon.`,
-                              })
-                            }
-                            className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                          >
-                            Get badge assets
-                          </button>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">
-                          Verification assets unlock once GLASS verifies this lab.
-                        </p>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          )}
-
-          {activeTab === "equipment" && (
-            <div className="space-y-6">
-              {ownedLabs.length === 0 ? (
-                <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground">
-                  Add a lab profile to start listing equipment and capabilities.
-                </div>
-              ) : (
-                ownedLabs.map(lab => {
-                  const equipment = equipmentDrafts[lab.id] ?? [];
-                  return (
-                    <div key={lab.id} className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm space-y-4">
-                      <div className="flex flex-col gap-2">
-                        <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Equipment</p>
-                        <h3 className="text-lg font-semibold text-foreground">{lab.name}</h3>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {equipment.length ? (
-                          equipment.map(item => (
-                            <span
-                              key={item}
-                              className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground"
-                            >
-                              {item}
-                              {canManageLabs && (
-                                <button
-                                  type="button"
-                                  onClick={() => removeEquipment(lab.id, item)}
-                                  className="text-muted-foreground hover:text-destructive"
-                                >
-                                  ×
-                                </button>
-                              )}
-                            </span>
-                          ))
-                        ) : (
-                          <p className="text-sm text-muted-foreground">No equipment listed yet.</p>
-                        )}
-                      </div>
-                      {canManageLabs && (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <input
-                            className="w-full max-w-sm rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                            placeholder="Add equipment and press Enter"
-                            value={equipmentInput[lab.id] ?? ""}
-                            onChange={e =>
-                              setEquipmentInput(prev => ({ ...prev, [lab.id]: e.target.value }))
-                            }
-                            onKeyDown={e => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                addEquipment(lab.id);
-                              }
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => addEquipment(lab.id)}
-                            className="rounded-full bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90"
-                          >
-                            Add equipment
-                          </button>
-                          {equipmentSaving[lab.id] && (
-                            <span className="text-xs text-muted-foreground">Saving…</span>
-                          )}
-                        </div>
-                      )}
-                      {equipmentError[lab.id] && (
-                        <p className="text-xs text-destructive">{equipmentError[lab.id]}</p>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          )}
-
-          {activeTab === "team" && (
-            <div className="space-y-6">
-              {ownedLabs.length === 0 ? (
-                <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground">
-                  Add a lab profile to build your team directory.
-                </div>
-              ) : (
-                ownedLabs.map(lab => {
-                  const members = teamDrafts[lab.id] ?? [];
-                  const form = teamForms[lab.id] ?? emptyTeamForm;
-                  const editing = teamEditingIndex[lab.id];
-                  return (
-                    <div key={lab.id} className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm space-y-6">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Team</p>
-                        <h3 className="text-lg font-semibold text-foreground">{lab.name}</h3>
-                      </div>
-
-                      <div className="space-y-3">
-                        {members.length ? (
-                          members.map((member, index) => (
-                            <div
-                              key={`${member.name}-${index}`}
-                              className="flex flex-col gap-2 rounded-2xl border border-border bg-background/60 px-4 py-3 text-sm md:flex-row md:items-center md:justify-between"
-                            >
-                              <div className="space-y-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <p className="font-semibold text-foreground">{member.name}</p>
-                                  {member.isLead && (
-                                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                                      Lead
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-muted-foreground">{member.title}</p>
-                                {member.teamName && (
-                                  <p className="text-xs text-muted-foreground">Team: {member.teamName}</p>
-                                )}
-                                {(member.linkedin || member.website) && (
-                                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                                    {member.linkedin && (
-                                      <a
-                                        href={member.linkedin}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="hover:text-primary"
-                                      >
-                                        LinkedIn
-                                      </a>
-                                    )}
-                                    {member.website && (
-                                      <a
-                                        href={member.website}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="hover:text-primary"
-                                      >
-                                        Website
-                                      </a>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                              {canManageLabs && (
-                                <div className="flex flex-wrap items-center gap-2">
-                                  {!member.isLead && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setLeadMember(lab.id, index)}
-                                      className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-primary hover:text-primary"
-                                    >
-                                      Make lead
-                                    </button>
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={() => editTeamMember(lab.id, index)}
-                                    className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-primary hover:text-primary"
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeTeamMember(lab.id, index)}
-                                    className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-destructive hover:text-destructive"
-                                  >
-                                    Remove
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-sm text-muted-foreground">No team members added yet.</p>
-                        )}
-                      </div>
-
-                      {canManageLabs && (
-                        <div className="rounded-2xl border border-border bg-background/70 p-4 space-y-4">
-                          <div className="grid gap-3 md:grid-cols-2">
-                            <div className="grid gap-1">
-                              <label className="text-xs font-medium text-muted-foreground">Name</label>
-                              <input
-                                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                                value={form.name}
-                                onChange={e => updateTeamForm(lab.id, { name: e.target.value })}
-                              />
-                            </div>
-                            <div className="grid gap-1">
-                              <label className="text-xs font-medium text-muted-foreground">Title</label>
-                              <input
-                                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                                value={form.title}
-                                onChange={e => updateTeamForm(lab.id, { title: e.target.value })}
-                              />
-                            </div>
-                            <div className="grid gap-1">
-                              <label className="text-xs font-medium text-muted-foreground">Team name</label>
-                              <input
-                                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                                value={form.teamName}
-                                onChange={e => updateTeamForm(lab.id, { teamName: e.target.value })}
-                              />
-                            </div>
-                            <div className="grid gap-1">
-                              <label className="text-xs font-medium text-muted-foreground">Role rank (1-8)</label>
-                              <input
-                                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                                value={form.roleRank}
-                                onChange={e => updateTeamForm(lab.id, { roleRank: e.target.value })}
-                              />
-                            </div>
-                            <div className="grid gap-1">
-                              <label className="text-xs font-medium text-muted-foreground">LinkedIn (optional)</label>
-                              <input
-                                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                                value={form.linkedin}
-                                onChange={e => updateTeamForm(lab.id, { linkedin: e.target.value })}
-                                placeholder="linkedin.com/in/..."
-                              />
-                            </div>
-                            <div className="grid gap-1">
-                              <label className="text-xs font-medium text-muted-foreground">Website (optional)</label>
-                              <input
-                                className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                                value={form.website}
-                                onChange={e => updateTeamForm(lab.id, { website: e.target.value })}
-                                placeholder="labsite.com"
-                              />
-                            </div>
-                          </div>
-                          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <input
-                              type="checkbox"
-                              checked={form.isLead}
-                              onChange={e => updateTeamForm(lab.id, { isLead: e.target.checked })}
-                            />
-                            Mark as lead
-                          </label>
-                          {teamError[lab.id] && <p className="text-xs text-destructive">{teamError[lab.id]}</p>}
-                          <div className="flex flex-wrap items-center gap-3">
-                            <button
-                              type="button"
-                              onClick={() => submitTeamMember(lab.id)}
-                              disabled={teamSaving[lab.id]}
-                              className="rounded-full bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-70"
-                            >
-                              {editing !== null && editing !== undefined ? "Update team member" : "Save team member"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => resetTeamForm(lab.id)}
-                              className="rounded-full border border-border px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                            >
-                              Clear form
-                            </button>
-                            {teamSaving[lab.id] && <span className="text-xs text-muted-foreground">Saving…</span>}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          )}
-
-          {activeTab === "activity" && (
-            <>
-              {canPostNews ? (
-                <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm">
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">News</p>
-                      <h3 className="text-lg font-semibold text-foreground">Recent updates from your labs</h3>
-                    </div>
-                  </div>
-
-                  {newsLoading && (
-                    <div className="rounded-2xl border border-border bg-background/70 px-4 py-3 text-sm text-muted-foreground">Loading news…</div>
-                  )}
-                  {newsFeedError && (
-                    <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                      {newsFeedError}. You can still post a new update below.
-                    </div>
-                  )}
-
-                  {!newsLoading && (
-                    <div className="overflow-x-auto">
-                      <div className="flex gap-4 min-w-full">
-                        <div className="min-w-[260px] rounded-2xl border border-dashed border-border bg-background/60 px-4 py-4 flex flex-col justify-between">
-                          <div>
-                            <p className="text-sm font-semibold text-foreground mb-1">Share an update</p>
-                            <p className="text-xs text-muted-foreground">Post equipment arrivals, collaborations, or milestones.</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowNewsModal(true);
-                              setNewsError(null);
-                            }}
-                            className="mt-3 inline-flex items-center justify-center rounded-full bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90"
-                          >
-                            Create post
-                          </button>
-                        </div>
-
-                        {newsFeed.length > 0 &&
-                          newsFeed.map(item => {
-                            const labName = item.labs?.name || `Lab ${item.lab_id}`;
-                            const created = item.created_at ? new Date(item.created_at).toLocaleDateString() : "";
-                            return (
-                              <div key={item.id} className="min-w-[260px] max-w-[280px] rounded-2xl border border-border bg-background/70 p-4 flex flex-col gap-3">
-                                <div className="flex items-center text-xs text-muted-foreground">
-                                  <span className="rounded-full bg-muted/60 px-2 py-1 text-[11px] capitalize">{item.category || "update"}</span>
-                                </div>
-                                <div>
-                                  <p className="text-sm font-semibold text-foreground line-clamp-2">{item.title}</p>
-                                  <p className="mt-1 text-xs text-muted-foreground line-clamp-3">{item.summary}</p>
-                                </div>
-                                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                  <span className="truncate">{labName}</span>
-                                  <span className="text-[11px]">{created}</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  {item.images?.slice(0, 2).map(img => (
-                                    <img
-                                      key={img.url}
-                                      src={img.url}
-                                      alt={img.name || "news"}
-                                      className="h-14 w-14 rounded-lg object-cover border border-border"
-                                    />
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground">
-                  News updates are available for premier and multi-lab accounts.
-                </div>
-              )}
-            </>
-          )}
         </div>
       </div>
     </section>
@@ -1705,7 +1695,7 @@ function Row({ label, value }: { label: string; value: string }) {
 function InfoTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-border/70 bg-background/70 px-4 py-3">
-      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{label}</p>
+      <p className="text-sm font-medium text-foreground/80">{label}</p>
       <p className="mt-1 text-sm font-medium text-foreground">{value}</p>
     </div>
   );
@@ -1714,7 +1704,7 @@ function InfoTile({ label, value }: { label: string; value: string }) {
 function CardStat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="rounded-2xl border border-border bg-background/70 px-4 py-3">
-      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{label}</p>
+      <p className="text-sm font-medium text-foreground/80">{label}</p>
       <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
       {hint ? <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{hint}</p> : null}
     </div>
@@ -1738,7 +1728,7 @@ function HighlightCard({
     <div className="rounded-2xl border border-border bg-background/70 px-4 py-3">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{title}</p>
+          <p className="text-sm font-medium text-foreground/80">{title}</p>
           <p className="text-sm text-muted-foreground">{subtitle}</p>
         </div>
         {badge ? <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">{badge}</span> : null}

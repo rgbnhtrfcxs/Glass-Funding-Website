@@ -3,8 +3,9 @@ import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/context/AuthContext";
 import { useLabs } from "@/context/LabsContext";
+import { Heart } from "lucide-react";
 
-export default function Favorites() {
+export default function Favorites({ embedded = false }: { embedded?: boolean }) {
   const { user } = useAuth();
   const { labs } = useLabs();
   const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
@@ -47,21 +48,22 @@ export default function Favorites() {
     return favoriteIds.length ? labs.filter(l => favoriteIds.includes(l.id)) : [];
   }, [favoriteIds, labs]);
 
+  const sectionClass = embedded ? "bg-transparent" : "bg-background min-h-screen";
+  const containerClass = embedded
+    ? "w-full px-0 py-0"
+    : "container mx-auto max-w-5xl px-4 py-16 lg:py-20";
+
   return (
-    <section className="bg-background min-h-screen">
-      <div className="container mx-auto max-w-5xl px-4 py-16 lg:py-20">
+    <section className={sectionClass}>
+      <div className={containerClass}>
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Favorites</p>
-            <h1 className="text-2xl font-semibold text-foreground">Saved labs</h1>
+            <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
+              <Heart className="h-5 w-5 text-primary" />
+              Favorites
+            </h1>
             <p className="text-sm text-muted-foreground">Labs you have favorited for quick access.</p>
           </div>
-          <Link
-            href="/account"
-            className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-          >
-            ← Back to account
-          </Link>
         </div>
 
         <div className="mt-8">
@@ -83,7 +85,7 @@ export default function Favorites() {
                 const status = (lab.labStatus || "listed").toLowerCase();
                 const premium = status === "premier";
                 return (
-                  <div key={lab.id} className="rounded-2xl border border-border bg-card/80 p-4 shadow-sm flex flex-col gap-3">
+                  <div key={lab.id} className="rounded-2xl border border-border bg-card/80 p-4 shadow-sm flex h-full flex-col gap-3">
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="font-semibold text-foreground">{lab.name}</p>
@@ -95,16 +97,18 @@ export default function Favorites() {
                         <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary">Premium</span>
                       )}
                     </div>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>{lab.isVisible === false ? "Hidden" : "Visible"}</span>
-                      <span className="font-medium text-primary">{status}</span>
+                    <div className="mt-auto space-y-3">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{lab.isVisible === false ? "Hidden" : "Visible"}</span>
+                        <span className="font-medium text-primary">{status}</span>
+                      </div>
+                      <Link
+                        href={`/labs/${lab.id}`}
+                        className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+                      >
+                        View lab
+                      </Link>
                     </div>
-                    <Link
-                      href={`/labs/${lab.id}`}
-                      className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
-                    >
-                      View lab
-                    </Link>
                   </div>
                 );
               })}

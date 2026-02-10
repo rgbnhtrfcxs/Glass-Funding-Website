@@ -38,6 +38,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const { hasAnalyticsConsent } = useConsent();
   const lab = labs.find(item => item.id === Number(params.id));
   const labId = lab?.id;
+  const [backLabel, setBackLabel] = useState("Back to labs");
   const [canCollaborate, setCanCollaborate] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState("user");
   useEffect(() => {
@@ -78,6 +79,14 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const [showTeamsModal, setShowTeamsModal] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<{ url: string; alt: string } | null>(null);
   const [labMarker, setLabMarker] = useState<MapMarker | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const key = "labs-return-target";
+    const target = window.sessionStorage.getItem(key);
+    if (target === "map") setBackLabel("Back to maps");
+    window.sessionStorage.removeItem(key);
+  }, []);
   const [labMapLoading, setLabMapLoading] = useState(false);
   const [labMapError, setLabMapError] = useState<string | null>(null);
   const [halItems, setHalItems] = useState<
@@ -610,7 +619,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
       <div className="container mx-auto px-4 py-12 lg:py-16 max-w-5xl">
         <Link href="/labs" className="inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-primary">
           <ArrowLeft className="h-4 w-4" />
-          Back to labs
+          {backLabel}
         </Link>
 
         <motion.div

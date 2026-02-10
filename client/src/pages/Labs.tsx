@@ -1,8 +1,10 @@
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   CheckCircle2,
   Images,
   MapPin,
+  Search,
+  Heart,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
@@ -30,11 +32,27 @@ export default function Labs() {
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapMissingLabs, setMapMissingLabs] = useState<string[]>([]);
   const [selectedMarker, setSelectedMarker] = useState<MapMarker | null>(null);
+  const uiStateRef = useRef({
+    searchTerm: "",
+    favoritesOnly: false,
+    verifiedOnly: true,
+    showMap: false,
+  });
+  const scrollYRef = useRef(0);
   const handleMapClose = () => setSelectedMarker(null);
   const geocodeCache = useRef(new Map<number, MapMarker>());
   const statusValue = (lab: any) => ((lab?.labStatus ?? "listed") as string).toLowerCase();
   const isVerifiedStatus = (status?: string | null) =>
     ["verified_passive", "verified_active", "premier"].includes((status || "").toLowerCase());
+  const labsUiStorageKey = "labs-ui-state";
+  const getInitials = (name: string) =>
+    name
+      .split(" ")
+      .map(part => part.trim()[0])
+      .filter(Boolean)
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
 
   const visibleLabs = useMemo(() => labs.filter(lab => lab.isVisible !== false), [labs]);
   const labCount = visibleLabs.length;
@@ -52,6 +70,58 @@ export default function Labs() {
     url.startsWith("data:")
       ? url
       : `${url}${url.includes("?") ? "&" : "?"}auto=format&fit=crop&w=${width}&q=${width >= 1600 ? 80 : 75}`;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.sessionStorage.getItem(labsUiStorageKey);
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored);
+      if (typeof parsed.searchTerm === "string") setSearchTerm(parsed.searchTerm);
+      if (typeof parsed.favoritesOnly === "boolean") setFavoritesOnly(parsed.favoritesOnly);
+      if (typeof parsed.verifiedOnly === "boolean") setVerifiedOnly(parsed.verifiedOnly);
+      if (typeof parsed.showMap === "boolean") setShowMap(parsed.showMap);
+      if (typeof parsed.scrollY === "number") {
+        requestAnimationFrame(() => window.scrollTo(0, parsed.scrollY));
+      }
+    } catch {
+      // ignore bad storage payloads
+    }
+  }, []);
+
+  useEffect(() => {
+    uiStateRef.current = {
+      searchTerm,
+      favoritesOnly,
+      verifiedOnly,
+      showMap,
+    };
+  }, [searchTerm, favoritesOnly, verifiedOnly, showMap]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleScroll = () => {
+      scrollYRef.current = window.scrollY;
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const saveUiState = () => {
+    if (typeof window === "undefined") return;
+    const payload = { ...uiStateRef.current, scrollY: scrollYRef.current };
+    window.sessionStorage.setItem(labsUiStorageKey, JSON.stringify(payload));
+  };
+
+  useEffect(() => {
+    saveUiState();
+  }, [searchTerm, favoritesOnly, verifiedOnly, showMap]);
+
+  useEffect(() => {
+    return () => {
+      saveUiState();
+    };
+  }, []);
   useEffect(() => {
     let active = true;
     async function loadFavorites() {
@@ -168,6 +238,15 @@ export default function Labs() {
       const markerBuckets = new Map<string, MapMarker>();
       const missingLabs: string[] = [];
       for (const lab of filteredLabs) {
+        const addressLabel =
+          buildAddress([
+            lab.addressLine1,
+            lab.addressLine2,
+            lab.city,
+            lab.state,
+            lab.postalCode,
+            lab.country,
+          ]) || formatLocation(lab) || "Address not set";
         const cached = geocodeCache.current.get(lab.id);
         if (cached) {
           const key = `${cached.lat.toFixed(5)}|${cached.lng.toFixed(5)}`;
@@ -178,8 +257,9 @@ export default function Labs() {
               id: lab.id,
               label: lab.name,
               subtitle: formatLocation(lab) || "Location not set",
+              address: addressLabel,
               href: `/labs/${lab.id}`,
-              imageUrl: lab.photos?.[0]?.url ? getImageUrl(lab.photos[0].url, 600) : undefined,
+              imageUrl: lab.logoUrl ? getImageUrl(lab.logoUrl, 300) : undefined,
             });
           } else {
             markerBuckets.set(key, {
@@ -189,8 +269,9 @@ export default function Labs() {
                   id: lab.id,
                   label: lab.name,
                   subtitle: formatLocation(lab) || "Location not set",
+                  address: addressLabel,
                   href: `/labs/${lab.id}`,
-                  imageUrl: lab.photos?.[0]?.url ? getImageUrl(lab.photos[0].url, 600) : undefined,
+                  imageUrl: lab.logoUrl ? getImageUrl(lab.logoUrl, 300) : undefined,
                 },
               ],
             });
@@ -222,8 +303,9 @@ export default function Labs() {
           ...point,
           label: lab.name,
           subtitle: formatLocation(lab) || "Location not set",
+          address: addressLabel,
           href: `/labs/${lab.id}`,
-          imageUrl: lab.photos?.[0]?.url ? getImageUrl(lab.photos[0].url, 600) : undefined,
+          imageUrl: lab.logoUrl ? getImageUrl(lab.logoUrl, 300) : undefined,
         };
         geocodeCache.current.set(lab.id, marker);
         const key = `${marker.lat.toFixed(5)}|${marker.lng.toFixed(5)}`;
@@ -234,6 +316,7 @@ export default function Labs() {
             id: lab.id,
             label: lab.name,
             subtitle: marker.subtitle,
+            address: addressLabel,
             href: marker.href,
             imageUrl: marker.imageUrl,
           });
@@ -245,6 +328,7 @@ export default function Labs() {
                 id: lab.id,
                 label: lab.name,
                 subtitle: marker.subtitle,
+                address: addressLabel,
                 href: marker.href,
                 imageUrl: marker.imageUrl,
               },
@@ -346,58 +430,75 @@ export default function Labs() {
         </p>
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm text-muted-foreground">
-            Showing {filteredLabs.length} of {labCount} labs
-          </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowMap(prev => !prev)}
+                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
+                  showMap
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+                }`}
+              >
+                <MapPin className="h-4 w-4" />
+                {showMap ? "Hide map" : "Show map"}
+              </button>
+              {user && (
+                <button
+                  type="button"
+                  onClick={() => setFavoritesOnly(prev => !prev)}
+                  className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
+                    favoritesOnly
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+                  }`}
+                  disabled={favoritesLoading}
+                >
+                  <Heart className="h-4 w-4" />
+                  {favoritesOnly ? "Showing favorites" : "Show favorites"}
+                </button>
+              )}
+            </div>
             <div className="relative w-full sm:w-80">
               <input
                 type="search"
                 value={searchTerm}
                 onChange={event => setSearchTerm(event.target.value)}
                 placeholder="Search labs by name, city, or equipment"
-                className="w-full rounded-full border border-border bg-card/80 px-4 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="w-full rounded-full border border-border bg-card/80 pl-10 pr-4 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
-              <MapPin className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             </div>
-            {user && (
+            <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card/70 p-1 w-fit">
               <button
                 type="button"
-                onClick={() => setFavoritesOnly(prev => !prev)}
-                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
-                  favoritesOnly
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+                onClick={() => setVerifiedOnly(true)}
+                className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                  verifiedOnly
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:text-primary"
                 }`}
-                disabled={favoritesLoading}
               >
-                {favoritesOnly ? "Showing favorites" : "Show favorites"}
+                <ShieldCheck className="h-3.5 w-3.5" />
+                GLASS verified
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setVerifiedOnly(prev => !prev)}
-              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
-                verifiedOnly
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border text-muted-foreground hover:border-primary hover:text-primary"
-              }`}
-            >
-              <ShieldCheck className="h-4 w-4" />
-              {verifiedOnly ? "GLASS verified only" : "Include unverified"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowMap(prev => !prev)}
-              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
-                showMap
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border text-muted-foreground hover:border-primary hover:text-primary"
-              }`}
-            >
-              <MapPin className="h-4 w-4" />
-              {showMap ? "Hide map" : "Show map"}
-            </button>
+              <button
+                type="button"
+                onClick={() => setVerifiedOnly(false)}
+                className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                  !verifiedOnly
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:text-primary"
+                }`}
+              >
+                <ShieldAlert className="h-3.5 w-3.5" />
+                Include unverified
+              </button>
+            </div>
+          </div>
+          <div className="text-sm text-muted-foreground sm:ml-auto">
+            Showing {filteredLabs.length} of {labCount} labs
           </div>
         </div>
         {favoritesError && <p className="mt-2 text-xs text-destructive">{favoritesError}</p>}
@@ -413,50 +514,70 @@ export default function Labs() {
                 onMarkerClick={marker => setSelectedMarker(marker)}
                 onMapClick={handleMapClose}
               />
-              {(selectedMarker?.items?.length ?? 0) > 0 && (
-                <div className="absolute inset-x-4 bottom-4 labs-map-overlay">
-                  <div className="rounded-2xl border border-border/80 bg-background/90 p-2 shadow-lg backdrop-blur">
-                    <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-                      <span>Labs at this location</span>
-                      <div className="flex items-center gap-2">
-                        <span>{selectedMarker?.items?.length} labs</span>
-                        <button
-                          type="button"
-                          onClick={handleMapClose}
-                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border/70 text-[10px] text-muted-foreground hover:border-primary hover:text-primary transition"
-                          aria-label="Close list"
-                        >
-                          ✕
-                        </button>
+              <AnimatePresence mode="wait">
+                {(selectedMarker?.items?.length ?? 0) > 0 && (
+                  <motion.div
+                    key={selectedMarker?.id ?? "marker"}
+                    className="absolute left-4 top-4 bottom-4 w-80 max-w-[calc(100%-2rem)] labs-map-overlay"
+                    initial={{ opacity: 0, x: -12 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -12 }}
+                    transition={{ duration: 0.25, ease: "easeOut" }}
+                  >
+                    <div className="h-full rounded-2xl border border-white/20 bg-white/55 p-2 shadow-lg backdrop-blur-xl">
+                      <div className="flex items-center justify-between text-[11px] font-semibold tracking-[0.2em] text-muted-foreground">
+                        <span>Labs at this location</span>
+                        <div className="flex items-center gap-2">
+                          <span>{selectedMarker?.items?.length} labs</span>
+                          <button
+                            type="button"
+                            onClick={handleMapClose}
+                            className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border/70 text-[10px] text-muted-foreground hover:border-primary hover:text-primary transition"
+                            aria-label="Close list"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-2 grid gap-3 overflow-y-auto pr-1 pb-1 max-h-[calc(100%-2rem)]">
+                        {(selectedMarker?.items ?? []).map(item => (
+                          <Link key={item.id} href={item.href ?? "#"}>
+                          <a
+                            className="group relative block w-full max-w-[300px] h-28 overflow-hidden rounded-xl border border-white/25 bg-white/20 transition-all duration-300 ease-out backdrop-blur-2xl mx-auto hover:border-white/70 hover:scale-[1.02]"
+                            onClick={() => {
+                              if (typeof window === "undefined") return;
+                              window.sessionStorage.setItem("labs-return-target", "map");
+                            }}
+                          >
+                              <div className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-r from-sky-100/90 via-white/80 to-white/90 opacity-0 transition-opacity duration-500 ease-in-out group-hover:opacity-100" />
+                            <div className="relative z-10 flex h-full flex-col px-3 pt-3 pb-3">
+                              <div className="flex items-center gap-3">
+                                {item.imageUrl && (
+                                  <img
+                                    src={item.imageUrl}
+                                    alt={`${item.label} avatar`}
+                                    className="h-11 w-11 rounded-full border border-border/60 object-cover"
+                                    loading="lazy"
+                                  />
+                                )}
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold text-foreground break-words leading-snug">
+                                    {item.label}
+                                  </p>
+                                </div>
+                              </div>
+                              <p className="mt-auto text-xs text-muted-foreground leading-snug">
+                                {item.address || item.subtitle || "Address not set"}
+                              </p>
+                            </div>
+                            </a>
+                          </Link>
+                        ))}
                       </div>
                     </div>
-                    <div className="mt-2 flex gap-3 overflow-x-auto pb-1">
-                      {(selectedMarker?.items ?? []).map(item => (
-                        <Link key={item.id} href={item.href ?? "#"}>
-                          <a className="w-36 min-w-36 max-w-36 h-40 flex-shrink-0 rounded-xl border border-border/70 bg-background/80 hover:border-primary transition overflow-hidden">
-                            {item.imageUrl && (
-                              <img
-                                src={item.imageUrl}
-                                alt={`${item.label} photo`}
-                                className="h-20 w-full rounded-t-xl object-cover"
-                                loading="lazy"
-                              />
-                            )}
-                            <div className={`px-3 py-2 ${item.imageUrl ? "h-16" : "h-28"}`}>
-                              <p className="text-sm font-semibold text-foreground break-words leading-snug h-10 overflow-hidden">
-                                {item.label}
-                              </p>
-                              {item.subtitle && (
-                                <p className="text-xs text-muted-foreground truncate">{item.subtitle}</p>
-                              )}
-                            </div>
-                          </a>
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
             {mapLoading && <p className="text-xs text-muted-foreground">Resolving lab locations…</p>}
             {mapError && <p className="text-xs text-muted-foreground">{mapError}</p>}
@@ -531,11 +652,14 @@ export default function Labs() {
                     key={lab.id}
                     initial={{ opacity: 0, y: 24 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.1 * (index % 3) }}
-                    className={`flex h-full flex-col rounded-3xl border ${
+                    whileHover={{ scale: 1.02 }}
+                    transition={{ duration: 0.5, delay: 0.1 * (index % 3), ease: "easeOut" }}
+                    className={`group relative flex h-full flex-col rounded-3xl border overflow-hidden will-change-transform ${
                       isPremier ? "border-2 border-primary/80 shadow-lg" : "border-border"
                     } bg-card/80 p-8`}
                   >
+                    <div className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-sky-100/80 via-white/70 to-pink-100/80 opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-100" />
+                    <div className="relative z-10 flex h-full flex-col">
                     {lab.photos.length > 0 && (
                       <div className="relative mb-6 overflow-hidden rounded-2xl border border-border/60 bg-background/40">
                         <img
@@ -662,6 +786,7 @@ export default function Labs() {
                       </a>
                     </Link>
                   </div>
+                    </div>
                   </motion.div>
                 );
               })}
