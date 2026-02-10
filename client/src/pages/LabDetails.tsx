@@ -66,11 +66,11 @@ export default function LabDetails({ params }: LabDetailsProps) {
         setCurrentUserCanBrokerRequests(false);
         return;
       }
-      const role = typeof (data as any)?.role === "string" ? (data as any).role.toLowerCase() : "";
       const isAdmin = Boolean((data as any)?.is_admin);
+      const canCreateLab = Boolean((data as any)?.can_create_lab);
       const canManageMultipleLabs = Boolean((data as any)?.can_manage_multiple_labs);
       const canBrokerRequests = Boolean((data as any)?.can_broker_requests);
-      setProfileCanCollaborate(role === "lab" || role === "admin" || role === "multi-lab" || isAdmin);
+      setProfileCanCollaborate(isAdmin || canCreateLab || canManageMultipleLabs);
       setCurrentUserIsAdmin(isAdmin);
       setCurrentUserCanManageMultipleLabs(canManageMultipleLabs);
       setCurrentUserCanBrokerRequests(canBrokerRequests);
@@ -439,9 +439,13 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const listedDisclaimer = "Profile details compiled by GLASS from publicly available sources.";
   const claimEmail = "contact@glass-funding.com";
   const isListedOnly = status === "listed";
-  const canBrokerOnOwnLab =
-    currentUserCanBrokerRequests && Boolean(user?.id) && Boolean(lab.ownerUserId) && lab.ownerUserId === user?.id;
-  const canCollaborate = profileCanCollaborate || canBrokerOnOwnLab;
+  const normalizedLabContact = typeof lab.contactEmail === "string" ? lab.contactEmail.trim().toLowerCase() : "";
+  const normalizedUserEmail = typeof user?.email === "string" ? user.email.trim().toLowerCase() : "";
+  const isLabOwnerByUserId = Boolean(user?.id) && Boolean(lab.ownerUserId) && lab.ownerUserId === user?.id;
+  const isLabOwnerByContactEmail =
+    Boolean(normalizedLabContact) && Boolean(normalizedUserEmail) && normalizedLabContact === normalizedUserEmail;
+  const isOwnLab = isLabOwnerByUserId || isLabOwnerByContactEmail;
+  const canCollaborate = !isOwnLab && (profileCanCollaborate || currentUserCanBrokerRequests);
   const partnerLogos = lab.partnerLogos ?? [];
   const labTechniques = lab.techniques ?? [];
   const labEquipment = lab.equipment ?? [];
