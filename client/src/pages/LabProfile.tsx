@@ -85,11 +85,6 @@ export default function LabProfile() {
               Open lab editor
             </a>
           </Link>
-          <Link href="/pricing">
-            <a className="inline-flex items-center justify-center rounded-full border border-border px-5 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary">
-              Review listing pricing
-            </a>
-          </Link>
           <a
             href="mailto:support@glass.demo"
             className="inline-flex items-center justify-center rounded-full border border-border px-5 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"

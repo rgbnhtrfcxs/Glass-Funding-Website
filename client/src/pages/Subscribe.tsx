@@ -232,8 +232,8 @@ export default function Subscribe() {
   return (
     <section className="bg-background min-h-screen">
       <div className="container mx-auto px-4 py-12 lg:py-16 max-w-3xl">
-        <Link href="/pricing" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-4">
-          ← Back to pricing
+        <Link href="/account" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-4">
+          ← Back to profile
         </Link>
         <div className="rounded-3xl border border-border bg-card/80 p-8 shadow-sm space-y-6">
           <div className="space-y-2">

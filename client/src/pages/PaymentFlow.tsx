@@ -56,7 +56,7 @@ export default function PaymentFlow() {
     if (loading) return;
     const allowedPlans = ["base", "free", "verified", "premier", "custom", "enterprise"];
     if (!selectedPlan || !allowedPlans.includes(normalizedPlan)) {
-      setLocation("/pricing");
+      setLocation("/subscriptions");
       return;
     }
     if (!user) {
@@ -176,9 +176,9 @@ export default function PaymentFlow() {
               : "We keep billing transparent: standard plans go through Stripe Checkout (with optional SEPA transfer), and multi-lab operators can request a custom agreement."}
           </p>
           <div className="flex flex-wrap gap-3">
-            <Link href="/pricing">
+            <Link href="/subscriptions">
               <a className="inline-flex items-center justify-center rounded-full border border-border px-5 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary">
-                Review plans
+                View subscriptions
               </a>
             </Link>
             <Link href="/labs">
@@ -413,9 +413,9 @@ export default function PaymentFlow() {
             form. We can accommodate purchase orders, wire transfers, and co-branded partnership agreements.
           </p>
           <div className="flex flex-wrap gap-3">
-            <Link href="/pricing">
+            <Link href="/subscriptions">
               <a className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary">
-                Back to pricing
+                Back to subscriptions
               </a>
             </Link>
             <Link href="/labs">

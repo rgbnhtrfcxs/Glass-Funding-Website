@@ -4,7 +4,7 @@ import { useLocation } from "wouter";
 import { useLabs } from "@/context/LabsContext";
 import { useAuth } from "@/context/AuthContext";
 import { useConsent } from "@/context/ConsentContext";
-import { offerOptions, type OfferOption, type PartnerLogo } from "@shared/labs";
+import { offerOptions, type LabTechnique, type OfferOption, type PartnerLogo } from "@shared/labs";
 import type { MediaAsset } from "@shared/labs";
 import { supabase } from "@/lib/supabaseClient";
 import { Link } from "wouter";
@@ -52,6 +52,8 @@ export default function NewLab() {
     linkedin: "",
     siretNumber: "",
     equipmentTags: [] as string[],
+    priorityEquipmentTags: [] as string[],
+    techniques: [] as LabTechnique[],
     focusTags: [] as string[],
     complianceTags: [] as string[],
     offers: [] as OfferOption[],
@@ -85,6 +87,7 @@ export default function NewLab() {
     field: "equipmentTags",
     value: "",
   });
+  const [techniqueInput, setTechniqueInput] = useState<LabTechnique>({ name: "", description: "" });
   const [teamMemberInput, setTeamMemberInput] = useState({
     name: "",
     title: "",
@@ -258,7 +261,17 @@ export default function NewLab() {
   };
 
   const removeTag = (field: "equipmentTags" | "focusTags" | "complianceTags", value: string) => {
-    setForm(prev => ({ ...prev, [field]: prev[field].filter(item => item !== value) }));
+    setForm(prev => {
+      const next = prev[field].filter(item => item !== value);
+      if (field === "equipmentTags") {
+        return {
+          ...prev,
+          equipmentTags: next,
+          priorityEquipmentTags: prev.priorityEquipmentTags.filter(item => item !== value),
+        };
+      }
+      return { ...prev, [field]: next };
+    });
   };
 
   const handleTagKey = (field: "equipmentTags" | "focusTags" | "complianceTags") => (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -266,6 +279,37 @@ export default function NewLab() {
       e.preventDefault();
       addTag(field, tagInput.value);
     }
+  };
+
+  const togglePriorityEquipment = (item: string) => {
+    setForm(prev => {
+      const selected = new Set(prev.priorityEquipmentTags);
+      if (selected.has(item)) {
+        selected.delete(item);
+      } else {
+        if (selected.size >= 3) return prev;
+        selected.add(item);
+      }
+      return { ...prev, priorityEquipmentTags: Array.from(selected) };
+    });
+  };
+
+  const addTechnique = () => {
+    const name = techniqueInput.name.trim();
+    if (!name) return;
+    const description = techniqueInput.description?.toString().trim() || null;
+    setForm(prev => ({
+      ...prev,
+      techniques: [...prev.techniques, { name, description }],
+    }));
+    setTechniqueInput({ name: "", description: "" });
+  };
+
+  const removeTechnique = (index: number) => {
+    setForm(prev => ({
+      ...prev,
+      techniques: prev.techniques.filter((_, idx) => idx !== index),
+    }));
   };
 
   const handleSubmit = async () => {
@@ -293,6 +337,10 @@ export default function NewLab() {
         labStatus: "confirmed",
         isVisible: true,
         equipment: form.equipmentTags,
+        priorityEquipment: form.priorityEquipmentTags
+          .filter(item => form.equipmentTags.includes(item))
+          .slice(0, 3),
+        techniques: form.techniques,
         focusAreas: form.focusTags,
         offers: form.offers,
         photos,
@@ -865,6 +913,79 @@ export default function NewLab() {
                           </button>
                         </span>
                       ))}
+                    </div>
+                    <div className="pt-2">
+                      <p className="text-xs text-muted-foreground">Select up to three priority items.</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {form.equipmentTags.map(tag => {
+                          const isPriority = form.priorityEquipmentTags.includes(tag);
+                          return (
+                            <button
+                              key={`priority-${tag}`}
+                              type="button"
+                              onClick={() => togglePriorityEquipment(tag)}
+                              className={`rounded-full border px-3 py-1 text-xs ${
+                                isPriority
+                                  ? "border-primary bg-primary/10 font-semibold text-primary"
+                                  : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+                              }`}
+                            >
+                              {tag}
+                            </button>
+                          );
+                        })}
+                        {form.equipmentTags.length === 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            Add equipment to enable prioritization.
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </Field>
+                <Field label="Techniques">
+                  <div className="space-y-3">
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {form.techniques.map((technique, index) => (
+                        <div key={`${technique.name}-${index}`} className="rounded-2xl border border-border px-4 py-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">{technique.name}</p>
+                              {technique.description && (
+                                <p className="mt-1 text-xs text-muted-foreground">{technique.description}</p>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeTechnique(index)}
+                              className="text-muted-foreground hover:text-destructive"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      <input
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        placeholder="Technique name"
+                        value={techniqueInput.name}
+                        onChange={e => setTechniqueInput(prev => ({ ...prev, name: e.target.value }))}
+                      />
+                      <input
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        placeholder="Short description"
+                        value={techniqueInput.description ?? ""}
+                        onChange={e => setTechniqueInput(prev => ({ ...prev, description: e.target.value }))}
+                      />
+                      <button
+                        type="button"
+                        onClick={addTechnique}
+                        className="md:col-span-2 inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary"
+                      >
+                        Save technique
+                      </button>
                     </div>
                   </div>
                 </Field>

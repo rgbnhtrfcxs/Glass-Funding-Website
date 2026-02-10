@@ -2563,7 +2563,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
             "lab_profile (logo_url)",
             "lab_location (city, country)",
             "lab_photos (url, name)",
-            "lab_equipment (item)",
+            "lab_equipment (item, is_priority)",
           ].join(","),
         )
         .in("id", labIds);

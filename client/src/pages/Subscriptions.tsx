@@ -16,11 +16,6 @@ export default function Subscriptions() {
             New accounts start on Base. Upgrade anytime; after payment we’ll switch your subscription tier automatically.
           </p>
           <div className="flex flex-wrap gap-3">
-            <Link href="/pricing">
-              <a className="inline-flex items-center justify-center rounded-full border border-border px-5 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary">
-                View pricing page
-              </a>
-            </Link>
             <Link href="/account">
               <a className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90">
                 Back to profile

@@ -4,7 +4,7 @@ import { FileDown, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useConsent } from "@/context/ConsentContext";
 import { supabase } from "@/lib/supabaseClient";
-import { offerOptions, type OfferOption, type MediaAsset, type PartnerLogo } from "@shared/labs";
+import { offerOptions, type LabTechnique, type OfferOption, type MediaAsset, type PartnerLogo } from "@shared/labs";
 import { Link, useLocation } from "wouter";
 
 const INPUT_CLASS =
@@ -61,6 +61,8 @@ type Form = {
     isLead?: boolean;
   }>;
   equipmentTags: string[];
+  priorityEquipmentTags: string[];
+  techniques: LabTechnique[];
   focusTags: string[];
   offers: OfferOption[];
 };
@@ -130,6 +132,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
     halPersonId: "",
     teamMembers: [],
     equipmentTags: [],
+    priorityEquipmentTags: [],
+    techniques: [],
     focusTags: [],
     offers: [],
   });
@@ -148,6 +152,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
     field: "complianceTags",
     value: "",
   });
+  const [techniqueInput, setTechniqueInput] = useState<LabTechnique>({ name: "", description: "" });
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -444,7 +449,17 @@ export default function MyLab({ params }: { params: { id: string } }) {
   };
 
   const removeTag = (field: "complianceTags" | "equipmentTags" | "focusTags", value: string) => {
-    setForm(prev => ({ ...prev, [field]: prev[field].filter(item => item !== value) }));
+    setForm(prev => {
+      const next = prev[field].filter(item => item !== value);
+      if (field === "equipmentTags") {
+        return {
+          ...prev,
+          equipmentTags: next,
+          priorityEquipmentTags: prev.priorityEquipmentTags.filter(item => item !== value),
+        };
+      }
+      return { ...prev, [field]: next };
+    });
   };
 
   const handleTagKey = (field: "complianceTags" | "equipmentTags" | "focusTags") => (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -453,6 +468,37 @@ export default function MyLab({ params }: { params: { id: string } }) {
       addTag(field, tagInput.value || (e.target as HTMLInputElement).value);
       setTagInput({ field, value: "" });
     }
+  };
+
+  const togglePriorityEquipment = (item: string) => {
+    setForm(prev => {
+      const selected = new Set(prev.priorityEquipmentTags);
+      if (selected.has(item)) {
+        selected.delete(item);
+      } else {
+        if (selected.size >= 3) return prev;
+        selected.add(item);
+      }
+      return { ...prev, priorityEquipmentTags: Array.from(selected) };
+    });
+  };
+
+  const addTechnique = () => {
+    const name = techniqueInput.name.trim();
+    if (!name) return;
+    const description = techniqueInput.description?.toString().trim() || null;
+    setForm(prev => ({
+      ...prev,
+      techniques: [...prev.techniques, { name, description }],
+    }));
+    setTechniqueInput({ name: "", description: "" });
+  };
+
+  const removeTechnique = (index: number) => {
+    setForm(prev => ({
+      ...prev,
+      techniques: prev.techniques.filter((_, idx) => idx !== index),
+    }));
   };
 
   const addTeamMember = () => {
@@ -537,6 +583,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
         halPersonId: lab.halPersonId || "",
         teamMembers: lab.teamMembers || [],
         equipmentTags: lab.equipment || [],
+        priorityEquipmentTags: lab.priorityEquipment || [],
+        techniques: lab.techniques || [],
         focusTags: lab.focusAreas || [],
         offers: lab.offers || [],
       });
@@ -646,6 +694,10 @@ export default function MyLab({ params }: { params: { id: string } }) {
           halPersonId: form.halPersonId || null,
           teamMembers: form.teamMembers,
           equipment: form.equipmentTags,
+          priorityEquipment: form.priorityEquipmentTags
+            .filter(item => form.equipmentTags.includes(item))
+            .slice(0, 3),
+          techniques: form.techniques,
           focusAreas: form.focusTags,
           offers: form.offers,
         }),
@@ -1186,6 +1238,79 @@ export default function MyLab({ params }: { params: { id: string } }) {
                         </button>
                       </span>
                     ))}
+                  </div>
+                  <div className="pt-2">
+                    <p className="text-xs text-muted-foreground">Select up to three priority items.</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {form.equipmentTags.map(tag => {
+                        const isPriority = form.priorityEquipmentTags.includes(tag);
+                        return (
+                          <button
+                            key={`priority-${tag}`}
+                            type="button"
+                            onClick={() => togglePriorityEquipment(tag)}
+                            className={`rounded-full border px-3 py-1 text-xs ${
+                              isPriority
+                                ? "border-primary bg-primary/10 font-semibold text-primary"
+                                : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+                            }`}
+                          >
+                            {tag}
+                          </button>
+                        );
+                      })}
+                      {form.equipmentTags.length === 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          Add equipment to enable prioritization.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </Field>
+              <Field label="Techniques">
+                <div className="space-y-3">
+                  <div className="grid gap-2 md:grid-cols-2">
+                    {form.techniques.map((technique, index) => (
+                      <div key={`${technique.name}-${index}`} className="rounded-2xl border border-border px-4 py-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">{technique.name}</p>
+                            {technique.description && (
+                              <p className="mt-1 text-xs text-muted-foreground">{technique.description}</p>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeTechnique(index)}
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <input
+                      className={INPUT_CLASS}
+                      placeholder="Technique name"
+                      value={techniqueInput.name}
+                      onChange={e => setTechniqueInput(prev => ({ ...prev, name: e.target.value }))}
+                    />
+                    <input
+                      className={INPUT_CLASS}
+                      placeholder="Short description"
+                      value={techniqueInput.description ?? ""}
+                      onChange={e => setTechniqueInput(prev => ({ ...prev, description: e.target.value }))}
+                    />
+                    <button
+                      type="button"
+                      onClick={addTechnique}
+                      className="md:col-span-2 inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary"
+                    >
+                      Save technique
+                    </button>
                   </div>
                 </div>
               </Field>

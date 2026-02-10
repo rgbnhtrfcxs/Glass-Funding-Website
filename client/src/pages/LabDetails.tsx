@@ -39,30 +39,41 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const lab = labs.find(item => item.id === Number(params.id));
   const labId = lab?.id;
   const [backLabel, setBackLabel] = useState("Back to labs");
-  const [canCollaborate, setCanCollaborate] = useState(false);
-  const [currentUserRole, setCurrentUserRole] = useState("user");
+  const [profileCanCollaborate, setProfileCanCollaborate] = useState(false);
+  const [currentUserIsAdmin, setCurrentUserIsAdmin] = useState(false);
+  const [currentUserCanManageMultipleLabs, setCurrentUserCanManageMultipleLabs] = useState(false);
+  const [currentUserCanBrokerRequests, setCurrentUserCanBrokerRequests] = useState(false);
   useEffect(() => {
     let mounted = true;
     async function checkRole() {
       if (!user) {
-        setCanCollaborate(false);
-        setCurrentUserRole("user");
+        setProfileCanCollaborate(false);
+        setCurrentUserIsAdmin(false);
+        setCurrentUserCanManageMultipleLabs(false);
+        setCurrentUserCanBrokerRequests(false);
         return;
       }
       const { data, error } = await supabase
         .from("profiles")
-        .select("role")
+        .select("*")
         .eq("user_id", user.id)
         .maybeSingle();
       if (!mounted) return;
       if (error) {
-        setCanCollaborate(false);
-        setCurrentUserRole("user");
+        setProfileCanCollaborate(false);
+        setCurrentUserIsAdmin(false);
+        setCurrentUserCanManageMultipleLabs(false);
+        setCurrentUserCanBrokerRequests(false);
         return;
       }
-      const role = (data?.role as string)?.toLowerCase?.() || "";
-      setCanCollaborate(role === "lab" || role === "admin" || role === "multi-lab");
-      setCurrentUserRole(role || "user");
+      const isAdmin = Boolean((data as any)?.is_admin);
+      const canCreateLab = Boolean((data as any)?.can_create_lab);
+      const canManageMultipleLabs = Boolean((data as any)?.can_manage_multiple_labs);
+      const canBrokerRequests = Boolean((data as any)?.can_broker_requests);
+      setProfileCanCollaborate(isAdmin || canCreateLab || canManageMultipleLabs);
+      setCurrentUserIsAdmin(isAdmin);
+      setCurrentUserCanManageMultipleLabs(canManageMultipleLabs);
+      setCurrentUserCanBrokerRequests(canBrokerRequests);
     }
     checkRole();
     return () => {
@@ -78,6 +89,8 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [showTeamsModal, setShowTeamsModal] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<{ index: number } | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<{ url: string; alt: string } | null>(null);
+  const [showClaimInfo, setShowClaimInfo] = useState(false);
   const [labMarker, setLabMarker] = useState<MapMarker | null>(null);
 
   useEffect(() => {
@@ -427,7 +440,21 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const listedDisclaimer = "Profile details compiled by GLASS from publicly available sources.";
   const claimEmail = "contact@glass-funding.com";
   const isListedOnly = status === "listed";
+  const normalizedLabContact = typeof lab.contactEmail === "string" ? lab.contactEmail.trim().toLowerCase() : "";
+  const normalizedUserEmail = typeof user?.email === "string" ? user.email.trim().toLowerCase() : "";
+  const isLabOwnerByUserId = Boolean(user?.id) && Boolean(lab.ownerUserId) && lab.ownerUserId === user?.id;
+  const isLabOwnerByContactEmail =
+    Boolean(normalizedLabContact) && Boolean(normalizedUserEmail) && normalizedLabContact === normalizedUserEmail;
+  const isOwnLab = isLabOwnerByUserId || isLabOwnerByContactEmail;
+  const canCollaborate = !isOwnLab && (profileCanCollaborate || currentUserCanBrokerRequests);
   const partnerLogos = lab.partnerLogos ?? [];
+  const labTechniques = lab.techniques ?? [];
+  const labEquipment = lab.equipment ?? [];
+  const configuredPriorityEquipment = lab.priorityEquipment ?? [];
+  const primaryEquipment =
+    configuredPriorityEquipment.length > 0 ? configuredPriorityEquipment : labEquipment.slice(0, 3);
+  const prioritySet = new Set(primaryEquipment);
+  const remainingEquipment = labEquipment.filter(item => !prioritySet.has(item));
   const website = lab.website || null;
   const linkedin = lab.linkedin || null;
   const fullAddress = buildAddress([
@@ -885,24 +912,53 @@ export default function LabDetails({ params }: LabDetailsProps) {
             <div className="rounded-2xl border border-border/80 bg-background/50 p-6">
               <h2 className="text-lg font-semibold text-foreground">Equipment inventory</h2>
               <p className="mt-2 text-sm text-muted-foreground">
-                Critical instrumentation and tooling available in this lab.
+                Priority equipment is highlighted first, followed by the full list.
               </p>
               <div className="mt-4 grid gap-2 text-sm text-muted-foreground">
-                {(showAllEquipment ? lab.equipment : lab.equipment.slice(0, 5)).map(item => (
+                {primaryEquipment.map(item => (
+                  <div key={item} className="inline-flex items-center gap-2">
+                    <Beaker className="h-4 w-4 text-primary" />
+                    <span className="font-semibold text-primary">{item}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 grid gap-2 text-sm text-muted-foreground">
+                {(showAllEquipment ? remainingEquipment : remainingEquipment.slice(0, 6)).map(item => (
                   <div key={item} className="inline-flex items-center gap-2">
                     <Beaker className="h-4 w-4 text-primary" />
                     {item}
                   </div>
                 ))}
+                {labEquipment.length === 0 && <span>No equipment listed yet.</span>}
               </div>
-              {lab.equipment.length > 5 && (
+              {remainingEquipment.length > 6 && (
                 <button
                   type="button"
                   onClick={() => setShowAllEquipment(prev => !prev)}
                   className="mt-4 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
                 >
-                  {showAllEquipment ? "Show fewer" : `Show ${lab.equipment.length - 5} more`}
+                  {showAllEquipment ? "Show fewer" : `Show ${remainingEquipment.length - 6} more`}
                 </button>
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
+            <h2 className="text-lg font-semibold text-foreground">Techniques & expertise</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Detailed methods and domains where this lab specializes.
+            </p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              {labTechniques.map(technique => (
+                <div key={technique.name} className="rounded-2xl border border-border px-4 py-3">
+                  <p className="text-sm font-semibold text-foreground">{technique.name}</p>
+                  {technique.description && (
+                    <p className="mt-2 text-xs text-muted-foreground">{technique.description}</p>
+                  )}
+                </div>
+              ))}
+              {labTechniques.length === 0 && (
+                <p className="text-sm text-muted-foreground">No techniques listed yet.</p>
               )}
             </div>
           </section>
@@ -1006,8 +1062,8 @@ export default function LabDetails({ params }: LabDetailsProps) {
 
           {(partnerLogos.length > 0 &&
             (isPremier ||
-              currentUserRole === "admin" ||
-              (currentUserRole === "multi-lab" && lab.ownerUserId && lab.ownerUserId === user?.id))) && (
+              currentUserIsAdmin ||
+              (currentUserCanManageMultipleLabs && lab.ownerUserId && lab.ownerUserId === user?.id))) && (
             <div className="mt-8 rounded-2xl border border-primary/40 bg-primary/5 p-4">
               <h3 className="text-sm font-semibold text-foreground mb-3">Featured partners</h3>
               <div className="flex gap-3 overflow-x-auto pb-2">

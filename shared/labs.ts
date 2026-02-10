@@ -39,6 +39,11 @@ export const teamMemberSchema = z.object({
   isLead: z.boolean().optional().default(false),
 });
 
+export const labTechniqueSchema = z.object({
+  name: z.string().min(1, "Technique name is required"),
+  description: z.string().min(1).max(2000).optional().nullable(),
+});
+
 export const labCoreSchema = z.object({
   name: z.string().min(1, "Lab name is required"),
   labManager: z.preprocess(
@@ -83,6 +88,8 @@ export const labCoreSchema = z.object({
   ]).default("listed"),
   isVisible: z.boolean().default(true),
   equipment: z.array(z.string().min(1)).default([]),
+  priorityEquipment: z.array(z.string().min(1)).max(3).default([]),
+  techniques: z.array(labTechniqueSchema).default([]),
   focusAreas: z.array(z.string().min(1)).default([]),
   offers: z.array(z.enum(offerOptions)).default([]),
   photos: z.array(mediaAssetSchema).min(0),
@@ -107,6 +114,7 @@ export const labListSchema = z.array(labSchema);
 
 export type MediaAsset = z.infer<typeof mediaAssetSchema>;
 export type PartnerLogo = z.infer<typeof partnerLogoSchema>;
+export type LabTechnique = z.infer<typeof labTechniqueSchema>;
 export type LabPartner = z.infer<typeof labSchema>;
 export type InsertLab = z.infer<typeof insertLabSchema>;
 export type UpdateLab = z.infer<typeof updateLabSchema>;
