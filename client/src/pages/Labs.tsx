@@ -550,18 +550,15 @@ export default function Labs() {
                             }}
                           >
                               <div className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-r from-sky-100/90 via-white/80 to-white/90 opacity-0 transition-opacity duration-500 ease-in-out group-hover:opacity-100" />
-                              <div className="relative z-10 flex items-center gap-3 px-3 pt-3">
-                                {item.imageUrl ? (
+                            <div className="relative z-10 flex h-full flex-col px-3 pt-3 pb-3">
+                              <div className="flex items-center gap-3">
+                                {item.imageUrl && (
                                   <img
                                     src={item.imageUrl}
                                     alt={`${item.label} avatar`}
                                     className="h-11 w-11 rounded-full border border-border/60 object-cover"
                                     loading="lazy"
                                   />
-                                ) : (
-                                  <div className="flex h-11 w-11 items-center justify-center rounded-full border border-border/60 bg-muted text-xs font-semibold text-muted-foreground">
-                                    {getInitials(item.label)}
-                                  </div>
                                 )}
                                 <div className="min-w-0">
                                   <p className="text-sm font-semibold text-foreground break-words leading-snug">
@@ -569,11 +566,10 @@ export default function Labs() {
                                   </p>
                                 </div>
                               </div>
-                              <div className="relative z-10 px-3 pb-3 pt-2">
-                                <p className="text-xs text-muted-foreground leading-snug">
-                                  {item.address || item.subtitle || "Address not set"}
-                                </p>
-                              </div>
+                              <p className="mt-auto text-xs text-muted-foreground leading-snug">
+                                {item.address || item.subtitle || "Address not set"}
+                              </p>
+                            </div>
                             </a>
                           </Link>
                         ))}
