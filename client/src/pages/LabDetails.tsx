@@ -77,7 +77,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const [halModalType, setHalModalType] = useState<"publications" | "patents">("publications");
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [showTeamsModal, setShowTeamsModal] = useState(false);
-  const [photoPreview, setPhotoPreview] = useState<{ url: string; alt: string } | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<{ index: number } | null>(null);
   const [labMarker, setLabMarker] = useState<MapMarker | null>(null);
 
   useEffect(() => {
@@ -735,7 +735,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
                     <button
                       key={photo.url}
                       type="button"
-                      onClick={() => setPhotoPreview({ url: getImageUrl(photo.url, 2000), alt })}
+                      onClick={() => setPhotoPreview({ index })}
                       className="min-w-[320px] max-w-[420px] h-64 overflow-hidden rounded-3xl border border-border/80 bg-background/40 flex-shrink-0 cursor-zoom-in"
                       aria-label={`Open ${alt}`}
                     >
@@ -1218,35 +1218,6 @@ export default function LabDetails({ params }: LabDetailsProps) {
                   <p className="text-sm text-muted-foreground">Loading teams…</p>
       )}
 
-      {photoPreview && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8"
-          onClick={() => setPhotoPreview(null)}
-        >
-          <div
-            className="relative w-full max-w-5xl overflow-hidden rounded-3xl border border-border bg-background shadow-2xl"
-            onClick={event => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <p className="text-sm font-medium text-foreground">Lab photo</p>
-              <button
-                type="button"
-                onClick={() => setPhotoPreview(null)}
-                className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-primary hover:text-primary"
-              >
-                Close
-              </button>
-            </div>
-            <div className="flex items-center justify-center bg-black/90 p-4">
-              <img
-                src={photoPreview.url}
-                alt={photoPreview.alt}
-                className="max-h-[75vh] w-auto max-w-full object-contain"
-              />
-            </div>
-          </div>
-        </div>
-      )}
                 {teamsError && <p className="text-sm text-destructive">{teamsError}</p>}
                 {!teamsLoading && !teamsError && linkedTeams.length === 0 && (
                   <p className="text-sm text-muted-foreground">No teams linked to this lab yet.</p>
@@ -1270,6 +1241,64 @@ export default function LabDetails({ params }: LabDetailsProps) {
             </div>
           </div>
         )}
+
+      {photoPreview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8 backdrop-blur"
+          onClick={() => setPhotoPreview(null)}
+        >
+          <div
+            className="relative w-full max-w-5xl overflow-hidden rounded-3xl border border-white/30 bg-white/25 shadow-2xl backdrop-blur-2xl"
+            onClick={event => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setPhotoPreview(null)}
+              className="absolute right-4 top-4 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/40 bg-white/25 text-sm text-white/90 backdrop-blur transition hover:bg-white/40"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+            <div className="relative flex items-center justify-center bg-white/10 p-4">
+              <button
+                type="button"
+                onClick={() =>
+                  setPhotoPreview(prev => {
+                    if (!prev) return prev;
+                    const total = lab.photos.length;
+                    const nextIndex = (prev.index - 1 + total) % total;
+                    return { index: nextIndex };
+                  })
+                }
+                className="absolute left-4 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-white/25 text-white/90 backdrop-blur transition hover:bg-white/40"
+                aria-label="Previous photo"
+              >
+                ‹
+              </button>
+              <img
+                src={getImageUrl(lab.photos[photoPreview.index].url, 2000)}
+                alt={`${lab.name} photo ${photoPreview.index + 1} - ${lab.photos[photoPreview.index].name}`}
+                className="max-h-[75vh] w-auto max-w-full object-contain rounded-2xl"
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setPhotoPreview(prev => {
+                    if (!prev) return prev;
+                    const total = lab.photos.length;
+                    const nextIndex = (prev.index + 1) % total;
+                    return { index: nextIndex };
+                  })
+                }
+                className="absolute right-4 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-white/25 text-white/90 backdrop-blur transition hover:bg-white/40"
+                aria-label="Next photo"
+              >
+                ›
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
           <div className="rounded-2xl border border-border/80 bg-background/60 p-6 space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3">

@@ -9,7 +9,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useMemo, useState, useEffect, useRef } from "react";
 import { useLabs } from "@/context/LabsContext";
 import { useAuth } from "@/context/AuthContext";
@@ -20,6 +20,7 @@ import { buildAddress, geocodeAddress, mapboxToken } from "@/lib/mapbox";
 export default function Labs() {
   const { labs, isLoading, error, refresh } = useLabs();
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
   const [searchTerm, setSearchTerm] = useState("");
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [favoritesOnly, setFavoritesOnly] = useState(false);
@@ -442,7 +443,7 @@ export default function Labs() {
                 }`}
               >
                 <MapPin className="h-4 w-4" />
-                {showMap ? "Hide map" : "Show map"}
+                {showMap ? "Hide map" : "Map"}
               </button>
               {user && (
                 <button
@@ -456,19 +457,9 @@ export default function Labs() {
                   disabled={favoritesLoading}
                 >
                   <Heart className="h-4 w-4" />
-                  {favoritesOnly ? "Showing favorites" : "Show favorites"}
+                  {favoritesOnly ? "Showing favorites" : "Favorites"}
                 </button>
               )}
-            </div>
-            <div className="relative w-full sm:w-80">
-              <input
-                type="search"
-                value={searchTerm}
-                onChange={event => setSearchTerm(event.target.value)}
-                placeholder="Search labs by name, city, or equipment"
-                className="w-full rounded-full border border-border bg-card/80 pl-10 pr-4 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              />
-              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             </div>
             <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card/70 p-1 w-fit">
               <button
@@ -497,8 +488,17 @@ export default function Labs() {
               </button>
             </div>
           </div>
-          <div className="text-sm text-muted-foreground sm:ml-auto">
-            Showing {filteredLabs.length} of {labCount} labs
+          <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row sm:items-center sm:gap-3">
+            <div className="relative w-full sm:w-80">
+              <input
+                type="search"
+                value={searchTerm}
+                onChange={event => setSearchTerm(event.target.value)}
+                placeholder="Search labs by name, city, or equipment"
+                className="w-full rounded-full border border-border bg-card/80 pl-10 pr-4 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              />
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            </div>
           </div>
         </div>
         {favoritesError && <p className="mt-2 text-xs text-destructive">{favoritesError}</p>}
@@ -511,9 +511,14 @@ export default function Labs() {
                 className="h-[520px] w-full rounded-3xl border border-border"
                 interactive
                 showPopups={false}
+                showNavigation
+                navigationVariant="glass-pill"
                 onMarkerClick={marker => setSelectedMarker(marker)}
                 onMapClick={handleMapClose}
               />
+              <div className="absolute right-4 top-4 inline-flex items-center rounded-full border border-border/70 bg-white/70 px-3 py-1 text-xs font-medium text-foreground shadow-sm backdrop-blur">
+                Showing {filteredLabs.length} of {labCount} labs
+              </div>
               <AnimatePresence mode="wait">
                 {(selectedMarker?.items?.length ?? 0) > 0 && (
                   <motion.div
@@ -526,7 +531,7 @@ export default function Labs() {
                   >
                     <div className="h-full rounded-2xl border border-white/20 bg-white/55 p-2 shadow-lg backdrop-blur-xl">
                       <div className="flex items-center justify-between text-[11px] font-semibold tracking-[0.2em] text-muted-foreground">
-                        <span>Labs at this location</span>
+                        <span className="pl-1">Location lab</span>
                         <div className="flex items-center gap-2">
                           <span>{selectedMarker?.items?.length} labs</span>
                           <button
@@ -654,18 +659,38 @@ export default function Labs() {
                     animate={{ opacity: 1, y: 0 }}
                     whileHover={{ scale: 1.02 }}
                     transition={{ duration: 0.5, delay: 0.1 * (index % 3), ease: "easeOut" }}
-                    className={`group relative flex h-full flex-col rounded-3xl border overflow-hidden will-change-transform ${
+                    className={`group relative flex h-full flex-col rounded-3xl border overflow-hidden will-change-transform cursor-pointer ${
                       isPremier ? "border-2 border-primary/80 shadow-lg" : "border-border"
                     } bg-card/80 p-8`}
+                    role="link"
+                    tabIndex={0}
+                    onClick={event => {
+                      const target = event.target as HTMLElement;
+                      if (target.closest("button")) return;
+                      setLocation(`/labs/${lab.id}`);
+                    }}
+                    onKeyDown={event => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      event.preventDefault();
+                      setLocation(`/labs/${lab.id}`);
+                    }}
                   >
-                    <div className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-sky-100/80 via-white/70 to-pink-100/80 opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-100" />
+                    <div className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-sky-200/80 via-white/70 to-white/80 opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-100" />
                     <div className="relative z-10 flex h-full flex-col">
-                    {lab.photos.length > 0 && (
+                    {(lab.photos.length > 0 || true) && (
                       <div className="relative mb-6 overflow-hidden rounded-2xl border border-border/60 bg-background/40">
                         <img
-                          src={getImageUrl(lab.photos[0].url)}
-                          alt={`${lab.name} preview - ${lab.photos[0].name}`}
-                          className="h-48 w-full object-cover"
+                          src={
+                            lab.photos.length > 0
+                              ? getImageUrl(lab.photos[0].url)
+                              : "/images/team-placeholder.png"
+                          }
+                          alt={
+                            lab.photos.length > 0
+                              ? `${lab.name} preview - ${lab.photos[0].name}`
+                              : `${lab.name} placeholder`
+                          }
+                          className={`h-48 w-full object-cover ${lab.photos.length > 0 ? "" : "object-bottom"}`}
                           loading="lazy"
                         />
                         <span
@@ -779,13 +804,6 @@ export default function Labs() {
                     )}
                   </div>
 
-                  <div className="mt-8 flex flex-wrap gap-3">
-                    <Link href={`/labs/${lab.id}`}>
-                      <a className="inline-flex items-center justify-center rounded-full border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary">
-                        View details
-                      </a>
-                    </Link>
-                  </div>
                     </div>
                   </motion.div>
                 );

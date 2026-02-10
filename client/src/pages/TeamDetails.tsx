@@ -17,7 +17,7 @@ export default function TeamDetails({ params }: TeamDetailsProps) {
   const [error, setError] = useState<string | null>(null);
   const [showMembers, setShowMembers] = useState(false);
   const [showAllEquipment, setShowAllEquipment] = useState(false);
-  const [photoPreview, setPhotoPreview] = useState<{ url: string; alt: string } | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<{ index: number } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -155,13 +155,13 @@ export default function TeamDetails({ params }: TeamDetailsProps) {
           <div className="mt-8 rounded-3xl border border-border bg-card/70 p-6">
             <h2 className="text-lg font-semibold text-foreground">Team gallery</h2>
             <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
-              {teamPhotos.map(photo => {
+              {teamPhotos.map((photo, index) => {
                 const alt = `${team.name} photo - ${photo.name}`;
                 return (
                   <button
                     key={photo.url}
                     type="button"
-                    onClick={() => setPhotoPreview({ url: photo.url, alt })}
+                    onClick={() => setPhotoPreview({ index })}
                     className="h-40 w-60 flex-shrink-0 overflow-hidden rounded-2xl border border-border bg-background cursor-zoom-in"
                     aria-label={`Open ${alt}`}
                   >
@@ -399,29 +399,57 @@ export default function TeamDetails({ params }: TeamDetailsProps) {
 
       {photoPreview && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8 backdrop-blur"
           onClick={() => setPhotoPreview(null)}
         >
           <div
-            className="relative w-full max-w-5xl overflow-hidden rounded-3xl border border-border bg-background shadow-2xl"
+            className="relative w-full max-w-5xl overflow-hidden rounded-3xl border border-white/30 bg-white/25 shadow-2xl backdrop-blur-2xl"
             onClick={event => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <p className="text-sm font-medium text-foreground">Team photo</p>
+            <button
+              type="button"
+              onClick={() => setPhotoPreview(null)}
+              className="absolute right-4 top-4 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/40 bg-white/25 text-sm text-white/90 backdrop-blur transition hover:bg-white/40"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+            <div className="relative flex items-center justify-center bg-white/10 p-4">
               <button
                 type="button"
-                onClick={() => setPhotoPreview(null)}
-                className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-primary hover:text-primary"
+                onClick={() =>
+                  setPhotoPreview(prev => {
+                    if (!prev) return prev;
+                    const total = teamPhotos.length;
+                    const nextIndex = (prev.index - 1 + total) % total;
+                    return { index: nextIndex };
+                  })
+                }
+                className="absolute left-4 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-white/25 text-white/90 backdrop-blur transition hover:bg-white/40"
+                aria-label="Previous photo"
               >
-                Close
+                ‹
               </button>
-            </div>
-            <div className="flex items-center justify-center bg-black/90 p-4">
               <img
-                src={photoPreview.url}
-                alt={photoPreview.alt}
-                className="max-h-[75vh] w-auto max-w-full object-contain"
+                src={teamPhotos[photoPreview.index]?.url ?? ""}
+                alt={`${team.name} photo ${photoPreview.index + 1} - ${teamPhotos[photoPreview.index]?.name ?? ""}`}
+                className="max-h-[75vh] w-auto max-w-full object-contain rounded-2xl"
               />
+              <button
+                type="button"
+                onClick={() =>
+                  setPhotoPreview(prev => {
+                    if (!prev) return prev;
+                    const total = teamPhotos.length;
+                    const nextIndex = (prev.index + 1) % total;
+                    return { index: nextIndex };
+                  })
+                }
+                className="absolute right-4 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-white/25 text-white/90 backdrop-blur transition hover:bg-white/40"
+                aria-label="Next photo"
+              >
+                ›
+              </button>
             </div>
           </div>
         </div>

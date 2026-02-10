@@ -30,6 +30,8 @@ type MapboxMapProps = {
   onMarkerClick?: (marker: MapMarker) => void;
   onMapClick?: () => void;
   showPopups?: boolean;
+  showNavigation?: boolean;
+  navigationVariant?: "default" | "glass-pill";
 };
 
 export function MapboxMap({
@@ -41,6 +43,8 @@ export function MapboxMap({
   onMarkerClick,
   onMapClick,
   showPopups = true,
+  showNavigation = false,
+  navigationVariant = "default",
 }: MapboxMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -68,6 +72,10 @@ export function MapboxMap({
       interactive,
       attributionControl: true,
     });
+
+    if (showNavigation && navigationVariant === "default") {
+      map.addControl(new mapboxgl.NavigationControl(), "bottom-right");
+    }
 
     mapRef.current = map;
 
@@ -252,5 +260,32 @@ export function MapboxMap({
     );
   }
 
-  return <div ref={containerRef} className={className} />;
+  const isGlassPill = showNavigation && navigationVariant === "glass-pill";
+
+  return (
+    <div className={`relative ${className}`}>
+      <div ref={containerRef} className="h-full w-full" />
+      {isGlassPill && (
+        <div className="absolute bottom-6 right-8 inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/60 px-2 py-1 shadow-sm backdrop-blur-xl">
+          <button
+            type="button"
+            onClick={() => mapRef.current?.zoomIn()}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/40 bg-white/70 text-sm font-semibold text-foreground transition hover:bg-white/90"
+            aria-label="Zoom in"
+          >
+            +
+          </button>
+          <div className="h-6 w-px bg-white/60" />
+          <button
+            type="button"
+            onClick={() => mapRef.current?.zoomOut()}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/40 bg-white/70 text-sm font-semibold text-foreground transition hover:bg-white/90"
+            aria-label="Zoom out"
+          >
+            –
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
