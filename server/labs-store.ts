@@ -129,18 +129,9 @@ function normalizeLabStatus(value?: string | null): LabPartner["labStatus"] {
   return "listed";
 }
 
-async function resolveOwnerUserId(contactEmail: string | null | undefined, explicit?: string | null): Promise<string | null> {
-  if (explicit) return explicit;
-  if (!contactEmail) return null;
-  const email = contactEmail.trim().toLowerCase();
-  if (!email) return null;
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("user_id")
-    .ilike("email", email)
-    .maybeSingle();
-  if (error) return null;
-  return data?.user_id ?? null;
+async function resolveOwnerUserId(explicit?: string | null): Promise<string | null> {
+  // Security rule: contact email is for communication only, never ownership linkage.
+  return explicit ?? null;
 }
 
 function mapLabRow(row: LabRow): LabPartner {
@@ -501,7 +492,7 @@ export class LabStore {
 
   async create(payload: InsertLab): Promise<LabPartner> {
     const data = insertLabSchema.parse(payload);
-    const ownerUserId = await resolveOwnerUserId(data.contactEmail, data.ownerUserId ?? null);
+    const ownerUserId = await resolveOwnerUserId(data.ownerUserId ?? null);
     const auditPassed = Boolean(data.auditPassed);
     const auditPassedAt = auditPassed ? (data.auditPassedAt ?? new Date().toISOString()) : null;
     const initialStatus = data.labStatus ?? "listed";
@@ -564,9 +555,8 @@ export class LabStore {
 
     const parsed = updateLabSchema.parse(updates);
     const has = (key: keyof UpdateLab) => Object.prototype.hasOwnProperty.call(updates, key);
-    const nextContactEmail = has("contactEmail") ? parsed.contactEmail ?? null : existing.contactEmail ?? null;
     const requestedOwner = has("ownerUserId") ? parsed.ownerUserId ?? null : existing.ownerUserId ?? null;
-    const ownerUserId = await resolveOwnerUserId(nextContactEmail, requestedOwner ?? null);
+    const ownerUserId = await resolveOwnerUserId(requestedOwner ?? null);
     const auditPassed = has("auditPassed") ? Boolean(parsed.auditPassed) : existing.auditPassed;
     let auditPassedAt = existing.auditPassedAt ?? null;
     if (has("auditPassedAt")) {

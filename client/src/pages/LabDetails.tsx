@@ -439,12 +439,8 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const listedDisclaimer = "Profile details compiled by GLASS from publicly available sources.";
   const claimEmail = "contact@glass-funding.com";
   const isListedOnly = status === "listed";
-  const normalizedLabContact = typeof lab.contactEmail === "string" ? lab.contactEmail.trim().toLowerCase() : "";
-  const normalizedUserEmail = typeof user?.email === "string" ? user.email.trim().toLowerCase() : "";
   const isLabOwnerByUserId = Boolean(user?.id) && Boolean(lab.ownerUserId) && lab.ownerUserId === user?.id;
-  const isLabOwnerByContactEmail =
-    Boolean(normalizedLabContact) && Boolean(normalizedUserEmail) && normalizedLabContact === normalizedUserEmail;
-  const isOwnLab = isLabOwnerByUserId || isLabOwnerByContactEmail;
+  const isOwnLab = isLabOwnerByUserId;
   const canCollaborate = !isOwnLab && (profileCanCollaborate || currentUserCanBrokerRequests);
   const partnerLogos = lab.partnerLogos ?? [];
   const labTechniques = lab.techniques ?? [];

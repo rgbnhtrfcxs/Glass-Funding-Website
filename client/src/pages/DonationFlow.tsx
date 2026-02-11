@@ -108,7 +108,7 @@ export default function DonateFlow() {
       .select(
         "id, name, siret_number, lab_manager, contact_email, address_line1, address_line2, city, postal_code, country",
       )
-      .or(`owner_user_id.eq.${user.id},contact_email.eq.${user.email}`)
+      .eq("owner_user_id", user.id)
       .then(({ data }) => {
         if (data && Array.isArray(data)) {
           setOwnedLabs(data);

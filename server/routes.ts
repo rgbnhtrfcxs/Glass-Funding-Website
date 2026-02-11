@@ -62,45 +62,12 @@ const timingSafeEqual = (a: string, b: string) => {
   return crypto.timingSafeEqual(aBuf, bBuf);
 };
 
-const findLabIdByContactEmail = async (email?: string | null, labId?: number | null): Promise<number | null> => {
-  if (!email) return null;
-  const trimmed = email.trim();
-  if (!trimmed) return null;
-  let query = supabase.from("lab_contacts").select("lab_id").ilike("contact_email", trimmed);
-  if (labId) {
-    query = query.eq("lab_id", labId);
-  }
-  const { data, error } = await query.limit(1).maybeSingle();
-  if (error) return null;
-  const id = data?.lab_id ? Number(data.lab_id) : NaN;
-  return Number.isNaN(id) ? null : id;
-};
-
-const claimLabForUser = async (userId?: string | null, email?: string | null, labId?: number | null) => {
-  if (!userId || !email) return null;
-  const id = await findLabIdByContactEmail(email, labId ?? null);
-  if (!id) return null;
-  const { data, error } = await supabase.from("labs").select("id, owner_user_id").eq("id", id).maybeSingle();
-  if (error || !data) return null;
-  if (!data.owner_user_id) {
-    await supabase.from("labs").update({ owner_user_id: userId }).eq("id", data.id);
-  }
-  return { id: data.id };
-};
-
-const listLabIdsForUser = async (userId?: string | null, email?: string | null) => {
+const listLabIdsForUser = async (userId?: string | null) => {
   const ids = new Set<number>();
   if (userId) {
     const { data } = await supabase.from("labs").select("id").eq("owner_user_id", userId);
     (data ?? []).forEach(row => {
       const id = Number(row.id);
-      if (!Number.isNaN(id)) ids.add(id);
-    });
-  }
-  if (email) {
-    const { data } = await supabase.from("lab_contacts").select("lab_id").ilike("contact_email", email.trim());
-    (data ?? []).forEach(row => {
-      const id = Number((row as any).lab_id);
       if (!Number.isNaN(id)) ids.add(id);
     });
   }
@@ -2507,27 +2474,19 @@ app.get("/api/profile", authenticate, async (req, res) => {
     }
   });
 
-  // Lab manager endpoints: manage only the lab tied to their user id (owner_user_id) or claim by contact email
+  // Lab manager endpoints: manage only labs tied to owner_user_id.
   app.get("/api/my-lab", authenticate, async (req, res) => {
     try {
       const userId = req.user?.id;
-      const email = req.user?.email;
-      if (!userId && !email) return res.status(400).json({ message: "No user on request" });
+      if (!userId) return res.status(400).json({ message: "No user on request" });
 
       const profile = await fetchProfileCapabilities(userId);
       if (!profile?.canCreateLab) {
         return res.status(403).json({ message: "This account is not enabled to manage labs yet." });
       }
 
-      let labRow = null;
-      if (userId) {
-        const { data, error } = await supabase.from("labs").select("id").eq("owner_user_id", userId).maybeSingle();
-        if (error) throw error;
-        if (data) labRow = data;
-      }
-      if (!labRow && userId && email) {
-        labRow = await claimLabForUser(userId, email);
-      }
+      const { data: labRow, error: labError } = await supabase.from("labs").select("id").eq("owner_user_id", userId).maybeSingle();
+      if (labError) throw labError;
       if (!labRow) return res.status(404).json({ message: "No lab linked to this account" });
 
       const lab = await labStore.findById(Number(labRow.id));
@@ -2541,15 +2500,14 @@ app.get("/api/profile", authenticate, async (req, res) => {
   app.get("/api/my-labs", authenticate, async (req, res) => {
     try {
       const userId = req.user?.id;
-      const email = req.user?.email;
-      if (!userId && !email) return res.status(400).json({ message: "No user on request" });
+      if (!userId) return res.status(400).json({ message: "No user on request" });
 
       const profile = await fetchProfileCapabilities(userId);
       if (!profile?.canCreateLab) {
         return res.status(403).json({ message: "This account is not enabled to manage labs yet." });
       }
 
-      const labIds = await listLabIdsForUser(userId, email);
+      const labIds = await listLabIdsForUser(userId);
       if (!labIds.length) return res.json([]);
 
       const { data, error } = await supabase
@@ -2600,8 +2558,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
       const labId = Number(req.params.id);
       if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
       const userId = req.user?.id;
-      const email = req.user?.email;
-      if (!userId && !email) return res.status(400).json({ message: "No user on request" });
+      if (!userId) return res.status(400).json({ message: "No user on request" });
 
       const profile = await fetchProfileCapabilities(userId);
       if (!profile?.canCreateLab) {
@@ -2609,15 +2566,13 @@ app.get("/api/profile", authenticate, async (req, res) => {
       }
 
       // owner match first
-      let labRow = null;
-      if (userId) {
-        const { data, error } = await supabase.from("labs").select("id").eq("id", labId).eq("owner_user_id", userId).maybeSingle();
-        if (error) throw error;
-        if (data) labRow = data;
-      }
-      if (!labRow && email && userId) {
-        labRow = await claimLabForUser(userId, email, labId);
-      }
+      const { data: labRow, error: labError } = await supabase
+        .from("labs")
+        .select("id")
+        .eq("id", labId)
+        .eq("owner_user_id", userId)
+        .maybeSingle();
+      if (labError) throw labError;
       if (!labRow) return res.status(404).json({ message: "No lab linked to this account" });
 
       const lab = await labStore.findById(labId);
@@ -2633,28 +2588,20 @@ app.get("/api/profile", authenticate, async (req, res) => {
       const labId = Number(req.params.id);
       if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
       const userId = req.user?.id;
-      const email = req.user?.email;
-      if (!userId && !email) return res.status(400).json({ message: "No user on request" });
+      if (!userId) return res.status(400).json({ message: "No user on request" });
 
       const profile = await fetchProfileCapabilities(userId);
       if (!profile?.canCreateLab) {
         return res.status(403).json({ message: "This account is not enabled to manage labs yet." });
       }
 
-      let labRow = null;
-      if (userId) {
-        const { data, error } = await supabase
-          .from("labs")
-          .select("id")
-          .eq("id", labId)
-          .eq("owner_user_id", userId)
-          .maybeSingle();
-        if (error) throw error;
-        if (data) labRow = data;
-      }
-      if (!labRow && email && userId) {
-        labRow = await claimLabForUser(userId, email, labId);
-      }
+      const { data: labRow, error: labError } = await supabase
+        .from("labs")
+        .select("id")
+        .eq("id", labId)
+        .eq("owner_user_id", userId)
+        .maybeSingle();
+      if (labError) throw labError;
       if (!labRow) return res.status(404).json({ message: "No lab linked to this account" });
 
       const updated = await labStore.update(labId, req.body);
@@ -2673,28 +2620,20 @@ app.get("/api/profile", authenticate, async (req, res) => {
       const labId = Number(req.params.id);
       if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
       const userId = req.user?.id;
-      const email = req.user?.email;
-      if (!userId && !email) return res.status(400).json({ message: "No user on request" });
+      if (!userId) return res.status(400).json({ message: "No user on request" });
 
       const profile = await fetchProfileCapabilities(userId);
       if (!profile?.canCreateLab) {
         return res.status(403).json({ message: "This account is not enabled to manage labs yet." });
       }
 
-      let labRow = null;
-      if (userId) {
-        const { data, error } = await supabase
-          .from("labs")
-          .select("id")
-          .eq("id", labId)
-          .eq("owner_user_id", userId)
-          .maybeSingle();
-        if (error) throw error;
-        if (data) labRow = data;
-      }
-      if (!labRow && email && userId) {
-        labRow = await claimLabForUser(userId, email, labId);
-      }
+      const { data: labRow, error: labError } = await supabase
+        .from("labs")
+        .select("id")
+        .eq("id", labId)
+        .eq("owner_user_id", userId)
+        .maybeSingle();
+      if (labError) throw labError;
       if (!labRow) return res.status(404).json({ message: "No lab linked to this account" });
 
       await labStore.delete(labId);
@@ -2710,22 +2649,14 @@ app.get("/api/profile", authenticate, async (req, res) => {
   app.get("/api/my-lab/analytics", authenticate, async (req, res) => {
     try {
       const userId = req.user?.id;
-      const email = req.user?.email;
-      if (!userId && !email) return res.status(400).json({ message: "No user on request" });
+      if (!userId) return res.status(400).json({ message: "No user on request" });
 
-      let labRow = null;
-      if (userId) {
-        const { data, error } = await supabase
-          .from("labs")
-          .select("id, lab_status")
-          .eq("owner_user_id", userId)
-          .maybeSingle();
-        if (error) throw error;
-        if (data) labRow = data;
-      }
-      if (!labRow && userId && email) {
-        labRow = await claimLabForUser(userId, email);
-      }
+      const { data: labRow, error: labError } = await supabase
+        .from("labs")
+        .select("id, lab_status")
+        .eq("owner_user_id", userId)
+        .maybeSingle();
+      if (labError) throw labError;
       if (!labRow) return res.status(404).json({ message: "No lab linked to this account" });
 
       const labId = Number((labRow as any).id);
@@ -2776,10 +2707,9 @@ app.get("/api/profile", authenticate, async (req, res) => {
   app.get("/api/my-labs/analytics", authenticate, async (req, res) => {
     try {
       const userId = req.user?.id;
-      const email = req.user?.email;
-      if (!userId && !email) return res.status(400).json({ message: "No user on request" });
+      if (!userId) return res.status(400).json({ message: "No user on request" });
 
-      const labIds = await listLabIdsForUser(userId, email);
+      const labIds = await listLabIdsForUser(userId);
       if (!labIds.length) return res.json({ labs: [] });
 
       const { data: labs, error: labsError } = await supabase
@@ -2842,10 +2772,9 @@ app.get("/api/profile", authenticate, async (req, res) => {
   app.get("/api/my-labs/requests", authenticate, async (req, res) => {
     try {
       const userId = req.user?.id;
-      const email = req.user?.email;
-      if (!userId && !email) return res.status(400).json({ message: "No user on request" });
+      if (!userId) return res.status(400).json({ message: "No user on request" });
 
-      const labIds = await listLabIdsForUser(userId, email);
+      const labIds = await listLabIdsForUser(userId);
       if (!labIds.length) return res.json({ labs: [], collaborations: [], contacts: [] });
 
       const { data: labs, error: labsError } = await supabase
@@ -2930,18 +2859,10 @@ app.get("/api/profile", authenticate, async (req, res) => {
   app.put("/api/my-lab", authenticate, async (req, res) => {
     try {
       const userId = req.user?.id;
-      const email = req.user?.email;
-      if (!userId && !email) return res.status(400).json({ message: "No user on request" });
+      if (!userId) return res.status(400).json({ message: "No user on request" });
 
-      let labRow = null;
-      if (userId) {
-        const { data, error } = await supabase.from("labs").select("id").eq("owner_user_id", userId).maybeSingle();
-        if (error) throw error;
-        if (data) labRow = data;
-      }
-      if (!labRow && email && userId) {
-        labRow = await claimLabForUser(userId, email);
-      }
+      const { data: labRow, error: labError } = await supabase.from("labs").select("id").eq("owner_user_id", userId).maybeSingle();
+      if (labError) throw labError;
       if (!labRow) return res.status(404).json({ message: "No lab linked to this account" });
 
       const labId = Number(labRow.id);
