@@ -4,7 +4,14 @@ import { useLocation } from "wouter";
 import { useLabs } from "@/context/LabsContext";
 import { useAuth } from "@/context/AuthContext";
 import { useConsent } from "@/context/ConsentContext";
-import { offerOptions, type LabTechnique, type OfferOption, type PartnerLogo } from "@shared/labs";
+import {
+  offerOptions,
+  orgRoleOptions,
+  type LabTechnique,
+  type OfferOption,
+  type OrgRoleOption,
+  type PartnerLogo,
+} from "@shared/labs";
 import type { MediaAsset } from "@shared/labs";
 import { supabase } from "@/lib/supabaseClient";
 import { Link } from "wouter";
@@ -41,6 +48,7 @@ export default function NewLab() {
     descriptionShort: "",
     descriptionLong: "",
     field: "",
+    orgRole: "" as "" | OrgRoleOption,
     offersLabSpace: true,
     addressLine1: "",
     addressLine2: "",
@@ -348,6 +356,7 @@ export default function NewLab() {
         siretNumber: form.siretNumber.trim() || null,
         partnerLogos,
         field: form.field.trim() || null,
+        orgRole: form.orgRole || null,
         halStructureId: form.halStructureId.trim() || null,
         halPersonId: form.halPersonId.trim() || null,
         teamMembers: form.teamMembers,
@@ -466,6 +475,20 @@ export default function NewLab() {
                     onChange={e => handleChange("field", e.target.value)}
                     placeholder="e.g., immunology, materials science, bioengineering"
                   />
+                </Field>
+                <Field label="Organization role (optional)">
+                  <select
+                    className="w-full rounded-xl border-2 border-primary/30 bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    value={form.orgRole}
+                    onChange={e => handleChange("orgRole", e.target.value as "" | OrgRoleOption)}
+                  >
+                    <option value="">Select role type</option>
+                    {orgRoleOptions.map(role => (
+                      <option key={role} value={role}>
+                        {role}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="HAL structure ID (optional)">
                   <input

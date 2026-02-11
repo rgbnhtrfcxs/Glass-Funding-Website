@@ -21,8 +21,10 @@ import { useLabs } from "@/context/LabsContext";
 import { supabase } from "@/lib/supabaseClient";
 import {
   offerOptions,
+  orgRoleOptions,
   type LabPartner,
   type MediaAsset,
+  type OrgRoleOption,
   type PartnerLogo,
   type OfferOption,
 } from "@shared/labs";
@@ -51,6 +53,7 @@ interface LabFormState {
   compliance: string;
   verification: VerificationOption;
   labStatus: LabStatusOption;
+  orgRole: "" | OrgRoleOption;
   equipment: string;
   focusAreas: string;
   halStructureId: string;
@@ -82,6 +85,7 @@ const emptyForm: LabFormState = {
   compliance: "",
   verification: "no",
   labStatus: "listed",
+  orgRole: "",
   equipment: "",
   focusAreas: "",
   halStructureId: "",
@@ -114,6 +118,7 @@ function labToForm(lab: LabPartner): LabFormState {
     compliance: lab.compliance.join(", "),
     verification: lab.auditPassed ? "yes" : "no",
     labStatus: (lab.labStatus || "listed") as LabStatusOption,
+    orgRole: lab.orgRole || "",
     equipment: lab.equipment.join(", "),
     focusAreas: lab.focusAreas.join(", "),
     halStructureId: lab.halStructureId || "",
@@ -185,6 +190,7 @@ function formToPayload(
     compliance: parseList(form.compliance),
     auditPassed: form.verification === "yes",
     labStatus: form.labStatus,
+    orgRole: form.orgRole || null,
     equipment: parseList(form.equipment),
     focusAreas: parseList(form.focusAreas),
     offers: form.offers,
@@ -230,8 +236,18 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
     const term = searchTerm.trim().toLowerCase();
     if (!term) return labs;
     return labs.filter(lab => {
-    const location = [lab.city, lab.country].filter(Boolean).join(", ");
-    const haystack = [lab.name, location, lab.labManager, lab.contactEmail].filter(Boolean).join(" ").toLowerCase();
+      const location = [lab.city, lab.country].filter(Boolean).join(", ");
+      const haystack = [
+        lab.name,
+        ...(lab.alternateNames ?? []),
+        location,
+        lab.labManager,
+        lab.contactEmail,
+        lab.orgRole,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
       return haystack.includes(term);
     });
   }, [labs, searchTerm]);
@@ -514,7 +530,7 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                 type="search"
                 value={searchTerm}
                 onChange={event => setSearchTerm(event.target.value)}
-                placeholder="Search labs"
+                placeholder="Search by name, alternate name, contact, or role"
                 className="w-full rounded-full border border-border bg-card/80 px-4 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
               <MapPin className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -662,6 +678,10 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                     <div className="flex flex-col gap-1">
                       <span className="font-medium text-foreground">Focus areas</span>
                       <span>{lab.focusAreas.join(", ") || "—"}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="font-medium text-foreground">Organization role</span>
+                      <span>{lab.orgRole || "—"}</span>
                     </div>
                     <div className="flex flex-col gap-1 md:col-span-2">
                       <span className="font-medium text-foreground">Equipment</span>
@@ -1094,6 +1114,25 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                     <option value="verified_passive">Verified — passive</option>
                     <option value="verified_active">Verified — active</option>
                     <option value="premier">Premier</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground" htmlFor="lab-org-role">
+                    Organization role
+                  </label>
+                  <select
+                    id="lab-org-role"
+                    value={formState.orgRole}
+                    onChange={event => handleChange("orgRole", event.target.value as "" | OrgRoleOption)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <option value="">Select role type</option>
+                    {orgRoleOptions.map(role => (
+                      <option key={role} value={role}>
+                        {role}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

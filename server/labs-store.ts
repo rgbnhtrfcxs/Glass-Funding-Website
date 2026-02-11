@@ -1,6 +1,7 @@
 import {
   insertLabSchema,
   labListSchema,
+  orgRoleOptions,
   labSchema,
   updateLabSchema,
   type InsertLab,
@@ -21,6 +22,7 @@ const LAB_SELECT = `
   lab_status,
   audit_passed,
   audit_passed_at,
+  org_role,
   lab_contacts (contact_email, website, linkedin, tags),
   lab_location (address_line1, address_line2, city, state, postal_code, country),
   lab_profile (lab_manager, siret_number, description_short, description_long, field, public, alternate_names, logo_url, hal_structure_id, hal_person_id),
@@ -45,6 +47,7 @@ type LabRow = {
   lab_status: string | null;
   audit_passed: boolean | string | null;
   audit_passed_at: string | null;
+  org_role: string | null;
   lab_contacts: Array<{
     contact_email: string | null;
     website: string | null;
@@ -96,6 +99,25 @@ function parseBoolean(value: boolean | string | null | undefined, fallback = fal
   if (typeof value === "boolean") return value;
   const normalized = value.toString().toLowerCase();
   return normalized === "true" || normalized === "t" || normalized === "1";
+}
+
+function normalizeOrgRole(value?: string | null): LabPartner["orgRole"] {
+  if (!value) return null;
+  const normalized = value.trim();
+  const legacyMap: Record<string, string> = {
+    "Core Facility/Platform": "Core Facility / Platform",
+    "CRO (Contract Research Organisation)": "CRO (Contract Research Organization)",
+    "CDMO/CMO": "CDMO / CMO",
+    "Clinical Site/Hospital Lab": "Clinical Site / Hospital Lab",
+    "Testing/Certification Lab": "Testing / Certification Lab",
+    "Bioinformatics/Data": "Bioinformatics / Data",
+    "Regulatory/QA/ Consulting": "Regulatory / QA / Consulting",
+    "Regulatory/QA/Consulting": "Regulatory / QA / Consulting",
+  };
+  const canonical = legacyMap[normalized] ?? normalized;
+  return (orgRoleOptions as readonly string[]).includes(canonical)
+    ? (canonical as LabPartner["orgRole"])
+    : null;
 }
 
 function normalizeLabStatus(value?: string | null): LabPartner["labStatus"] {
@@ -155,6 +177,7 @@ function mapLabRow(row: LabRow): LabPartner {
     logoUrl: profileRow?.logo_url || null,
     descriptionShort: profileRow?.description_short || null,
     descriptionLong: profileRow?.description_long || null,
+    orgRole: normalizeOrgRole(row.org_role),
     offersLabSpace: parseBoolean(settingsRow?.offers_lab_space, false),
     addressLine1: locationRow?.address_line1 || null,
     addressLine2: locationRow?.address_line2 || null,
@@ -492,6 +515,7 @@ export class LabStore {
         audit_passed: auditPassed,
         audit_passed_at: auditPassedAt,
         is_visible: data.isVisible,
+        org_role: normalizeOrgRole(data.orgRole ?? null),
       })
       .select("id")
       .single();
@@ -555,6 +579,7 @@ export class LabStore {
     if (has("name")) baseUpdates.name = parsed.name;
     if (has("ownerUserId") || has("contactEmail")) baseUpdates.owner_user_id = ownerUserId ?? null;
     if (has("labStatus")) baseUpdates.lab_status = parsed.labStatus ?? "listed";
+    if (has("orgRole")) baseUpdates.org_role = normalizeOrgRole(parsed.orgRole ?? null);
     if (has("isVisible")) baseUpdates.is_visible = parsed.isVisible;
     if (has("auditPassed") || has("auditPassedAt")) {
       baseUpdates.audit_passed = auditPassed;

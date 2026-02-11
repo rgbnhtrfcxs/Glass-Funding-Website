@@ -1,13 +1,14 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
   CheckCircle2,
+  ChevronDown,
+  SlidersHorizontal,
   Images,
   MapPin,
   Search,
   Heart,
   ShieldAlert,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useMemo, useState, useEffect, useRef } from "react";
@@ -16,12 +17,23 @@ import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import { MapboxMap, type MapMarker } from "@/components/maps/MapboxMap";
 import { buildAddress, geocodeAddress, mapboxToken } from "@/lib/mapbox";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { orgRoleOptions, type OrgRoleOption } from "@shared/labs";
 
 export default function Labs() {
   const { labs, isLoading, error, refresh } = useLabs();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedOrgRoles, setSelectedOrgRoles] = useState<OrgRoleOption[]>([]);
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [verifiedOnly, setVerifiedOnly] = useState(true);
@@ -35,6 +47,7 @@ export default function Labs() {
   const [selectedMarker, setSelectedMarker] = useState<MapMarker | null>(null);
   const uiStateRef = useRef({
     searchTerm: "",
+    selectedOrgRoles: [] as OrgRoleOption[],
     favoritesOnly: false,
     verifiedOnly: true,
     showMap: false,
@@ -46,6 +59,8 @@ export default function Labs() {
   const isVerifiedStatus = (status?: string | null) =>
     ["verified_passive", "verified_active", "premier"].includes((status || "").toLowerCase());
   const labsUiStorageKey = "labs-ui-state";
+  const isOrgRoleOption = (value: unknown): value is OrgRoleOption =>
+    typeof value === "string" && (orgRoleOptions as readonly string[]).includes(value);
   const getInitials = (name: string) =>
     name
       .split(" ")
@@ -58,8 +73,18 @@ export default function Labs() {
   const visibleLabs = useMemo(() => labs.filter(lab => lab.isVisible !== false), [labs]);
   const labCount = visibleLabs.length;
   const verifiedCount = visibleLabs.filter(lab => isVerifiedStatus(lab.labStatus)).length;
+  const availableOrgRoles = useMemo(
+    () => orgRoleOptions.filter(role => visibleLabs.some(lab => lab.orgRole === role)),
+    [visibleLabs],
+  );
   const formatLocation = (lab: { city?: string | null; country?: string | null }) =>
     [lab.city, lab.country].filter(Boolean).join(", ");
+  const normalizeSearchText = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[()/,-]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   const uniqueEquipmentCount = useMemo(() => {
     const equipment = new Set<string>();
     visibleLabs.forEach(lab => {
@@ -79,6 +104,13 @@ export default function Labs() {
     try {
       const parsed = JSON.parse(stored);
       if (typeof parsed.searchTerm === "string") setSearchTerm(parsed.searchTerm);
+      if (Array.isArray(parsed.selectedOrgRoles)) {
+        const validSelectedRoles = parsed.selectedOrgRoles.filter(isOrgRoleOption);
+        setSelectedOrgRoles(validSelectedRoles);
+      } else if (isOrgRoleOption(parsed.orgRoleFilter)) {
+        // Backward compatibility with previous single-select filter storage.
+        setSelectedOrgRoles([parsed.orgRoleFilter]);
+      }
       if (typeof parsed.favoritesOnly === "boolean") setFavoritesOnly(parsed.favoritesOnly);
       if (typeof parsed.verifiedOnly === "boolean") setVerifiedOnly(parsed.verifiedOnly);
       if (typeof parsed.showMap === "boolean") setShowMap(parsed.showMap);
@@ -93,11 +125,12 @@ export default function Labs() {
   useEffect(() => {
     uiStateRef.current = {
       searchTerm,
+      selectedOrgRoles,
       favoritesOnly,
       verifiedOnly,
       showMap,
     };
-  }, [searchTerm, favoritesOnly, verifiedOnly, showMap]);
+  }, [searchTerm, selectedOrgRoles, favoritesOnly, verifiedOnly, showMap]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -116,7 +149,7 @@ export default function Labs() {
 
   useEffect(() => {
     saveUiState();
-  }, [searchTerm, favoritesOnly, verifiedOnly, showMap]);
+  }, [searchTerm, selectedOrgRoles, favoritesOnly, verifiedOnly, showMap]);
 
   useEffect(() => {
     return () => {
@@ -189,9 +222,10 @@ export default function Labs() {
 
   const filteredLabs = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
+    const normalizedTerm = normalizeSearchText(term);
     let subset = term
       ? visibleLabs.filter(lab => {
-          const haystack = [
+          const rawHaystack = [
             lab.name,
             ...(lab.alternateNames ?? []),
             formatLocation(lab),
@@ -200,11 +234,15 @@ export default function Labs() {
             (lab.tags ?? []).join(" "),
           ]
             .filter(Boolean)
-            .join(" ")
-            .toLowerCase();
-          return haystack.includes(term);
+            .join(" ");
+          const haystack = rawHaystack.toLowerCase();
+          const normalizedHaystack = normalizeSearchText(rawHaystack);
+          return haystack.includes(term) || normalizedHaystack.includes(normalizedTerm);
         })
       : visibleLabs;
+    if (selectedOrgRoles.length > 0) {
+      subset = subset.filter(lab => (lab.orgRole ? selectedOrgRoles.includes(lab.orgRole) : false));
+    }
     if (verifiedOnly) {
       subset = subset.filter(lab => {
         return isVerifiedStatus(statusValue(lab));
@@ -219,8 +257,9 @@ export default function Labs() {
       if (aPremium === bPremium) return 0;
       return aPremium ? -1 : 1;
     });
-  }, [visibleLabs, searchTerm, favoritesOnly, favorites, verifiedOnly]);
+  }, [visibleLabs, searchTerm, selectedOrgRoles, favoritesOnly, favorites, verifiedOnly]);
   // Potential future premium search: include labManager, focusAreas, equipment, offers.
+  const hasOrgRoleFilters = selectedOrgRoles.length > 0;
 
   useEffect(() => {
     if (!showMap) return;
@@ -489,12 +528,64 @@ export default function Labs() {
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row sm:items-center sm:gap-3">
+            <div className="w-full sm:w-auto">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={`inline-flex w-full items-center justify-between gap-2 rounded-full border px-4 py-2 text-sm font-medium transition sm:w-auto ${
+                      hasOrgRoleFilters
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+                    }`}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <SlidersHorizontal className="h-4 w-4" />
+                      Filter
+                    </span>
+                    {hasOrgRoleFilters ? (
+                      <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-primary/15 px-1.5 text-[11px] leading-5">
+                        {selectedOrgRoles.length}
+                      </span>
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-80">
+                  <DropdownMenuLabel>Organization roles</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {availableOrgRoles.map(role => (
+                    <DropdownMenuCheckboxItem
+                      key={role}
+                      checked={selectedOrgRoles.includes(role)}
+                      onCheckedChange={checked => {
+                        setSelectedOrgRoles(prev => {
+                          if (checked) return prev.includes(role) ? prev : [...prev, role];
+                          return prev.filter(item => item !== role);
+                        });
+                      }}
+                      onSelect={event => event.preventDefault()}
+                    >
+                      {role}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => setSelectedOrgRoles([])}
+                    disabled={selectedOrgRoles.length === 0}
+                  >
+                    Clear filters
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
             <div className="relative w-full sm:w-80">
               <input
                 type="search"
                 value={searchTerm}
                 onChange={event => setSearchTerm(event.target.value)}
-                placeholder="Search labs by name, city, or equipment"
+                placeholder="Search by name, city, or equipment"
                 className="w-full rounded-full border border-border bg-card/80 pl-10 pr-4 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
               <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -727,6 +818,11 @@ export default function Labs() {
                           <MapPin className="h-4 w-4 text-primary" />
                           <span>{formatLocation(lab) || "Location not set"}</span>
                         </div>
+                        {lab.orgRole && (
+                          <span className="mt-2 inline-flex items-center rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground">
+                            {lab.orgRole}
+                          </span>
+                        )}
                       </div>
                       <div className="flex flex-col items-end gap-2 text-right">
                         <button

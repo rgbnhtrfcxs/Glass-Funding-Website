@@ -663,6 +663,11 @@ export default function LabDetails({ params }: LabDetailsProps) {
                   lab.country,
                 ].filter(Boolean).join(", ") || "Location not set"}
               </span>
+              {lab.orgRole && (
+                <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground">
+                  {lab.orgRole}
+                </span>
+              )}
               <span
                 className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${badgeClass}`}
                 title={isListedOnly ? listedDisclaimer : undefined}

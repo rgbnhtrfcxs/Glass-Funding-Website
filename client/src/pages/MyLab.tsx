@@ -4,7 +4,15 @@ import { FileDown, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useConsent } from "@/context/ConsentContext";
 import { supabase } from "@/lib/supabaseClient";
-import { offerOptions, type LabTechnique, type OfferOption, type MediaAsset, type PartnerLogo } from "@shared/labs";
+import {
+  offerOptions,
+  orgRoleOptions,
+  type LabTechnique,
+  type OfferOption,
+  type MediaAsset,
+  type OrgRoleOption,
+  type PartnerLogo,
+} from "@shared/labs";
 import { Link, useLocation } from "wouter";
 
 const INPUT_CLASS =
@@ -39,6 +47,7 @@ type Form = {
   offersLabSpace: boolean;
   descriptionShort: string;
   descriptionLong: string;
+  orgRole: "" | OrgRoleOption;
   addressLine1: string;
   addressLine2: string;
   city: string;
@@ -118,6 +127,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
     offersLabSpace: false,
     descriptionShort: "",
     descriptionLong: "",
+    orgRole: "",
     addressLine1: "",
     addressLine2: "",
     city: "",
@@ -569,6 +579,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
         offersLabSpace: lab.offersLabSpace ?? true,
         descriptionShort: lab.descriptionShort || "",
         descriptionLong: lab.descriptionLong || "",
+        orgRole: lab.orgRole || "",
         addressLine1: lab.addressLine1 || "",
         addressLine2: lab.addressLine2 || "",
         city: lab.city || "",
@@ -677,6 +688,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
           offersLabSpace: form.offersLabSpace,
           descriptionShort: form.descriptionShort || null,
           descriptionLong: form.descriptionLong || null,
+          orgRole: form.orgRole || null,
           ownerUserId: user?.id || null,
           addressLine1: form.addressLine1 || null,
           addressLine2: form.addressLine2 || null,
@@ -904,6 +916,20 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   onChange={e => setForm({ ...form, descriptionLong: e.target.value })}
                   placeholder="Longer overview shown later on the page."
                 />
+              </Field>
+              <Field label="Organization role (optional)">
+                <select
+                  className={INPUT_CLASS}
+                  value={form.orgRole}
+                  onChange={e => setForm({ ...form, orgRole: e.target.value as "" | OrgRoleOption })}
+                >
+                  <option value="">Select role type</option>
+                  {orgRoleOptions.map(role => (
+                    <option key={role} value={role}>
+                      {role}
+                    </option>
+                  ))}
+                </select>
               </Field>
               <Field label="HAL structure ID (optional)">
                 <input

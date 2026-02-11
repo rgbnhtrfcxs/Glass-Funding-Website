@@ -9,6 +9,20 @@ export const offerOptions = [
 
 export type OfferOption = (typeof offerOptions)[number];
 
+export const orgRoleOptions = [
+  "Research Lab",
+  "Core Facility / Platform",
+  "CRO (Contract Research Organization)",
+  "CDMO / CMO",
+  "Clinical Site / Hospital Lab",
+  "Biobank",
+  "Testing / Certification Lab",
+  "Bioinformatics / Data",
+  "Regulatory / QA / Consulting",
+] as const;
+
+export type OrgRoleOption = (typeof orgRoleOptions)[number];
+
 const normalizeUrl = (value: unknown) => {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
@@ -57,6 +71,10 @@ export const labCoreSchema = z.object({
   ownerUserId: z.string().uuid().optional().nullable(),
   descriptionShort: z.string().max(350).optional().nullable(),
   descriptionLong: z.string().max(8000).optional().nullable(),
+  orgRole: z.preprocess(
+    value => (typeof value === "string" && value.trim() === "" ? null : value),
+    z.enum(orgRoleOptions).optional().nullable(),
+  ),
   offersLabSpace: z.boolean().default(false),
   addressLine1: z.string().min(1).optional().nullable(),
   addressLine2: z.string().min(1).optional().nullable(),
