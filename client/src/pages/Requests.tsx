@@ -3,12 +3,15 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import { Mail } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 type RequestRecord = {
   id?: number | string;
+  lab_id?: number | null;
   lab_name?: string | null;
   contact_name?: string | null;
   contact_email?: string | null;
+  preferred_contact?: string | null;
   collaboration_focus?: string | null;
   desired_timeline?: string | null;
   additional_notes?: string | null;
@@ -33,31 +36,83 @@ export default function Requests({ embedded = false }: { embedded?: boolean }) {
   const [filter, setFilter] = useState<"collaboration" | "contact">("collaboration");
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const [notifiedIds, setNotifiedIds] = useState<Set<string>>(new Set());
+  const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(true);
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [notificationsSaving, setNotificationsSaving] = useState(false);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       setError(null);
       setLoading(true);
+      setNotificationsLoading(true);
+      setNotificationsError(null);
       try {
         const { data: session } = await supabase.auth.getSession();
         const token = session.session?.access_token;
-        const res = await fetch("/api/my-labs/requests", {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        const contentType = res.headers.get("content-type") || "";
-        if (!res.ok || !contentType.includes("application/json")) {
+        const headers: Record<string, string> = {};
+        if (token) headers.Authorization = `Bearer ${token}`;
+
+        const [res, prefRes] = await Promise.all([
+          fetch("/api/my-labs/requests", { headers }),
+          fetch("/api/inbox-notifications/preferences", { headers }),
+        ]);
+
+        const requestContentType = res.headers.get("content-type") || "";
+        if (!res.ok || !requestContentType.includes("application/json")) {
           const txt = await res.text();
           throw new Error(txt || "Unable to load requests");
         }
         const payload = (await res.json()) as RequestsPayload;
         setData(payload);
+
+        const prefContentType = prefRes.headers.get("content-type") || "";
+        if (prefRes.ok && prefContentType.includes("application/json")) {
+          const prefPayload = await prefRes.json();
+          setEmailNotificationsEnabled(Boolean(prefPayload?.enabled));
+        } else {
+          setNotificationsError("Unable to load email notification setting.");
+        }
       } catch (err: any) {
         setError(err.message || "Unable to load requests");
       } finally {
         setLoading(false);
+        setNotificationsLoading(false);
       }
     })();
   }, [user?.id]);
+
+  const saveNotificationPreference = async (enabled: boolean) => {
+    const previous = emailNotificationsEnabled;
+    setEmailNotificationsEnabled(enabled);
+    setNotificationsSaving(true);
+    setNotificationsError(null);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const token = session.session?.access_token;
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch("/api/inbox-notifications/preferences", {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ enabled }),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || "Unable to save email notification setting.");
+      }
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const payload = await res.json();
+        setEmailNotificationsEnabled(Boolean(payload?.enabled));
+      }
+    } catch (err: any) {
+      setEmailNotificationsEnabled(previous);
+      setNotificationsError(err?.message || "Unable to save email notification setting.");
+    } finally {
+      setNotificationsSaving(false);
+    }
+  };
 
   const toggleOpen = async (key: string, item: RequestRecord) => {
     let willOpen = true;
@@ -212,6 +267,24 @@ export default function Requests({ embedded = false }: { embedded?: boolean }) {
             Inbox
           </h1>
           <p className="text-sm text-muted-foreground">Collaboration or rental requests linked to your labs.</p>
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-border bg-card/70 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-foreground">Email notifications</p>
+              <p className="text-xs text-muted-foreground">
+                Default is off for verified passive accounts and on for all other lab statuses.
+              </p>
+            </div>
+            <Switch
+              checked={emailNotificationsEnabled}
+              onCheckedChange={checked => void saveNotificationPreference(checked)}
+              disabled={notificationsLoading || notificationsSaving}
+              aria-label="Toggle inbox email notifications"
+            />
+          </div>
+          {notificationsError && <p className="mt-2 text-xs text-destructive">{notificationsError}</p>}
         </div>
 
         <div className="mt-6 flex flex-wrap gap-3">

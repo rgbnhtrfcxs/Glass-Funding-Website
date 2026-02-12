@@ -17,7 +17,7 @@ export default function AdminRoute({ path, component: Component }: { path: strin
       }
       const { data, error } = await supabase
         .from("profiles")
-        .select("role")
+        .select("is_admin")
         .eq("user_id", user.id)
         .maybeSingle();
       if (!mounted) return;
@@ -25,8 +25,7 @@ export default function AdminRoute({ path, component: Component }: { path: strin
         setAllowed(false);
         return;
       }
-      const role = typeof data?.role === "string" ? data.role.toLowerCase().trim() : "";
-      setAllowed(role === "admin");
+      setAllowed(Boolean((data as any)?.is_admin));
     }
     if (!loading) check();
     return () => {

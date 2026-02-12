@@ -31,7 +31,6 @@ import LabCollaboration from "@/pages/LabCollaboration";
 import AdminLabs from "@/pages/AdminLabs";
 import Pricing from "@/pages/Pricing";
 import LabProfile from "@/pages/LabProfile";
-import ProfilePortal from "@/pages/ProfilePortal";
 import Account from "@/pages/Account";
 import Teams from "@/pages/Teams";
 import TeamDetails from "@/pages/TeamDetails";
@@ -102,7 +101,7 @@ function Router() {
       <AdminRoute path="/admin/labs" component={AdminLabs} />
       <Route path="/lab-profile" component={LabProfile} />
       <ProtectedRoute path="/account" component={Account} />
-      <ProtectedRoute path="/account/edit" component={ProfilePortal} />
+      <ProtectedRoute path="/account/edit" component={Account} />
       <ProtectedRoute path="/requests" component={Requests} />
       <ProtectedRoute path="/subscriptions" component={Subscriptions} />
       <ProtectedRoute path="/favorites" component={Favorites} />

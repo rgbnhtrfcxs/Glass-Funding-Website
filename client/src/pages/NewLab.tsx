@@ -111,8 +111,8 @@ export default function NewLab() {
   const currentTabIndex = tabOrder.indexOf(activeTab);
   const isFirstTab = currentTabIndex <= 0;
   const isLastTab = currentTabIndex === tabOrder.length - 1;
-  const [profileRole, setProfileRole] = useState<string>("user");
   const [profileCaps, setProfileCaps] = useState<{
+    isAdmin: boolean;
     canCreateLab: boolean;
     canManageMultipleLabs: boolean;
     canManageTeams: boolean;
@@ -121,6 +121,7 @@ export default function NewLab() {
     canBrokerRequests: boolean;
     canReceiveInvestor: boolean;
   }>({
+    isAdmin: false,
     canCreateLab: false,
     canManageMultipleLabs: false,
     canManageTeams: false,
@@ -138,7 +139,7 @@ export default function NewLab() {
   );
 
   const canUseLogo = true;
-  const canUsePartnerLogos = profileRole === "admin" || profileCaps.canManageMultipleLabs;
+  const canUsePartnerLogos = profileCaps.isAdmin || profileCaps.canManageMultipleLabs;
   const maxPhotos = profileCaps.canManageMultipleLabs ? Number.POSITIVE_INFINITY : 2;
 
   useEffect(() => {
@@ -147,7 +148,7 @@ export default function NewLab() {
       .from("profiles")
       .select(
         [
-          "role",
+          "is_admin",
           "can_create_lab",
           "can_manage_multiple_labs",
           "can_manage_teams",
@@ -160,8 +161,8 @@ export default function NewLab() {
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
-        setProfileRole((data?.role || "user").toLowerCase());
         setProfileCaps({
+          isAdmin: Boolean((data as any)?.is_admin),
           canCreateLab: Boolean((data as any)?.can_create_lab),
           canManageMultipleLabs: Boolean((data as any)?.can_manage_multiple_labs),
           canManageTeams: Boolean((data as any)?.can_manage_teams),

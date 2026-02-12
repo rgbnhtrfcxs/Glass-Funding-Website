@@ -81,6 +81,11 @@ const parseBoolean = (value: boolean | string | null | undefined, fallback = fal
   return normalized === "true" || normalized === "t" || normalized === "1";
 };
 
+const parseNullableBoolean = (value: boolean | string | null | undefined) => {
+  if (value === null || value === undefined) return null;
+  return parseBoolean(value, false);
+};
+
 const fetchProfileCapabilities = async (userId?: string | null) => {
   if (!userId) return null;
   const { data, error } = await supabase
@@ -94,6 +99,7 @@ const fetchProfileCapabilities = async (userId?: string | null) => {
         "can_post_news",
         "can_broker_requests",
         "can_receive_investor",
+        "inbox_email_notifications_enabled",
         "is_admin",
       ].join(","),
     )
@@ -108,6 +114,7 @@ const fetchProfileCapabilities = async (userId?: string | null) => {
     canPostNews: parseBoolean((data as any)?.can_post_news, false),
     canBrokerRequests: parseBoolean((data as any)?.can_broker_requests, false),
     canReceiveInvestor: parseBoolean((data as any)?.can_receive_investor, false),
+    inboxEmailNotificationsEnabled: parseNullableBoolean((data as any)?.inbox_email_notifications_enabled),
     isAdmin: parseBoolean((data as any)?.is_admin, false),
   };
 };
@@ -117,6 +124,17 @@ const isVerifiedLabStatus = (status?: string | null) =>
   ["verified_passive", "verified_active", "premier"].includes(normalizeLabStatus(status));
 const canForwardLabRequests = (status?: string | null) =>
   ["verified_active", "premier"].includes(normalizeLabStatus(status));
+const defaultInboxEmailNotificationsEnabled = (status?: string | null) =>
+  normalizeLabStatus(status) !== "verified_passive";
+const resolveInboxEmailNotificationsEnabled = (
+  profile: { inboxEmailNotificationsEnabled?: boolean | null } | null | undefined,
+  status?: string | null,
+) => {
+  if (typeof profile?.inboxEmailNotificationsEnabled === "boolean") {
+    return profile.inboxEmailNotificationsEnabled;
+  }
+  return defaultInboxEmailNotificationsEnabled(status);
+};
 
 const fetchStripePrice = async (stripeKey: string, priceId?: string) => {
   if (!priceId) return null;
@@ -1617,6 +1635,7 @@ export function registerRoutes(app: Express) {
       }
       const ownerProfile = lab.ownerUserId ? await fetchProfileCapabilities(lab.ownerUserId) : null;
       const canForward = ownerProfile?.canBrokerRequests;
+      const inboxEmailsEnabled = resolveInboxEmailNotificationsEnabled(ownerProfile, status);
 
       const created = await labCollaborationStore.create({
         ...payload,
@@ -1654,7 +1673,7 @@ export function registerRoutes(app: Express) {
         },
       });
       // Notify lab contact if available
-      if (lab.contactEmail && canForward && canForwardLabRequests(status)) {
+      if (lab.contactEmail && canForward && canForwardLabRequests(status) && inboxEmailsEnabled) {
         await sendMail({
           to: lab.contactEmail,
           from: process.env.MAIL_FROM_LAB || process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
@@ -1715,6 +1734,7 @@ export function registerRoutes(app: Express) {
       }
       const ownerProfile = lab.ownerUserId ? await fetchProfileCapabilities(lab.ownerUserId) : null;
       const canForward = ownerProfile?.canBrokerRequests;
+      const inboxEmailsEnabled = resolveInboxEmailNotificationsEnabled(ownerProfile, status);
 
       console.log("[lab-requests] creating request", { labId: payload.labId, labName: lab.name });
       const created = await labRequestStore.create({
@@ -1784,7 +1804,7 @@ export function registerRoutes(app: Express) {
         },
       });
       // Notify lab contact if available
-      if (lab.contactEmail && canForward && canForwardLabRequests(status)) {
+      if (lab.contactEmail && canForward && canForwardLabRequests(status) && inboxEmailsEnabled) {
         console.log("[lab-requests] sending lab email");
         await sendMail({
           to: lab.contactEmail,
@@ -1954,6 +1974,136 @@ app.post("/api/signup", async (req, res) => {
 app.get("/api/profile", authenticate, async (req, res) => {
   res.json({ message: "Authenticated!", user: req.user });
 });
+
+  app.get("/api/me/profile", authenticate, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("user_id,email,name,subscription_status,avatar_url")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (error) throw error;
+
+      res.json({ profile: data ?? null });
+    } catch (err) {
+      res.status(500).json({ message: err instanceof Error ? err.message : "Unable to load profile" });
+    }
+  });
+
+  app.put("/api/me/profile", authenticate, async (req, res) => {
+    const schema = z.object({
+      name: z.string().optional().nullable(),
+      avatarUrl: z.string().optional().nullable(),
+    });
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const payload = schema.parse(req.body ?? {});
+
+      const updates: Record<string, unknown> = {
+        user_id: userId,
+        email: typeof req.user?.email === "string" ? req.user.email : null,
+      };
+      if ("name" in payload) {
+        const nextName = typeof payload.name === "string" ? payload.name.trim() : "";
+        updates.name = nextName || null;
+      }
+      if ("avatarUrl" in payload) {
+        const nextAvatar = typeof payload.avatarUrl === "string" ? payload.avatarUrl.trim() : "";
+        updates.avatar_url = nextAvatar || null;
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .upsert(updates, { onConflict: "user_id" })
+        .select("user_id,email,name,subscription_status,avatar_url")
+        .maybeSingle();
+      if (error) throw error;
+
+      res.json({ profile: data ?? null });
+    } catch (err) {
+      if (err instanceof ZodError) {
+        const issue = err.issues[0];
+        return res.status(400).json({ message: issue?.message ?? "Invalid profile payload" });
+      }
+      res.status(500).json({ message: err instanceof Error ? err.message : "Unable to save profile" });
+    }
+  });
+
+  // --------- Account Deletion (GDPR) ----------
+  app.delete("/api/account", authenticate, async (req, res) => {
+    const userId = req.user?.id;
+    const userEmail = typeof req.user?.email === "string" ? req.user.email.trim() : "";
+    if (!userId) return res.status(400).json({ message: "No user on request" });
+
+    const isMissingRelationError = (error: any) =>
+      error?.code === "42P01" || /does not exist/i.test(String(error?.message ?? ""));
+
+    const runCleanup = async (
+      label: string,
+      task: () => Promise<{ error: any } | void>,
+    ) => {
+      try {
+        const result = await task();
+        const maybeError = (result as any)?.error;
+        if (maybeError) throw maybeError;
+      } catch (error: any) {
+        if (isMissingRelationError(error)) {
+          console.info(`[account-delete] skipping ${label}: table missing`);
+          return;
+        }
+        throw error;
+      }
+    };
+
+    try {
+      // Remove user-linked rows and detach ownership from shared/public entities.
+      await runCleanup("lab_favorites", async () =>
+        supabase.from("lab_favorites").delete().eq("user_id", userId),
+      );
+      await runCleanup("lab_views", async () =>
+        supabase.from("lab_views").delete().eq("user_id", userId),
+      );
+      await runCleanup("lab_news", async () =>
+        supabase.from("lab_news").update({ created_by: null }).eq("created_by", userId),
+      );
+      await runCleanup("labs ownership", async () =>
+        supabase.from("labs").update({ owner_user_id: null }).eq("owner_user_id", userId),
+      );
+      await runCleanup("teams ownership", async () =>
+        supabase.from("teams").update({ owner_user_id: null }).eq("owner_user_id", userId),
+      );
+      await runCleanup("team link requests", async () =>
+        supabase.from("lab_team_link_requests").delete().eq("requested_by_user_id", userId),
+      );
+      if (userEmail) {
+        await runCleanup("lab contact requests", async () =>
+          supabase.from("lab_contact_requests").delete().ilike("requester_email", userEmail),
+        );
+        await runCleanup("lab collaborations", async () =>
+          supabase.from("lab_collaborations").delete().ilike("contact_email", userEmail),
+        );
+        await runCleanup("donations", async () =>
+          supabase.from("donations").delete().ilike("donor_email", userEmail),
+        );
+      }
+      await runCleanup("profile", async () =>
+        supabase.from("profiles").delete().eq("user_id", userId),
+      );
+
+      const { error: authError } = await supabase.auth.admin.deleteUser(userId);
+      if (authError) throw authError;
+
+      return res.status(204).end();
+    } catch (error) {
+      return res.status(500).json({
+        message: error instanceof Error ? error.message : "Unable to delete account",
+      });
+    }
+  });
 
   // --------- Lab Favorites ----------
   app.get("/api/labs/:id/favorite", authenticate, async (req, res) => {
@@ -2721,6 +2871,72 @@ app.get("/api/profile", authenticate, async (req, res) => {
       });
     } catch (err) {
       res.status(500).json({ message: err instanceof Error ? err.message : "Unable to load analytics" });
+    }
+  });
+
+  app.get("/api/inbox-notifications/preferences", authenticate, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+
+      const [{ data: profileRow, error: profileError }, { data: labs, error: labsError }] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("inbox_email_notifications_enabled")
+          .eq("user_id", userId)
+          .maybeSingle(),
+        supabase
+          .from("labs")
+          .select("lab_status")
+          .eq("owner_user_id", userId),
+      ]);
+      if (profileError) throw profileError;
+      if (labsError) throw labsError;
+
+      const normalizedStatuses = (labs ?? []).map(row => normalizeLabStatus((row as any).lab_status));
+      const allVerifiedPassive = normalizedStatuses.length > 0 && normalizedStatuses.every(status => status === "verified_passive");
+      const defaultEnabled = !allVerifiedPassive;
+      const storedPreference = parseNullableBoolean((profileRow as any)?.inbox_email_notifications_enabled);
+      const enabled = storedPreference ?? defaultEnabled;
+
+      res.json({
+        enabled,
+        storedPreference,
+        defaultEnabled,
+      });
+    } catch (err) {
+      res.status(500).json({ message: err instanceof Error ? err.message : "Unable to load notification preferences" });
+    }
+  });
+
+  app.put("/api/inbox-notifications/preferences", authenticate, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+
+      const enabled = req.body?.enabled;
+      if (typeof enabled !== "boolean") {
+        return res.status(400).json({ message: "enabled must be a boolean" });
+      }
+
+      const { error } = await supabase
+        .from("profiles")
+        .upsert(
+          {
+            user_id: userId,
+            email: typeof req.user?.email === "string" ? req.user.email : null,
+            inbox_email_notifications_enabled: enabled,
+          },
+          { onConflict: "user_id" },
+        );
+      if (error) throw error;
+
+      res.json({
+        enabled,
+        storedPreference: enabled,
+      });
+    } catch (err) {
+      res.status(500).json({ message: err instanceof Error ? err.message : "Unable to save notification preferences" });
     }
   });
 

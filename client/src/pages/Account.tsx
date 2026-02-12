@@ -170,8 +170,8 @@ export default function Account() {
   );
 
   const profileName = useMemo(() => {
-    return profile?.display_name || profile?.name || null;
-  }, [profile?.display_name, profile?.name]);
+    return profile?.name || profile?.display_name || null;
+  }, [profile?.name, profile?.display_name]);
 
   const isProfileLoading = loading || authLoading;
 
@@ -187,6 +187,21 @@ export default function Account() {
   const avatarLabel = useMemo(() => {
     return profileName || profileEmail || "Your Account";
   }, [profileName, profileEmail]);
+  const handleProfileSaved = ({ name, avatarUrl }: { name: string | null; avatarUrl: string | null }) => {
+    setProfile(prev => {
+      const base = prev ?? {
+        user_id: user?.id ?? "",
+        email: user?.email ?? null,
+        display_name: null,
+        name: null,
+      };
+      return {
+        ...base,
+        name,
+        avatar_url: avatarUrl,
+      };
+    });
+  };
 
   const requesterName = useMemo(() => {
     return profileName || profileEmail || "Unknown";
@@ -362,6 +377,8 @@ export default function Account() {
   const totalViews7d = labStats.reduce((sum, lab) => sum + (lab.views7d || 0), 0);
   const totalViews30d = labStats.reduce((sum, lab) => sum + (lab.views30d || 0), 0);
   const totalFavorites = labStats.reduce((sum, lab) => sum + (lab.favorites || 0), 0);
+  const unreadRequestCount = collabCount + contactCount;
+  const unreadRequestLabel = unreadRequestCount > 99 ? "99+" : String(unreadRequestCount);
   const bestViewLab = labStats.reduce(
     (best, lab) => (lab.views30d > (best?.views30d ?? -1) ? lab : best),
     labStats.length ? labStats[0] : null,
@@ -789,6 +806,11 @@ export default function Account() {
 
   useEffect(() => {
     try {
+      const [pathname] = location.split("?");
+      if (pathname === "/account/edit") {
+        setActiveTab("edit");
+        return;
+      }
       const params = new URLSearchParams(window.location.search);
       const tab = params.get("tab");
       const sub = params.get("sub");
@@ -889,7 +911,7 @@ export default function Account() {
               <button
                 type="button"
                 onClick={() => setActiveTab("requests")}
-                className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${
+                className={`relative inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${
                   activeTab === "requests"
                     ? "border-primary/50 bg-primary/10 text-primary"
                     : "border-border text-muted-foreground hover:border-primary hover:text-primary"
@@ -898,6 +920,11 @@ export default function Account() {
                 title="Requests"
               >
                 <Mail className="h-5 w-5" />
+                {unreadRequestCount > 0 && (
+                  <span className="absolute -right-1 -top-1 inline-flex min-w-[1.15rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-4 text-white">
+                    {unreadRequestLabel}
+                  </span>
+                )}
               </button>
             )}
             <button
@@ -1567,7 +1594,7 @@ export default function Account() {
               )}
             </>
           )}
-          {activeTab === "edit" && <ProfilePortal embedded />}
+          {activeTab === "edit" && <ProfilePortal embedded onProfileSaved={handleProfileSaved} />}
 
           {activeTab === "requests" && <Requests embedded />}
 
