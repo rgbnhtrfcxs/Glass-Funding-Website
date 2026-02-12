@@ -29,7 +29,7 @@ import LabDetails from "@/pages/LabDetails";
 import LabRequest from "@/pages/LabRequest";
 import LabCollaboration from "@/pages/LabCollaboration";
 import AdminLabs from "@/pages/AdminLabs";
-import PricingArchived from "@/pages/PricingArchived";
+import Pricing from "@/pages/Pricing";
 import LabProfile from "@/pages/LabProfile";
 import ProfilePortal from "@/pages/ProfilePortal";
 import Account from "@/pages/Account";
@@ -44,6 +44,7 @@ import PaymentFlow from "@/pages/PaymentFlow";
 import ManageSelect from "@/pages/ManageSelect";
 import NewLab from "@/pages/NewLab";
 import Favorites from "@/pages/Favorites";
+import Subscribe from "@/pages/Subscribe";
 import Subscriptions from "@/pages/Subscriptions";
 import DonationDisabled from "@/pages/DonationDisabled";
 import { LabsProvider } from "@/context/LabsContext";
@@ -115,7 +116,7 @@ function Router() {
       <Route path="/stripe" component={StripeCheckout} />
       <Route path="/donate" component={DonationDisabled} />
       <Route path="/donate-confirmation" component={DonationDisabled} />
-      <ProtectedRoute path="/subscribe" component={PricingArchived} />
+      <ProtectedRoute path="/subscribe" component={Subscribe} />
       <Route path="/logout" component={Logout} />
 
       {/* Auth Pages */}
@@ -129,7 +130,7 @@ function Router() {
       {/* Base Pages */}
       <Route path="/" component={Home} />
       <Route path="/about" component={About} />
-      <Route path="/pricing" component={PricingArchived} />
+      <Route path="/pricing" component={Pricing} />
       <Route path="/contact" component={Contact} />
       <Route path="/one-pagers" component={OnePagers} />
       <Route path="/roadmap" component={Roadmap} />

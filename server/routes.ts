@@ -2195,61 +2195,16 @@ app.get("/api/profile", authenticate, async (req, res) => {
 
   // --------- Pricing ----------
   app.get("/api/pricing", async (_req, res) => {
-    const baseList = defaultPricing.map(tier => ({
+    let list = defaultPricing.map(tier => ({
       name: tier.name,
       monthly_price: tier.monthly_price ?? null,
-      yearly_price: null as number | null,
+      yearly_price: tier.name === "Base" ? 0 : null as number | null,
       currency: null as string | null,
       description: tier.description,
       highlights: tier.highlights,
       featured: tier.featured ?? false,
       sort_order: tier.sort_order ?? 999,
     }));
-
-    let list = baseList;
-    try {
-      const { data, error } = await supabase
-        .from("pricing_tiers")
-        .select("name, monthly_price, description, highlights, featured, sort_order")
-        .order("sort_order", { ascending: true });
-      if (error) throw error;
-
-      // Optional: load features from pricing_features table if it exists
-      let featuresByTier: Record<string, string[]> = {};
-      try {
-        const { data: featData } = await supabase
-          .from("pricing_features")
-          .select("tier_name, feature, sort_order")
-          .order("sort_order", { ascending: true });
-        featuresByTier = (featData ?? []).reduce((acc: Record<string, string[]>, row: any) => {
-          const key = row.tier_name;
-          acc[key] = acc[key] || [];
-          if (row.feature) acc[key].push(row.feature);
-          return acc;
-        }, {});
-      } catch {
-        // ignore if table is missing or RLS blocks
-      }
-
-      const mapped = (data ?? []).map(row => ({
-        name: row.name,
-        monthly_price: row.monthly_price ?? null,
-        yearly_price: null as number | null,
-        currency: null as string | null,
-        description: row.description ?? defaultPricing.find(d => d.name === row.name)?.description ?? "",
-        highlights:
-          featuresByTier[row.name] && featuresByTier[row.name].length
-            ? featuresByTier[row.name]
-            : Array.isArray(row.highlights)
-              ? row.highlights
-              : defaultPricing.find(d => d.name === row.name)?.highlights ?? [],
-        featured: row.featured ?? false,
-        sort_order: row.sort_order ?? 999,
-      }));
-      list = mapped.length ? mapped : list;
-    } catch {
-      // keep defaults
-    }
 
     try {
       const stripePricing = await getStripePricing();
