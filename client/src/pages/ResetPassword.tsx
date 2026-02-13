@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
+import {
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_POLICY_HINT,
+  getPasswordPolicyError,
+} from "@/lib/passwordPolicy";
 
 export default function ResetPassword() {
   const [password, setPassword] = useState("");
@@ -66,8 +71,9 @@ export default function ResetPassword() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (password.length < 8) {
-      setError("Use at least 8 characters for your new password.");
+    const passwordError = getPasswordPolicyError(password);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
     if (password !== confirm) {
@@ -122,9 +128,11 @@ export default function ResetPassword() {
                   className="mt-2 w-full rounded-full border border-border bg-background px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   value={password}
                   onChange={event => setPassword(event.target.value)}
-                  placeholder="At least 8 characters"
+                  placeholder={PASSWORD_POLICY_HINT}
                   autoComplete="new-password"
+                  minLength={PASSWORD_MIN_LENGTH}
                 />
+                <p className="mt-2 text-xs text-muted-foreground">{PASSWORD_POLICY_HINT}</p>
               </div>
               <div>
                 <label className="text-sm font-medium text-foreground">Confirm password</label>

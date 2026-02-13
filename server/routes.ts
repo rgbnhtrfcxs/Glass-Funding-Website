@@ -86,6 +86,26 @@ const parseNullableBoolean = (value: boolean | string | null | undefined) => {
   return parseBoolean(value, false);
 };
 
+const PASSWORD_MIN_LENGTH = 8;
+const getPasswordPolicyError = (password: string) => {
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
+  }
+  if (!/[a-z]/.test(password)) {
+    return "Password must include at least one lowercase letter.";
+  }
+  if (!/[A-Z]/.test(password)) {
+    return "Password must include at least one uppercase letter.";
+  }
+  if (!/[0-9]/.test(password)) {
+    return "Password must include at least one number.";
+  }
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    return "Password must include at least one symbol.";
+  }
+  return null;
+};
+
 const errorToMessage = (error: unknown, fallback: string) => {
   if (error instanceof Error && error.message) return error.message;
   if (error && typeof error === "object") {
@@ -1927,6 +1947,17 @@ app.post("/api/profile/:id", async (req, res) => {
 app.post("/api/signup", async (req, res) => {
   try {
     const { email, password, display_name } = req.body;
+    const normalizedEmail = typeof email === "string" ? email.trim() : "";
+    const normalizedPassword = typeof password === "string" ? password : "";
+
+    if (!normalizedEmail || !normalizedEmail.includes("@")) {
+      return res.status(400).json({ message: "Use a valid email address." });
+    }
+    const passwordPolicyError = getPasswordPolicyError(normalizedPassword);
+    if (passwordPolicyError) {
+      return res.status(400).json({ message: passwordPolicyError });
+    }
+
     const originHeader = typeof req.headers.origin === "string" ? req.headers.origin : "";
     const hostHeader = req.get("host");
     const origin = (
@@ -1937,8 +1968,8 @@ app.post("/api/signup", async (req, res) => {
     ).replace(/\/+$/, "");
 
     const { data, error } = await supabasePublic.auth.signUp({
-      email,
-      password,
+      email: normalizedEmail,
+      password: normalizedPassword,
       options: {
         data: { display_name },
         emailRedirectTo: `${origin}/confirm-email`,
