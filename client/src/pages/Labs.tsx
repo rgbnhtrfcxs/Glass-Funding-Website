@@ -34,6 +34,7 @@ export default function Labs() {
   const [, setLocation] = useLocation();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedOrgRoles, setSelectedOrgRoles] = useState<OrgRoleOption[]>([]);
+  const [selectedErcCodes, setSelectedErcCodes] = useState<string[]>([]);
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [verifiedOnly, setVerifiedOnly] = useState(true);
@@ -48,6 +49,7 @@ export default function Labs() {
   const uiStateRef = useRef({
     searchTerm: "",
     selectedOrgRoles: [] as OrgRoleOption[],
+    selectedErcCodes: [] as string[],
     favoritesOnly: false,
     verifiedOnly: true,
     showMap: false,
@@ -61,6 +63,8 @@ export default function Labs() {
   const labsUiStorageKey = "labs-ui-state";
   const isOrgRoleOption = (value: unknown): value is OrgRoleOption =>
     typeof value === "string" && (orgRoleOptions as readonly string[]).includes(value);
+  const isErcCode = (value: unknown): value is string =>
+    typeof value === "string" && /^(PE(1[0-1]|[1-9])|LS[1-9]|SH[1-8])$/.test(value.trim().toUpperCase());
   const getInitials = (name: string) =>
     name
       .split(" ")
@@ -77,6 +81,24 @@ export default function Labs() {
     () => orgRoleOptions.filter(role => visibleLabs.some(lab => lab.orgRole === role)),
     [visibleLabs],
   );
+  const availableErcDisciplines = useMemo(() => {
+    const labels = new Map<string, string>();
+    visibleLabs.forEach(lab => {
+      (lab.ercDisciplines ?? []).forEach(item => {
+        const code = item.code.trim().toUpperCase();
+        if (!isErcCode(code)) return;
+        labels.set(code, `${code} - ${item.title}`);
+      });
+      (lab.ercDisciplineCodes ?? []).forEach(rawCode => {
+        const code = rawCode.trim().toUpperCase();
+        if (!isErcCode(code)) return;
+        if (!labels.has(code)) labels.set(code, code);
+      });
+    });
+    return Array.from(labels.entries())
+      .sort(([a], [b]) => a.localeCompare(b, "en", { numeric: true }))
+      .map(([code, label]) => ({ code, label }));
+  }, [visibleLabs]);
   const formatLocation = (lab: { city?: string | null; country?: string | null }) =>
     [lab.city, lab.country].filter(Boolean).join(", ");
   const normalizeSearchText = (value: string) =>
@@ -111,6 +133,12 @@ export default function Labs() {
         // Backward compatibility with previous single-select filter storage.
         setSelectedOrgRoles([parsed.orgRoleFilter]);
       }
+      if (Array.isArray(parsed.selectedErcCodes)) {
+        const validSelectedCodes = parsed.selectedErcCodes
+          .map((code: unknown) => (typeof code === "string" ? code.trim().toUpperCase() : ""))
+          .filter(isErcCode);
+        setSelectedErcCodes(Array.from(new Set(validSelectedCodes)));
+      }
       if (typeof parsed.favoritesOnly === "boolean") setFavoritesOnly(parsed.favoritesOnly);
       if (typeof parsed.verifiedOnly === "boolean") setVerifiedOnly(parsed.verifiedOnly);
       if (typeof parsed.showMap === "boolean") setShowMap(parsed.showMap);
@@ -126,11 +154,12 @@ export default function Labs() {
     uiStateRef.current = {
       searchTerm,
       selectedOrgRoles,
+      selectedErcCodes,
       favoritesOnly,
       verifiedOnly,
       showMap,
     };
-  }, [searchTerm, selectedOrgRoles, favoritesOnly, verifiedOnly, showMap]);
+  }, [searchTerm, selectedOrgRoles, selectedErcCodes, favoritesOnly, verifiedOnly, showMap]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -149,7 +178,7 @@ export default function Labs() {
 
   useEffect(() => {
     saveUiState();
-  }, [searchTerm, selectedOrgRoles, favoritesOnly, verifiedOnly, showMap]);
+  }, [searchTerm, selectedOrgRoles, selectedErcCodes, favoritesOnly, verifiedOnly, showMap]);
 
   useEffect(() => {
     return () => {
@@ -231,6 +260,8 @@ export default function Labs() {
             formatLocation(lab),
             lab.equipment.join(" "),
             lab.focusAreas.join(" "),
+            (lab.ercDisciplines ?? []).map(item => `${item.code} ${item.title}`).join(" "),
+            (lab.ercDisciplineCodes ?? []).join(" "),
             (lab.tags ?? []).join(" "),
           ]
             .filter(Boolean)
@@ -242,6 +273,12 @@ export default function Labs() {
       : visibleLabs;
     if (selectedOrgRoles.length > 0) {
       subset = subset.filter(lab => (lab.orgRole ? selectedOrgRoles.includes(lab.orgRole) : false));
+    }
+    if (selectedErcCodes.length > 0) {
+      subset = subset.filter(lab => {
+        const labCodes = new Set((lab.ercDisciplineCodes ?? []).map(code => code.trim().toUpperCase()));
+        return selectedErcCodes.some(code => labCodes.has(code));
+      });
     }
     if (verifiedOnly) {
       subset = subset.filter(lab => {
@@ -257,9 +294,10 @@ export default function Labs() {
       if (aPremium === bPremium) return 0;
       return aPremium ? -1 : 1;
     });
-  }, [visibleLabs, searchTerm, selectedOrgRoles, favoritesOnly, favorites, verifiedOnly]);
+  }, [visibleLabs, searchTerm, selectedOrgRoles, selectedErcCodes, favoritesOnly, favorites, verifiedOnly]);
   // Potential future premium search: include labManager, focusAreas, equipment, offers.
-  const hasOrgRoleFilters = selectedOrgRoles.length > 0;
+  const hasActiveFilters = selectedOrgRoles.length > 0 || selectedErcCodes.length > 0;
+  const activeFilterCount = selectedOrgRoles.length + selectedErcCodes.length;
 
   useEffect(() => {
     if (!showMap) return;
@@ -534,7 +572,7 @@ export default function Labs() {
                   <button
                     type="button"
                     className={`inline-flex w-full items-center justify-between gap-2 rounded-full border px-4 py-2 text-sm font-medium transition sm:w-auto ${
-                      hasOrgRoleFilters
+                      hasActiveFilters
                         ? "border-primary bg-primary/10 text-primary"
                         : "border-border text-muted-foreground hover:border-primary hover:text-primary"
                     }`}
@@ -543,9 +581,9 @@ export default function Labs() {
                       <SlidersHorizontal className="h-4 w-4" />
                       Filter
                     </span>
-                    {hasOrgRoleFilters ? (
+                    {hasActiveFilters ? (
                       <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-primary/15 px-1.5 text-[11px] leading-5">
-                        {selectedOrgRoles.length}
+                        {activeFilterCount}
                       </span>
                     ) : (
                       <ChevronDown className="h-4 w-4" />
@@ -555,25 +593,54 @@ export default function Labs() {
                 <DropdownMenuContent align="start" className="w-80">
                   <DropdownMenuLabel>Organization roles</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {availableOrgRoles.map(role => (
-                    <DropdownMenuCheckboxItem
-                      key={role}
-                      checked={selectedOrgRoles.includes(role)}
-                      onCheckedChange={checked => {
-                        setSelectedOrgRoles(prev => {
-                          if (checked) return prev.includes(role) ? prev : [...prev, role];
-                          return prev.filter(item => item !== role);
-                        });
-                      }}
-                      onSelect={event => event.preventDefault()}
-                    >
-                      {role}
-                    </DropdownMenuCheckboxItem>
-                  ))}
+                  {availableOrgRoles.length > 0 ? (
+                    availableOrgRoles.map(role => (
+                      <DropdownMenuCheckboxItem
+                        key={role}
+                        checked={selectedOrgRoles.includes(role)}
+                        onCheckedChange={checked => {
+                          setSelectedOrgRoles(prev => {
+                            if (checked) return prev.includes(role) ? prev : [...prev, role];
+                            return prev.filter(item => item !== role);
+                          });
+                        }}
+                        onSelect={event => event.preventDefault()}
+                      >
+                        {role}
+                      </DropdownMenuCheckboxItem>
+                    ))
+                  ) : (
+                    <DropdownMenuItem disabled>No organization roles available</DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>ERC disciplines</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {availableErcDisciplines.length > 0 ? (
+                    availableErcDisciplines.map(option => (
+                      <DropdownMenuCheckboxItem
+                        key={option.code}
+                        checked={selectedErcCodes.includes(option.code)}
+                        onCheckedChange={checked => {
+                          setSelectedErcCodes(prev => {
+                            if (checked) return prev.includes(option.code) ? prev : [...prev, option.code];
+                            return prev.filter(item => item !== option.code);
+                          });
+                        }}
+                        onSelect={event => event.preventDefault()}
+                      >
+                        {option.label}
+                      </DropdownMenuCheckboxItem>
+                    ))
+                  ) : (
+                    <DropdownMenuItem disabled>No ERC disciplines available</DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    onSelect={() => setSelectedOrgRoles([])}
-                    disabled={selectedOrgRoles.length === 0}
+                    onSelect={() => {
+                      setSelectedOrgRoles([]);
+                      setSelectedErcCodes([]);
+                    }}
+                    disabled={!hasActiveFilters}
                   >
                     Clear filters
                   </DropdownMenuItem>
@@ -872,6 +939,31 @@ export default function Labs() {
                               {area}
                             </span>
                           ))}
+                        </div>
+                      </div>
+                    )}
+                    {((lab.ercDisciplines ?? []).length > 0 || (lab.ercDisciplineCodes ?? []).length > 0) && (
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">ERC Panels</h4>
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          {(lab.ercDisciplines ?? []).length > 0
+                            ? (lab.ercDisciplines ?? []).slice(0, 3).map(item => (
+                                <span
+                                  key={item.code}
+                                  className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
+                                  title={item.title}
+                                >
+                                  {item.code} - {item.title}
+                                </span>
+                              ))
+                            : (lab.ercDisciplineCodes ?? []).slice(0, 4).map(code => (
+                                <span
+                                  key={code}
+                                  className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
+                                >
+                                  {code}
+                                </span>
+                              ))}
                         </div>
                       </div>
                     )}

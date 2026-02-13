@@ -10,6 +10,9 @@ type LabSummary = {
   name: string;
   lab_status?: string | null;
   org_role?: string | null;
+  erc_discipline_codes?: string[] | null;
+  primary_erc_discipline_code?: string | null;
+  erc_disciplines?: Array<{ code: string; domain: string; title: string }> | null;
   alternate_names?: string[] | null;
   city?: string | null;
   country?: string | null;
@@ -74,6 +77,9 @@ export default function ManageSelect({ embedded = false }: { embedded?: boolean 
         lab.name,
         ...(lab.alternate_names ?? []),
         lab.org_role,
+        ...(lab.erc_discipline_codes ?? []),
+        ...(lab.erc_disciplines ?? []).map(item => `${item.code} ${item.title}`),
+        lab.primary_erc_discipline_code,
         location,
         equipment,
       ]
@@ -131,7 +137,7 @@ export default function ManageSelect({ embedded = false }: { embedded?: boolean 
               type="search"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search by name, alternate name, or city"
+              placeholder="Search by name, alternate name, city, or ERC discipline"
               className="w-full rounded-full border border-border bg-card/80 px-4 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             />
             <MapPin className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -201,6 +207,20 @@ export default function ManageSelect({ embedded = false }: { embedded?: boolean 
                       {lab.org_role && (
                         <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.15em] text-muted-foreground">
                           {lab.org_role}
+                        </p>
+                      )}
+                      {lab.primary_erc_discipline_code && (
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          ERC: {
+                            (() => {
+                              const primary = (lab.erc_disciplines ?? []).find(
+                                item => item.code === lab.primary_erc_discipline_code,
+                              );
+                              return primary
+                                ? `${primary.code} - ${primary.title}`
+                                : lab.primary_erc_discipline_code;
+                            })()
+                          }
                         </p>
                       )}
                       <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">

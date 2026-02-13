@@ -56,6 +56,8 @@ interface LabFormState {
   orgRole: "" | OrgRoleOption;
   equipment: string;
   focusAreas: string;
+  ercDisciplineCodes: string;
+  primaryErcDisciplineCode: string;
   halStructureId: string;
   halPersonId: string;
   offers: OfferOption[];
@@ -88,6 +90,8 @@ const emptyForm: LabFormState = {
   orgRole: "",
   equipment: "",
   focusAreas: "",
+  ercDisciplineCodes: "",
+  primaryErcDisciplineCode: "",
   halStructureId: "",
   halPersonId: "",
   offers: [],
@@ -121,6 +125,8 @@ function labToForm(lab: LabPartner): LabFormState {
     orgRole: lab.orgRole || "",
     equipment: lab.equipment.join(", "),
     focusAreas: lab.focusAreas.join(", "),
+    ercDisciplineCodes: (lab.ercDisciplineCodes ?? []).join(", "),
+    primaryErcDisciplineCode: lab.primaryErcDisciplineCode || "",
     halStructureId: lab.halStructureId || "",
     halPersonId: lab.halPersonId || "",
     offers: [...lab.offers],
@@ -135,6 +141,22 @@ function parseList(value: string) {
     .split(",")
     .map(entry => entry.trim())
     .filter(Boolean);
+}
+
+function normalizeErcCode(value: string) {
+  const normalized = value.trim().toUpperCase();
+  return /^(PE(1[0-1]|[1-9])|LS[1-9]|SH[1-8])$/.test(normalized) ? normalized : null;
+}
+
+function parseErcCodes(value: string) {
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map(entry => normalizeErcCode(entry))
+        .filter((code): code is string => Boolean(code)),
+    ),
+  );
 }
 
 function readFilesAsAssets(files: FileList): Promise<MediaAsset[]> {
@@ -193,6 +215,8 @@ function formToPayload(
     orgRole: form.orgRole || null,
     equipment: parseList(form.equipment),
     focusAreas: parseList(form.focusAreas),
+    ercDisciplineCodes: parseErcCodes(form.ercDisciplineCodes),
+    primaryErcDisciplineCode: normalizeErcCode(form.primaryErcDisciplineCode) || null,
     offers: form.offers,
     photos,
     complianceDocs,
@@ -244,6 +268,9 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
         lab.labManager,
         lab.contactEmail,
         lab.orgRole,
+        ...(lab.ercDisciplineCodes ?? []),
+        ...(lab.ercDisciplines ?? []).map(item => item.title),
+        lab.primaryErcDisciplineCode,
       ]
         .filter(Boolean)
         .join(" ")
@@ -682,6 +709,14 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                     <div className="flex flex-col gap-1">
                       <span className="font-medium text-foreground">Organization role</span>
                       <span>{lab.orgRole || "—"}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="font-medium text-foreground">ERC disciplines</span>
+                      <span>
+                        {(lab.ercDisciplines ?? []).length > 0
+                          ? (lab.ercDisciplines ?? []).map(item => `${item.code} - ${item.title}`).join(", ")
+                          : (lab.ercDisciplineCodes ?? []).join(", ") || "—"}
+                      </span>
                     </div>
                     <div className="flex flex-col gap-1 md:col-span-2">
                       <span className="font-medium text-foreground">Equipment</span>
@@ -1228,6 +1263,37 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                     onChange={event => handleChange("focusAreas", event.target.value)}
                     className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     placeholder="Cell therapy, Process development"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground" htmlFor="lab-erc-disciplines">
+                    ERC disciplines (codes, comma separated)
+                  </label>
+                  <input
+                    id="lab-erc-disciplines"
+                    type="text"
+                    value={formState.ercDisciplineCodes}
+                    onChange={event => handleChange("ercDisciplineCodes", event.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    placeholder="LS1, LS7, PE2"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Use official ERC panel codes: PE1-PE11, LS1-LS9, SH1-SH8.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground" htmlFor="lab-erc-primary">
+                    Primary ERC discipline (single code)
+                  </label>
+                  <input
+                    id="lab-erc-primary"
+                    type="text"
+                    value={formState.primaryErcDisciplineCode}
+                    onChange={event => handleChange("primaryErcDisciplineCode", event.target.value.toUpperCase())}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    placeholder="LS1"
                   />
                 </div>
 

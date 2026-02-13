@@ -35,7 +35,8 @@ const LAB_SELECT = `
   lab_equipment (item, is_priority),
   lab_techniques (name, description),
   lab_focus_areas (focus_area),
-  lab_offers (offer)
+  lab_offers (offer),
+  lab_erc_disciplines (erc_code, is_primary, erc_disciplines (code, domain, title))
 `;
 
 type LabRow = {
@@ -91,6 +92,11 @@ type LabRow = {
   lab_techniques: Array<{ name: string; description: string | null }> | null;
   lab_focus_areas: Array<{ focus_area: string }> | null;
   lab_offers: Array<{ offer: OfferOption }> | null;
+  lab_erc_disciplines: Array<{
+    erc_code: string;
+    is_primary: boolean | string | null;
+    erc_disciplines: Array<{ code: string; domain: string; title: string }> | { code: string; domain: string; title: string } | null;
+  }> | null;
 };
 
 function parseBoolean(value: boolean | string | null | undefined, fallback = false): boolean {
@@ -128,6 +134,12 @@ function normalizeLabStatus(value?: string | null): LabPartner["labStatus"] {
   return "listed";
 }
 
+function normalizeErcCode(value?: string | null): string | null {
+  if (!value) return null;
+  const normalized = value.trim().toUpperCase();
+  return /^(PE(1[0-1]|[1-9])|LS[1-9]|SH[1-8])$/.test(normalized) ? normalized : null;
+}
+
 async function resolveOwnerUserId(explicit?: string | null): Promise<string | null> {
   // Security rule: contact email is for communication only, never ownership linkage.
   return explicit ?? null;
@@ -157,6 +169,28 @@ function mapLabRow(row: LabRow): LabPartner {
     .filter(item => parseBoolean(item.is_priority, false))
     .map(item => item.item)
     .filter(Boolean);
+  const ercCodeRows = (row.lab_erc_disciplines ?? [])
+    .map(item => ({
+      code: normalizeErcCode(item.erc_code),
+      isPrimary: parseBoolean(item.is_primary, false),
+      relation: pickOne(item.erc_disciplines as any),
+    }))
+    .filter((item): item is { code: string; isPrimary: boolean; relation: unknown } => Boolean(item.code));
+  const primaryErcDisciplineCode = ercCodeRows.find(item => item.isPrimary)?.code ?? null;
+  const ercDisciplineCodes = Array.from(new Set(ercCodeRows.map(item => item.code)));
+  const ercDisciplineMeta = ercCodeRows
+    .map(item => {
+      const rel = item.relation as Record<string, unknown> | null;
+      const domain = typeof rel?.domain === "string" ? rel.domain.trim().toUpperCase() : "";
+      const title = typeof rel?.title === "string" ? rel.title.trim() : "";
+      if (!["PE", "LS", "SH"].includes(domain) || !title) return null;
+      return { code: item.code, domain: domain as "PE" | "LS" | "SH", title };
+    })
+    .filter((item): item is { code: string; domain: "PE" | "LS" | "SH"; title: string } => Boolean(item));
+  const ercMetaByCode = new Map(ercDisciplineMeta.map(item => [item.code, item] as const));
+  const ercDisciplines = ercDisciplineCodes
+    .map(code => ercMetaByCode.get(code))
+    .filter((item): item is { code: string; domain: "PE" | "LS" | "SH"; title: string } => Boolean(item));
   const mapped = {
     id: Number(row.id),
     name: row.name,
@@ -215,6 +249,9 @@ function mapLabRow(row: LabRow): LabPartner {
       description: item.description ?? null,
     })),
     focusAreas: (row.lab_focus_areas ?? []).map(item => item.focus_area),
+    ercDisciplineCodes,
+    primaryErcDisciplineCode,
+    ercDisciplines,
     offers: (row.lab_offers ?? []).map(item => item.offer),
     field: null,
     public: parseBoolean(profileRow?.public, false),
@@ -322,6 +359,37 @@ async function replaceLabOffers(labId: number, offers: OfferOption[]) {
   if (del.error) throw del.error;
   if (!offers.length) return;
   const ins = await supabase.from("lab_offers").insert(offers.map(offer => ({ lab_id: labId, offer })));
+  if (ins.error) throw ins.error;
+}
+
+async function replaceLabErcDisciplines(
+  labId: number,
+  codes: string[] = [],
+  primaryCode?: string | null,
+) {
+  const del = await supabase.from("lab_erc_disciplines").delete().eq("lab_id", labId);
+  if (del.error) throw del.error;
+
+  const normalizedPrimary = normalizeErcCode(primaryCode ?? null);
+  const normalizedCodes = Array.from(
+    new Set(
+      (codes ?? [])
+        .map(code => normalizeErcCode(code))
+        .filter((code): code is string => Boolean(code)),
+    ),
+  );
+  if (normalizedPrimary && !normalizedCodes.includes(normalizedPrimary)) {
+    normalizedCodes.unshift(normalizedPrimary);
+  }
+  if (!normalizedCodes.length) return;
+
+  const ins = await supabase.from("lab_erc_disciplines").insert(
+    normalizedCodes.map(code => ({
+      lab_id: labId,
+      erc_code: code,
+      is_primary: normalizedPrimary ? code === normalizedPrimary : false,
+    })),
+  );
   if (ins.error) throw ins.error;
 }
 
@@ -441,6 +509,7 @@ async function writeLabRelations(labId: number, lab: InsertLab | LabPartner) {
   await replaceLabEquipment(labId, lab.equipment, (lab as any).priorityEquipment ?? []);
   await replaceLabTechniques(labId, (lab as any).techniques ?? []);
   await replaceLabFocusAreas(labId, lab.focusAreas);
+  await replaceLabErcDisciplines(labId, (lab as any).ercDisciplineCodes ?? [], (lab as any).primaryErcDisciplineCode ?? null);
   await replaceLabOffers(labId, lab.offers);
 }
 
@@ -651,6 +720,18 @@ export class LabStore {
       await replaceLabTechniques(id, parsed.techniques ?? []);
     }
     if (Object.prototype.hasOwnProperty.call(updates, "focusAreas")) await replaceLabFocusAreas(id, parsed.focusAreas ?? []);
+    if (
+      Object.prototype.hasOwnProperty.call(updates, "ercDisciplineCodes") ||
+      Object.prototype.hasOwnProperty.call(updates, "primaryErcDisciplineCode")
+    ) {
+      const nextCodes = Object.prototype.hasOwnProperty.call(updates, "ercDisciplineCodes")
+        ? parsed.ercDisciplineCodes ?? []
+        : existing.ercDisciplineCodes ?? [];
+      const nextPrimary = Object.prototype.hasOwnProperty.call(updates, "primaryErcDisciplineCode")
+        ? parsed.primaryErcDisciplineCode ?? null
+        : existing.primaryErcDisciplineCode ?? null;
+      await replaceLabErcDisciplines(id, nextCodes, nextPrimary);
+    }
     if (Object.prototype.hasOwnProperty.call(updates, "offers")) await replaceLabOffers(id, parsed.offers ?? []);
     if (Object.prototype.hasOwnProperty.call(updates, "partnerLogos"))
       await replaceLabPartnerLogos(id, (parsed as any).partnerLogos ?? []);

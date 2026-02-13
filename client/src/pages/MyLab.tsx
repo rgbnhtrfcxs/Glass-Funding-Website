@@ -7,12 +7,15 @@ import { supabase } from "@/lib/supabaseClient";
 import {
   offerOptions,
   orgRoleOptions,
+  type ErcDomainOption,
+  type ErcDisciplineOption,
   type LabTechnique,
   type OfferOption,
   type MediaAsset,
   type OrgRoleOption,
   type PartnerLogo,
 } from "@shared/labs";
+import { fetchErcDisciplineOptions } from "@/lib/ercDisciplines";
 import { Link, useLocation } from "wouter";
 
 const INPUT_CLASS =
@@ -73,6 +76,8 @@ type Form = {
   priorityEquipmentTags: string[];
   techniques: LabTechnique[];
   focusTags: string[];
+  ercDisciplineCodes: string[];
+  primaryErcDisciplineCode: string;
   offers: OfferOption[];
 };
 
@@ -145,6 +150,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
     priorityEquipmentTags: [],
     techniques: [],
     focusTags: [],
+    ercDisciplineCodes: [],
+    primaryErcDisciplineCode: "",
     offers: [],
   });
   const [logoUploading, setLogoUploading] = useState(false);
@@ -181,10 +188,61 @@ export default function MyLab({ params }: { params: { id: string } }) {
   }>>([]);
   const [teamLinkLoading, setTeamLinkLoading] = useState(false);
   const [teamLinkError, setTeamLinkError] = useState<string | null>(null);
+  const [ercOptions, setErcOptions] = useState<ErcDisciplineOption[]>([]);
+  const [ercLoading, setErcLoading] = useState(false);
+  const [ercError, setErcError] = useState<string | null>(null);
+  const [primaryErcDomain, setPrimaryErcDomain] = useState<ErcDomainOption>("LS");
+  const [secondaryErcDomain, setSecondaryErcDomain] = useState<ErcDomainOption>("LS");
   const draftKey = useMemo(() => `my-lab-draft:${labIdParam || "unknown"}`, [labIdParam]);
   const canUseLogo = ["verified_passive", "verified_active", "premier"].includes((labStatus || "listed").toLowerCase());
   const canUsePartnerLogos =
     (labStatus || "").toLowerCase() === "premier" || profileCaps.canManageMultipleLabs;
+  const ercLabelByCode = useMemo(
+    () => new Map(ercOptions.map(option => [option.code, `${option.code} - ${option.title}`])),
+    [ercOptions],
+  );
+  const primaryDomainOptions = useMemo(
+    () => ercOptions.filter(option => option.domain === primaryErcDomain),
+    [ercOptions, primaryErcDomain],
+  );
+  const secondaryDomainOptions = useMemo(
+    () =>
+      ercOptions.filter(
+        option => option.domain === secondaryErcDomain && option.code !== form.primaryErcDisciplineCode,
+      ),
+    [ercOptions, secondaryErcDomain, form.primaryErcDisciplineCode],
+  );
+
+  useEffect(() => {
+    let active = true;
+    setErcLoading(true);
+    setErcError(null);
+    fetchErcDisciplineOptions()
+      .then(options => {
+        if (!active) return;
+        setErcOptions(options);
+      })
+      .catch((err: any) => {
+        if (!active) return;
+        setErcError(err?.message || "Unable to load ERC disciplines.");
+      })
+      .finally(() => {
+        if (!active) return;
+        setErcLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const primaryCode = form.primaryErcDisciplineCode;
+    if (!primaryCode) return;
+    const option = ercOptions.find(item => item.code === primaryCode);
+    if (!option) return;
+    setPrimaryErcDomain(option.domain);
+    setSecondaryErcDomain(option.domain);
+  }, [form.primaryErcDisciplineCode, ercOptions]);
 
   useEffect(() => {
     (async () => {
@@ -480,6 +538,33 @@ export default function MyLab({ params }: { params: { id: string } }) {
     }
   };
 
+  const setPrimaryErcDiscipline = (code: string) => {
+    setForm(prev => {
+      const selected = new Set(prev.ercDisciplineCodes);
+      if (code) selected.add(code);
+      const nextCodes = Array.from(selected);
+      return {
+        ...prev,
+        ercDisciplineCodes: nextCodes,
+        primaryErcDisciplineCode: code || "",
+      };
+    });
+  };
+
+  const toggleSecondaryErcDiscipline = (code: string, checked: boolean) => {
+    setForm(prev => {
+      if (!prev.primaryErcDisciplineCode) return prev;
+      if (code === prev.primaryErcDisciplineCode) return prev;
+      const selected = new Set(prev.ercDisciplineCodes);
+      if (checked) selected.add(code);
+      else selected.delete(code);
+      return {
+        ...prev,
+        ercDisciplineCodes: Array.from(selected),
+      };
+    });
+  };
+
   const togglePriorityEquipment = (item: string) => {
     setForm(prev => {
       const selected = new Set(prev.priorityEquipmentTags);
@@ -597,6 +682,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
         priorityEquipmentTags: lab.priorityEquipment || [],
         techniques: lab.techniques || [],
         focusTags: lab.focusAreas || [],
+        ercDisciplineCodes: lab.ercDisciplineCodes || [],
+        primaryErcDisciplineCode: lab.primaryErcDisciplineCode || "",
         offers: lab.offers || [],
       });
       setPartnerLogos(lab.partnerLogos || []);
@@ -711,6 +798,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
             .slice(0, 3),
           techniques: form.techniques,
           focusAreas: form.focusTags,
+          ercDisciplineCodes: form.ercDisciplineCodes,
+          primaryErcDisciplineCode: form.primaryErcDisciplineCode || null,
           offers: form.offers,
         }),
       });
@@ -930,6 +1019,103 @@ export default function MyLab({ params }: { params: { id: string } }) {
                     </option>
                   ))}
                 </select>
+              </Field>
+              <Field label="Primary ERC discipline (optional)">
+                <div className="space-y-3">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <select
+                      className={INPUT_CLASS}
+                      value={primaryErcDomain}
+                      onChange={e => setPrimaryErcDomain(e.target.value as ErcDomainOption)}
+                    >
+                      <option value="PE">PE - Physical Sciences & Engineering</option>
+                      <option value="LS">LS - Life Sciences</option>
+                      <option value="SH">SH - Social Sciences & Humanities</option>
+                    </select>
+                    <select
+                      className={INPUT_CLASS}
+                      value={form.primaryErcDisciplineCode}
+                      onChange={e => setPrimaryErcDiscipline(e.target.value)}
+                    >
+                      <option value="">No primary discipline</option>
+                      {primaryDomainOptions.map(option => (
+                        <option key={option.code} value={option.code}>
+                          {option.code} - {option.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Pick one primary ERC discipline first, then add any secondary disciplines below.
+                  </p>
+                </div>
+              </Field>
+              <Field label="Secondary ERC disciplines (optional)">
+                <div className="space-y-3">
+                  <select
+                    className={INPUT_CLASS}
+                    value={secondaryErcDomain}
+                    disabled={!form.primaryErcDisciplineCode}
+                    onChange={e => setSecondaryErcDomain(e.target.value as ErcDomainOption)}
+                  >
+                    <option value="PE">PE - Physical Sciences & Engineering</option>
+                    <option value="LS">LS - Life Sciences</option>
+                    <option value="SH">SH - Social Sciences & Humanities</option>
+                  </select>
+                  <div className="max-h-56 overflow-auto rounded-xl border border-border bg-background px-3 py-2">
+                    {!form.primaryErcDisciplineCode ? (
+                      <p className="text-xs text-muted-foreground">Select a primary ERC discipline first.</p>
+                    ) : ercLoading ? (
+                      <p className="text-xs text-muted-foreground">Loading ERC disciplines...</p>
+                    ) : ercOptions.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">No ERC disciplines available.</p>
+                    ) : (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {secondaryDomainOptions.map(option => {
+                          const checked = form.ercDisciplineCodes.includes(option.code);
+                          return (
+                            <label
+                              key={option.code}
+                              className="flex items-start gap-2 rounded-lg border border-border/60 px-2 py-1.5 text-xs text-foreground"
+                            >
+                              <input
+                                type="checkbox"
+                                className="mt-0.5"
+                                checked={checked}
+                                onChange={event => toggleSecondaryErcDiscipline(option.code, event.target.checked)}
+                              />
+                              <span>
+                                <span className="font-semibold">{option.code}</span>
+                                <span className="text-muted-foreground"> {option.title}</span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  {ercError && <p className="text-xs text-destructive">{ercError}</p>}
+                  {form.ercDisciplineCodes.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {form.ercDisciplineCodes.map(code => {
+                        const isPrimary = code === form.primaryErcDisciplineCode;
+                        return (
+                          <span
+                            key={code}
+                            className={`rounded-full px-3 py-1 text-xs ${
+                              isPrimary
+                                ? "border border-primary/40 bg-primary/10 text-primary"
+                                : "border border-border text-muted-foreground"
+                            }`}
+                          >
+                            {ercLabelByCode.get(code) ?? code}
+                            {isPrimary ? " (Primary)" : ""}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </Field>
               <Field label="HAL structure ID (optional)">
                 <input

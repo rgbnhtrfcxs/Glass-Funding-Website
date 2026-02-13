@@ -1183,6 +1183,21 @@ export function registerRoutes(app: Express) {
   });
 
   // --------- Labs ----------
+  app.get("/api/erc-disciplines", async (_req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from("erc_disciplines")
+        .select("code, domain, title")
+        .eq("is_active", true)
+        .order("domain", { ascending: true })
+        .order("code", { ascending: true });
+      if (error) throw error;
+      res.json(data ?? []);
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load ERC disciplines" });
+    }
+  });
+
   app.get("/api/labs", async (req, res) => {
     const includeHidden = req.query.includeHidden === "true" || req.query.includeHidden === "1";
     const labs = includeHidden ? await labStore.list() : await labStore.listVisible();
@@ -2686,6 +2701,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
             "is_visible",
             "lab_status",
             "org_role",
+            "lab_erc_disciplines (erc_code, is_primary, erc_disciplines (code, domain, title))",
             "lab_profile (logo_url, alternate_names)",
             "lab_location (city, country)",
             "lab_photos (url, name)",
@@ -2699,6 +2715,27 @@ app.get("/api/profile", authenticate, async (req, res) => {
         const pickOne = (value: any) => (Array.isArray(value) ? value[0] : value) ?? null;
         const profileRow = pickOne((row as any).lab_profile);
         const locationRow = pickOne((row as any).lab_location);
+        const ercRows = (row as any).lab_erc_disciplines ?? [];
+        const ercCodes = Array.from(
+          new Set(
+            ercRows
+              .map((item: any) => (typeof item?.erc_code === "string" ? item.erc_code.trim().toUpperCase() : ""))
+              .filter((code: string) => /^(PE(1[0-1]|[1-9])|LS[1-9]|SH[1-8])$/.test(code)),
+          ),
+        );
+        const primaryErc = ercRows.find((item: any) => item?.is_primary)?.erc_code ?? null;
+        const ercDisciplines = ercRows
+          .map((item: any) => {
+            const rel = Array.isArray(item?.erc_disciplines) ? item.erc_disciplines[0] : item?.erc_disciplines;
+            const code = typeof rel?.code === "string" ? rel.code.trim().toUpperCase() : "";
+            const domain = typeof rel?.domain === "string" ? rel.domain.trim().toUpperCase() : "";
+            const title = typeof rel?.title === "string" ? rel.title.trim() : "";
+            if (!/^(PE(1[0-1]|[1-9])|LS[1-9]|SH[1-8])$/.test(code)) return null;
+            if (!["PE", "LS", "SH"].includes(domain)) return null;
+            if (!title) return null;
+            return { code, domain, title };
+          })
+          .filter((item: any): item is { code: string; domain: string; title: string } => Boolean(item));
         return {
           id: row.id,
           name: row.name,
@@ -2708,6 +2745,9 @@ app.get("/api/profile", authenticate, async (req, res) => {
           logo_url: profileRow?.logo_url ?? null,
           alternate_names: profileRow?.alternate_names ?? [],
           org_role: (row as any).org_role ?? null,
+          erc_discipline_codes: ercCodes,
+          primary_erc_discipline_code: typeof primaryErc === "string" ? primaryErc.toUpperCase() : null,
+          erc_disciplines: ercDisciplines,
           is_visible: (row as any).is_visible ?? null,
           lab_photos: (row as any).lab_photos ?? [],
           lab_equipment: (row as any).lab_equipment ?? [],

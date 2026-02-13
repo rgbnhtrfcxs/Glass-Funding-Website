@@ -22,6 +22,18 @@ export const orgRoleOptions = [
 ] as const;
 
 export type OrgRoleOption = (typeof orgRoleOptions)[number];
+export const ercDomainOptions = ["PE", "LS", "SH"] as const;
+export type ErcDomainOption = (typeof ercDomainOptions)[number];
+
+export const ercDisciplineCodeSchema = z
+  .string()
+  .regex(/^(PE(1[0-1]|[1-9])|LS[1-9]|SH[1-8])$/, "ERC discipline code must match PE1-PE11, LS1-LS9, or SH1-SH8");
+
+export const ercDisciplineOptionSchema = z.object({
+  code: ercDisciplineCodeSchema,
+  domain: z.enum(ercDomainOptions),
+  title: z.string().min(1),
+});
 
 const normalizeUrl = (value: unknown) => {
   if (typeof value !== "string") return value;
@@ -109,6 +121,12 @@ export const labCoreSchema = z.object({
   priorityEquipment: z.array(z.string().min(1)).max(3).default([]),
   techniques: z.array(labTechniqueSchema).default([]),
   focusAreas: z.array(z.string().min(1)).default([]),
+  ercDisciplineCodes: z.array(ercDisciplineCodeSchema).default([]),
+  primaryErcDisciplineCode: z.preprocess(
+    value => (typeof value === "string" && value.trim() === "" ? null : value),
+    ercDisciplineCodeSchema.optional().nullable(),
+  ),
+  ercDisciplines: z.array(ercDisciplineOptionSchema).default([]),
   offers: z.array(z.enum(offerOptions)).default([]),
   photos: z.array(mediaAssetSchema).min(0),
   field: z.string().min(1).optional().nullable(),
@@ -136,3 +154,4 @@ export type LabTechnique = z.infer<typeof labTechniqueSchema>;
 export type LabPartner = z.infer<typeof labSchema>;
 export type InsertLab = z.infer<typeof insertLabSchema>;
 export type UpdateLab = z.infer<typeof updateLabSchema>;
+export type ErcDisciplineOption = z.infer<typeof ercDisciplineOptionSchema>;

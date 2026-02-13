@@ -25,6 +25,7 @@ import ManageSelect from "@/pages/ManageSelect";
 import ManageTeams from "@/pages/ManageTeams";
 import AdminLabs from "@/pages/AdminLabs";
 import Favorites from "@/pages/Favorites";
+import type { Team } from "@shared/teams";
 
 type Profile = {
   user_id: string;
@@ -151,15 +152,25 @@ export default function Account() {
   const [teamEditingIndex, setTeamEditingIndex] = useState<Record<number, number | null>>({});
   const [teamSaving, setTeamSaving] = useState<Record<number, boolean>>({});
   const [teamError, setTeamError] = useState<Record<number, string | null>>({});
+  const [managedTeams, setManagedTeams] = useState<Team[]>([]);
+  const [managedTeamsLoading, setManagedTeamsLoading] = useState(false);
+  const [managedTeamsError, setManagedTeamsError] = useState<string | null>(null);
   const [resettingPassword, setResettingPassword] = useState(false);
   const teamMemberCount = useMemo(
-    () => Object.values(teamDrafts).reduce((acc, members) => acc + (members?.length ?? 0), 0),
-    [teamDrafts],
+    () => managedTeams.reduce((acc, team) => acc + (team.members?.length ?? 0), 0),
+    [managedTeams],
   );
   const labsWithTeamCount = useMemo(
-    () => Object.values(teamDrafts).filter(members => (members?.length ?? 0) > 0).length,
-    [teamDrafts],
+    () => {
+      const linkedLabIds = new Set<number>();
+      managedTeams.forEach(team => {
+        (team.labs ?? []).forEach(lab => linkedLabIds.add(lab.id));
+      });
+      return linkedLabIds.size;
+    },
+    [managedTeams],
   );
+  const managedTeamsCount = managedTeams.length;
   const equipmentCount = useMemo(
     () => Object.values(equipmentDrafts).reduce((acc, items) => acc + (items?.length ?? 0), 0),
     [equipmentDrafts],
@@ -369,6 +380,51 @@ export default function Account() {
     }
     if (!authLoading) loadLabsAndFavorites();
   }, [authLoading, user?.id]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadManagedTeams() {
+      if (!user) {
+        setManagedTeams([]);
+        setManagedTeamsError(null);
+        return;
+      }
+      setManagedTeamsLoading(true);
+      try {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        const response = await fetch("/api/my-teams", { headers });
+        if (response.status === 403) {
+          if (active) {
+            setManagedTeams([]);
+            setManagedTeamsError(null);
+          }
+          return;
+        }
+        if (!response.ok) {
+          const txt = await response.text();
+          throw new Error(txt || "Unable to load teams");
+        }
+        const payload = (await response.json()) as Team[];
+        if (active) {
+          setManagedTeams(Array.isArray(payload) ? payload : []);
+          setManagedTeamsError(null);
+        }
+      } catch (err: any) {
+        if (active) {
+          setManagedTeams([]);
+          setManagedTeamsError(err?.message || "Unable to load teams");
+        }
+      } finally {
+        if (active) setManagedTeamsLoading(false);
+      }
+    }
+    if (!authLoading) loadManagedTeams();
+    return () => {
+      active = false;
+    };
+  }, [authLoading, user?.id, activeTab, overviewTab]);
 
   const labStatusValue = (lab: { labStatus?: string | null; lab_status?: string | null }) =>
     (lab.labStatus || lab.lab_status || "listed").toLowerCase();
@@ -1528,9 +1584,62 @@ export default function Account() {
                     </div>
 
                     <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      <InfoTile label="Teams managed" value={managedTeamsCount.toString()} />
                       <InfoTile label="Team members" value={teamMemberCount.toString()} />
-                      <InfoTile label="Labs with team" value={labsWithTeamCount.toString()} />
-                      <InfoTile label="Labs linked" value={labStats.length.toString()} />
+                      <InfoTile label="Labs with teams" value={labsWithTeamCount.toString()} />
+                    </div>
+                    {managedTeamsLoading && (
+                      <p className="mt-3 text-xs text-muted-foreground">Loading team stats…</p>
+                    )}
+                    {managedTeamsError && (
+                      <p className="mt-3 text-xs text-destructive">{managedTeamsError}</p>
+                    )}
+                    <div className="mt-6 space-y-3">
+                      <h4 className="text-sm font-semibold text-foreground">Your teams</h4>
+                      {managedTeamsLoading ? (
+                        <div className="rounded-2xl border border-border bg-background/70 px-4 py-3 text-sm text-muted-foreground">
+                          Loading teams…
+                        </div>
+                      ) : managedTeams.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-border bg-background/70 px-4 py-3 text-sm text-muted-foreground">
+                          No teams linked to your account yet.
+                        </div>
+                      ) : (
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {managedTeams.map(team => {
+                            const linkedLabs = team.labs ?? [];
+                            const members = team.members ?? [];
+                            return (
+                              <Link key={team.id} href={`/teams/${team.id}`}>
+                                <a className="block rounded-2xl border border-border bg-background/70 p-4 transition hover:border-primary/50 hover:bg-background hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <p className="font-medium text-foreground">{team.name}</p>
+                                      {team.descriptionShort && (
+                                        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{team.descriptionShort}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                                    <span className="rounded-full border border-border px-2 py-1 text-muted-foreground">
+                                      {members.length} member{members.length === 1 ? "" : "s"}
+                                    </span>
+                                    <span className="rounded-full border border-border px-2 py-1 text-muted-foreground">
+                                      {linkedLabs.length} lab{linkedLabs.length === 1 ? "" : "s"}
+                                    </span>
+                                  </div>
+                                  {linkedLabs.length > 0 && (
+                                    <p className="mt-2 text-xs text-muted-foreground">
+                                      Labs: {linkedLabs.slice(0, 3).map(lab => lab.name).join(", ")}
+                                      {linkedLabs.length > 3 ? " +" : ""}
+                                    </p>
+                                  )}
+                                </a>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </motion.div>

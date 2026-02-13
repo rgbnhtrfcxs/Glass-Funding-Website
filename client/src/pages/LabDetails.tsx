@@ -32,17 +32,55 @@ interface LabDetailsProps {
   };
 }
 
+const resolveProfileName = (profile: any, user: { email?: string | null; user_metadata?: any } | null) => {
+  const candidates = [
+    profile?.name,
+    profile?.display_name,
+    profile?.legal_full_name,
+    user?.user_metadata?.name,
+    user?.user_metadata?.full_name,
+    user?.user_metadata?.display_name,
+  ];
+  for (const value of candidates) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  const email = typeof user?.email === "string" ? user.email.trim() : "";
+  if (email.includes("@")) return email.split("@")[0];
+  return "";
+};
+
 export default function LabDetails({ params }: LabDetailsProps) {
   const { labs, isLoading } = useLabs();
   const { user } = useAuth();
   const { hasAnalyticsConsent } = useConsent();
   const lab = labs.find(item => item.id === Number(params.id));
   const labId = lab?.id;
+  const primaryErcDiscipline = lab?.primaryErcDisciplineCode
+    ? (lab.ercDisciplines ?? []).find(item => item.code === lab.primaryErcDisciplineCode)
+    : null;
+  const primaryErcDisciplineLabel = lab?.primaryErcDisciplineCode
+    ? primaryErcDiscipline?.title
+      ? primaryErcDiscipline.title
+      : lab.primaryErcDisciplineCode
+    : null;
+  const topErcLabel = (() => {
+    if (primaryErcDisciplineLabel) return primaryErcDisciplineLabel;
+    const disciplines = lab?.ercDisciplines ?? [];
+    if (disciplines.length > 0) {
+      return `${disciplines[0].title}${disciplines.length > 1 ? ` +${disciplines.length - 1}` : ""}`;
+    }
+    const codes = lab?.ercDisciplineCodes ?? [];
+    if (codes.length > 0) {
+      return `${codes[0]}${codes.length > 1 ? ` +${codes.length - 1}` : ""}`;
+    }
+    return null;
+  })();
   const [backLabel, setBackLabel] = useState("Back to labs");
   const [profileCanCollaborate, setProfileCanCollaborate] = useState(false);
   const [currentUserIsAdmin, setCurrentUserIsAdmin] = useState(false);
   const [currentUserCanManageMultipleLabs, setCurrentUserCanManageMultipleLabs] = useState(false);
   const [currentUserCanBrokerRequests, setCurrentUserCanBrokerRequests] = useState(false);
+  const [defaultProfileName, setDefaultProfileName] = useState("");
   useEffect(() => {
     let mounted = true;
     async function checkRole() {
@@ -51,6 +89,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
         setCurrentUserIsAdmin(false);
         setCurrentUserCanManageMultipleLabs(false);
         setCurrentUserCanBrokerRequests(false);
+        setDefaultProfileName("");
         return;
       }
       const { data, error } = await supabase
@@ -64,6 +103,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
         setCurrentUserIsAdmin(false);
         setCurrentUserCanManageMultipleLabs(false);
         setCurrentUserCanBrokerRequests(false);
+        setDefaultProfileName(resolveProfileName(null, user as any));
         return;
       }
       const isAdmin = Boolean((data as any)?.is_admin);
@@ -74,6 +114,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
       setCurrentUserIsAdmin(isAdmin);
       setCurrentUserCanManageMultipleLabs(canManageMultipleLabs);
       setCurrentUserCanBrokerRequests(canBrokerRequests);
+      setDefaultProfileName(resolveProfileName(data, user as any));
     }
     checkRole();
     return () => {
@@ -210,6 +251,17 @@ export default function LabDetails({ params }: LabDetailsProps) {
       prev.contactEmail ? prev : { ...prev, contactEmail: user.email }
     );
   }, [user?.email]);
+
+  useEffect(() => {
+    if (!defaultProfileName) return;
+    setInvestorName(prev => (prev.trim() ? prev : defaultProfileName));
+    setRequestForm(prev =>
+      prev.requesterName.trim() ? prev : { ...prev, requesterName: defaultProfileName }
+    );
+    setCollabForm(prev =>
+      prev.contactName.trim() ? prev : { ...prev, contactName: defaultProfileName }
+    );
+  }, [defaultProfileName, showInvestor, showRequest, showCollab]);
 
   useEffect(() => {
     if (!lab?.name) return;
@@ -397,12 +449,24 @@ export default function LabDetails({ params }: LabDetailsProps) {
     url.startsWith("data:")
       ? url
       : `${url}${url.includes("?") ? "&" : "?"}auto=format&fit=crop&w=${width}&q=80`;
-  const labStatus = (lab.labStatus || "listed").toLowerCase();
+  const labStatus = ((lab.labStatus || (lab as any).lab_status || "listed") as string).toLowerCase().trim();
   const isPremier = labStatus === "premier";
-  const isVerifiedStatus = ["verified_passive", "verified_active", "premier"].includes(labStatus);
+  const auditPassed =
+    lab.auditPassed === true ||
+    lab.auditPassed === "true" ||
+    lab.auditPassed === 1 ||
+    lab.auditPassed === "1";
+  const isPendingStatus = ["pending", "confirmed"].includes(labStatus);
   const logoUrl = (lab as any)?.logoUrl ?? (lab as any)?.logo_url ?? null;
-  const status = isPremier ? "premier" : isVerifiedStatus ? "verified" : labStatus;
-  const canRequestLab = isVerifiedStatus;
+  const status = (() => {
+    if (isPremier) return "premier";
+    if (isPendingStatus) return "pending";
+    if (["verified_active", "verified_passive", "verified"].includes(labStatus)) {
+      return auditPassed ? "verified" : "pending";
+    }
+    return "listed";
+  })();
+  const canRequestLab = status === "verified" || status === "premier";
   const offersLabSpace =
     lab.offersLabSpace === true ||
     lab.offersLabSpace === "true" ||
@@ -425,7 +489,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const badgeClass =
     status === "verified" || status === "premier"
       ? "bg-emerald-50 text-emerald-700"
-      : status === "confirmed"
+      : status === "pending"
         ? "bg-amber-50 text-amber-700"
         : "bg-slate-100 text-slate-700";
   const badgeLabel =
@@ -433,8 +497,8 @@ export default function LabDetails({ params }: LabDetailsProps) {
       ? "Premier"
       : status === "verified"
         ? "Verified"
-        : status === "confirmed"
-          ? "Confirmed"
+        : status === "pending"
+          ? "Pending"
           : "Added by GLASS";
   const listedDisclaimer = "Profile details compiled by GLASS from publicly available sources.";
   const claimEmail = "contact@glass-funding.com";
@@ -506,7 +570,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
       setRequestSuccess("Sent! The lab and our team have been notified.");
       setRequestForm(prev => ({
         ...prev,
-        requesterName: "",
+        requesterName: defaultProfileName || "",
         requesterEmail: user?.email || "",
         organization: "",
         roleTitle: "",
@@ -552,7 +616,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
       }
       setCollabSuccess("Sent! We'll notify the lab team.");
       setCollabForm({
-        contactName: "",
+        contactName: defaultProfileName || "",
         contactEmail: user?.email || "",
         targetLabs: lab.name,
         collaborationFocus: "",
@@ -593,7 +657,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
         throw new Error(txt || "Unable to send inquiry");
       }
       setInvestorSuccess("Sent! The lab has been notified.");
-      setInvestorName("");
+      setInvestorName(defaultProfileName || "");
       setInvestorEmail(user?.email || "");
       setInvestorCompany("");
       setInvestorWebsite("");
@@ -651,42 +715,55 @@ export default function LabDetails({ params }: LabDetailsProps) {
           className="mt-8 rounded-3xl border border-border bg-card/80 p-8 shadow-sm space-y-10"
         >
           <header className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                <MapPin className="h-3.5 w-3.5" />
-                {[
-                  lab.city,
-                  lab.country,
-                ].filter(Boolean).join(", ") || "Location not set"}
-              </span>
-              {lab.orgRole && (
-                <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground">
-                  {lab.orgRole}
-                </span>
-              )}
-              <span
-                className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${badgeClass}`}
-                title={isListedOnly ? listedDisclaimer : undefined}
-              >
-                {status === "verified" ? (
-                  <>
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    {badgeLabel}
-                  </>
-                ) : (
-                  <>
-                    <ShieldAlert className="h-3.5 w-3.5" />
-                    {badgeLabel}
-                  </>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                    <MapPin className="h-3.5 w-3.5" />
+                    {[
+                      lab.city,
+                      lab.country,
+                    ].filter(Boolean).join(", ") || "Location not set"}
+                  </span>
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${badgeClass}`}
+                    title={isListedOnly ? listedDisclaimer : undefined}
+                  >
+                    {status === "verified" || status === "premier" ? (
+                      <>
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        {badgeLabel}
+                      </>
+                    ) : (
+                      <>
+                        <ShieldAlert className="h-3.5 w-3.5" />
+                        {badgeLabel}
+                      </>
+                    )}
+                  </span>
+                  {offersLabSpace && (
+                    <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground">
+                      <Unlock className="h-3.5 w-3.5 text-primary" />
+                      Offers lab space
+                    </span>
+                  )}
+                </div>
+                {(lab.orgRole || topErcLabel) && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    {lab.orgRole && (
+                      <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 font-medium text-foreground">
+                        {lab.orgRole}
+                      </span>
+                    )}
+                    {topErcLabel && (
+                      <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 font-medium text-foreground">
+                        {topErcLabel}
+                      </span>
+                    )}
+                  </div>
                 )}
-              </span>
-              {offersLabSpace && (
-                <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground">
-                  <Unlock className="h-3.5 w-3.5 text-primary" />
-                  Offers lab space
-                </span>
-              )}
-              <div className="ml-auto flex items-center gap-2">
+              </div>
+              <div className="flex items-center gap-2">
                 {isListedOnly && (
                   <button
                     type="button"
@@ -837,6 +914,32 @@ export default function LabDetails({ params }: LabDetailsProps) {
                   </span>
                 ))}
               </div>
+              {((lab.ercDisciplines ?? []).length > 0 || (lab.ercDisciplineCodes ?? []).length > 0) && (
+                <div className="pt-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground">
+                    ERC panels
+                  </span>
+                  <div className="mt-2 flex flex-wrap gap-2 text-sm text-muted-foreground">
+                    {(lab.ercDisciplines ?? []).length > 0
+                      ? (lab.ercDisciplines ?? []).map(item => (
+                          <span
+                            key={item.code}
+                            className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1"
+                          >
+                            {item.code} - {item.title}
+                          </span>
+                        ))
+                      : (lab.ercDisciplineCodes ?? []).map(code => (
+                          <span
+                            key={code}
+                            className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1"
+                          >
+                            {code}
+                          </span>
+                        ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
