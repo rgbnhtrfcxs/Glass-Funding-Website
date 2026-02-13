@@ -798,7 +798,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
         )}
         {analytics && (
           <div className="mt-4 rounded-2xl border border-border bg-card/70 p-4 text-sm">
-            <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Premier / Custom analytics</p>
+            <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Premier analytics</p>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <div className="rounded-xl border border-border bg-background/60 p-3">
                 <p className="text-xs text-muted-foreground">Views (7d)</p>

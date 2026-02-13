@@ -160,7 +160,7 @@ export default function ManageSelect({ embedded = false }: { embedded?: boolean 
                   <p className="text-sm text-muted-foreground">
                     {canAddAnother
                       ? "Create another lab profile and manage its details."
-                      : "Multi-lab management is available on Custom tier."}
+                      : "Multi-lab management is available through enterprise onboarding."}
                   </p>
                 </div>
                 <div className="p-4">
@@ -173,10 +173,10 @@ export default function ManageSelect({ embedded = false }: { embedded?: boolean 
                     </Link>
                   ) : (
                     <Link
-                      href="/payments?plan=custom#custom"
+                      href="/payments?plan=enterprise#enterprise"
                       className="inline-flex w-full items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
                     >
-                      Upgrade to Custom
+                      Contact partnerships
                     </Link>
                   )}
                 </div>

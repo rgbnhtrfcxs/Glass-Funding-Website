@@ -215,12 +215,17 @@ export default function ProfilePortal({ embedded = false, onProfileSaved }: Prof
     setError(null);
     setNotice(null);
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      if (!session?.user?.id) {
+        throw new Error("Please sign in again before uploading a photo.");
+      }
       const ext = file.name.split(".").pop()?.toLowerCase() || "png";
       const cleanName = file.name.replace(/\s+/g, "-").toLowerCase();
-      const path = `${user.id}/${Date.now()}-${cleanName || `avatar.${ext}`}`;
+      const path = `${session.user.id}/${Date.now()}-${cleanName || `avatar.${ext}`}`;
       const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, {
         cacheControl: "3600",
-        upsert: true,
+        upsert: false,
         contentType: file.type,
       });
       if (upErr) throw upErr;

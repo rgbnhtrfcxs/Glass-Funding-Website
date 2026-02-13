@@ -35,14 +35,6 @@ const defaultTiers: PricingTier[] = [
     highlights: ["Free verification", "Direct collaboration management", "Seminar access"],
     featured: true,
   },
-  {
-    name: "Custom",
-    monthly_price: null,
-    yearly_price: null,
-    description: "For networks or operators managing multiple labs.",
-    highlights: ["Central billing", "Dedicated partner manager", "API & tooling access"],
-    featured: false,
-  },
 ];
 
 export function usePricing() {
@@ -62,8 +54,8 @@ export function usePricing() {
         }
         const payload = await res.json();
         if (active && Array.isArray(payload?.tiers) && payload.tiers.length) {
-          setTiers(
-            payload.tiers.map((t: any) => ({
+          const normalized = payload.tiers
+            .map((t: any) => ({
               name: t.name,
               monthly_price: t.monthly_price === undefined ? null : t.monthly_price,
               yearly_price: t.yearly_price === undefined ? null : t.yearly_price,
@@ -71,8 +63,9 @@ export function usePricing() {
               description: t.description,
               highlights: Array.isArray(t.highlights) ? t.highlights : [],
               featured: Boolean(t.featured),
-            })),
-          );
+            }))
+            .filter((t: PricingTier) => t.name.toLowerCase().trim() !== "custom");
+          setTiers(normalized);
         }
       } catch {
         // keep defaults

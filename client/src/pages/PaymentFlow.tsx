@@ -33,10 +33,11 @@ export default function PaymentFlow() {
     }
   }, [search]);
 
-  const normalizedPlan = (selectedPlan ?? "").toLowerCase();
+  const normalizedPlanRaw = (selectedPlan ?? "").toLowerCase();
+  const normalizedPlan = normalizedPlanRaw === "custom" ? "enterprise" : normalizedPlanRaw;
   const isFreePlan = normalizedPlan === "base" || normalizedPlan === "free";
-  const isPaidStandard = normalizedPlan === "verified" || normalizedPlan === "premier" || normalizedPlan === "custom";
-  const isEnterprise = normalizedPlan === "custom" || normalizedPlan === "enterprise";
+  const isPaidStandard = normalizedPlan === "verified" || normalizedPlan === "premier";
+  const isEnterprise = normalizedPlan === "enterprise";
   const metadataName =
     user?.user_metadata?.full_name ||
     user?.user_metadata?.name ||
@@ -54,7 +55,7 @@ export default function PaymentFlow() {
 
   useEffect(() => {
     if (loading) return;
-    const allowedPlans = ["base", "free", "verified", "premier", "custom", "enterprise"];
+    const allowedPlans = ["base", "free", "verified", "premier", "enterprise"];
     if (!selectedPlan || !allowedPlans.includes(normalizedPlan)) {
       setLocation("/subscriptions");
       return;
@@ -173,7 +174,7 @@ export default function PaymentFlow() {
           <p className="text-muted-foreground text-lg leading-relaxed">
             {isFreePlan
               ? "Confirm your free plan so your listing stays live while you edit. You can upgrade anytime."
-              : "We keep billing transparent: standard plans go through Stripe Checkout (with optional SEPA transfer), and multi-lab operators can request a custom agreement."}
+              : "We keep billing transparent: standard plans go through Stripe Checkout (with optional SEPA transfer), and multi-lab operators can request an enterprise agreement."}
           </p>
           <div className="flex flex-wrap gap-3">
             <Link href="/subscriptions">
@@ -299,12 +300,12 @@ export default function PaymentFlow() {
               </p>
               <ul className="space-y-3 text-sm text-muted-foreground">
                 <li>Dedicated partner manager and verification scheduling across sites.</li>
-                <li>Custom invoicing (ACH/SEPA/wire), procurement docs, and data exports.</li>
+                <li>Flexible invoicing (ACH/SEPA/wire), procurement docs, and data exports.</li>
                 <li>API access and multi-lab routing preferences.</li>
               </ul>
             </div>
 
-            <div id="custom" className="rounded-3xl border border-border bg-card/80 p-8 shadow-sm space-y-4">
+            <div id="enterprise" className="rounded-3xl border border-border bg-card/80 p-8 shadow-sm space-y-4">
               <div className="flex items-center gap-3">
                 <Building className="h-5 w-5 text-primary" />
                 <div>
@@ -409,7 +410,7 @@ export default function PaymentFlow() {
         >
           <h3 className="text-lg font-semibold text-foreground">Need a direct line?</h3>
           <p className="text-sm text-muted-foreground">
-            Email <a className="text-primary underline" href="mailto:contact@glass-funding.com">contact@glass-funding.com</a> or drop a note in the custom
+            Email <a className="text-primary underline" href="mailto:contact@glass-funding.com">contact@glass-funding.com</a> or drop a note in the enterprise
             form. We can accommodate purchase orders, wire transfers, and co-branded partnership agreements.
           </p>
           <div className="flex flex-wrap gap-3">

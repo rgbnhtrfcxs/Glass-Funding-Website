@@ -25,7 +25,7 @@ const LAB_SELECT = `
   org_role,
   lab_contacts (contact_email, website, linkedin, tags),
   lab_location (address_line1, address_line2, city, state, postal_code, country),
-  lab_profile (lab_manager, siret_number, description_short, description_long, field, public, alternate_names, logo_url, hal_structure_id, hal_person_id),
+  lab_profile (lab_manager, siret_number, description_short, description_long, public, alternate_names, logo_url, hal_structure_id, hal_person_id),
   lab_settings (offers_lab_space),
   lab_partner_logos (name, url, website),
   lab_photos (name, url),
@@ -67,7 +67,6 @@ type LabRow = {
     siret_number: string | null;
     description_short: string | null;
     description_long: string | null;
-    field: string | null;
     public: boolean | string | null;
     alternate_names: string[] | null;
     logo_url: string | null;
@@ -217,7 +216,7 @@ function mapLabRow(row: LabRow): LabPartner {
     })),
     focusAreas: (row.lab_focus_areas ?? []).map(item => item.focus_area),
     offers: (row.lab_offers ?? []).map(item => item.offer),
-    field: profileRow?.field || null,
+    field: null,
     public: parseBoolean(profileRow?.public, false),
     alternateNames: profileRow?.alternate_names ?? [],
     tags: contactRow?.tags ?? [],
@@ -394,7 +393,6 @@ async function upsertLabProfile(labId: number, data: {
   siretNumber: string | null;
   descriptionShort: string | null;
   descriptionLong: string | null;
-  field: string | null;
   public: boolean | null;
   alternateNames: string[];
   logoUrl: string | null;
@@ -410,7 +408,6 @@ async function upsertLabProfile(labId: number, data: {
         siret_number: data.siretNumber ?? null,
         description_short: data.descriptionShort ?? null,
         description_long: data.descriptionLong ?? null,
-        field: data.field ?? null,
         public: data.public ?? null,
         alternate_names: data.alternateNames ?? [],
         logo_url: data.logoUrl ?? null,
@@ -535,7 +532,6 @@ export class LabStore {
       siretNumber: data.siretNumber ?? null,
       descriptionShort: data.descriptionShort ?? null,
       descriptionLong: data.descriptionLong ?? null,
-      field: data.field ?? null,
       public: data.public ?? null,
       alternateNames: data.alternateNames ?? [],
       logoUrl: data.logoUrl ?? null,
@@ -613,7 +609,6 @@ export class LabStore {
       has("siretNumber") ||
       has("descriptionShort") ||
       has("descriptionLong") ||
-      has("field") ||
       has("public") ||
       has("alternateNames") ||
       has("logoUrl") ||
@@ -625,7 +620,6 @@ export class LabStore {
         siretNumber: has("siretNumber") ? parsed.siretNumber ?? null : existing.siretNumber ?? null,
         descriptionShort: has("descriptionShort") ? parsed.descriptionShort ?? null : existing.descriptionShort ?? null,
         descriptionLong: has("descriptionLong") ? parsed.descriptionLong ?? null : existing.descriptionLong ?? null,
-        field: has("field") ? parsed.field ?? null : existing.field ?? null,
         public: has("public") ? parsed.public ?? null : existing.public ?? null,
         alternateNames: has("alternateNames") ? parsed.alternateNames ?? [] : existing.alternateNames ?? [],
         logoUrl: has("logoUrl") ? parsed.logoUrl ?? null : existing.logoUrl ?? null,

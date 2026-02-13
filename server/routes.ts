@@ -86,6 +86,19 @@ const parseNullableBoolean = (value: boolean | string | null | undefined) => {
   return parseBoolean(value, false);
 };
 
+const errorToMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === "object") {
+    const message = typeof (error as any).message === "string" ? (error as any).message : "";
+    const details = typeof (error as any).details === "string" ? (error as any).details : "";
+    const hint = typeof (error as any).hint === "string" ? (error as any).hint : "";
+    const code = typeof (error as any).code === "string" ? (error as any).code : "";
+    const joined = [message, details, hint, code ? `code=${code}` : ""].filter(Boolean).join(" | ");
+    if (joined) return joined;
+  }
+  return fallback;
+};
+
 const fetchProfileCapabilities = async (userId?: string | null) => {
   if (!userId) return null;
   const { data, error } = await supabase
@@ -209,14 +222,6 @@ const defaultPricing = [
     highlights: ["Free verification", "Direct collaboration management", "Seminar access"],
     featured: true,
     sort_order: 3,
-  },
-  {
-    name: "Custom",
-    monthly_price: null,
-    description: "For networks or operators managing multiple labs.",
-    highlights: ["Central billing", "Dedicated partner manager", "API & tooling access"],
-    featured: false,
-    sort_order: 4,
   },
 ] as const;
 
@@ -2003,10 +2008,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
       if (!userId) return res.status(400).json({ message: "No user on request" });
       const payload = schema.parse(req.body ?? {});
 
-      const updates: Record<string, unknown> = {
-        user_id: userId,
-        email: typeof req.user?.email === "string" ? req.user.email : null,
-      };
+      const updates: Record<string, unknown> = {};
       if ("name" in payload) {
         const nextName = typeof payload.name === "string" ? payload.name.trim() : "";
         updates.name = nextName || null;
@@ -2016,10 +2018,39 @@ app.get("/api/profile", authenticate, async (req, res) => {
         updates.avatar_url = nextAvatar || null;
       }
 
+      const { data: existing, error: existingError } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (existingError) throw existingError;
+
+      if (existing?.user_id) {
+        if (Object.keys(updates).length > 0) {
+          const { error: updateError } = await supabase
+            .from("profiles")
+            .update(updates)
+            .eq("user_id", userId);
+          if (updateError) throw updateError;
+        }
+      } else {
+        const email = typeof req.user?.email === "string" ? req.user.email : null;
+        if (!email) {
+          return res.status(400).json({ message: "No email on authenticated user" });
+        }
+        const insertPayload: Record<string, unknown> = {
+          user_id: userId,
+          email,
+          ...updates,
+        };
+        const { error: insertError } = await supabase.from("profiles").insert(insertPayload);
+        if (insertError) throw insertError;
+      }
+
       const { data, error } = await supabase
         .from("profiles")
-        .upsert(updates, { onConflict: "user_id" })
         .select("user_id,email,name,subscription_status,avatar_url")
+        .eq("user_id", userId)
         .maybeSingle();
       if (error) throw error;
 
@@ -2029,7 +2060,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
         const issue = err.issues[0];
         return res.status(400).json({ message: issue?.message ?? "Invalid profile payload" });
       }
-      res.status(500).json({ message: err instanceof Error ? err.message : "Unable to save profile" });
+      res.status(500).json({ message: errorToMessage(err, "Unable to save profile") });
     }
   });
 
@@ -2163,7 +2194,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
     }
   });
 
-  // --------- Lab News (premier/custom) ----------
+  // --------- Lab News (premier) ----------
   app.post("/api/news", authenticate, async (req, res) => {
     try {
       const payload = insertNewsSchema.parse(req.body);
@@ -2508,7 +2539,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
   // --------- Subscription update (after payment confirmation) ----------
   app.post("/api/subscription/confirm", authenticate, async (req, res) => {
     const schema = z.object({
-      tier: z.enum(["base", "verified", "premier", "custom"]),
+      tier: z.enum(["base", "verified", "premier"]),
     });
     try {
       const payload = schema.parse(req.body);
@@ -2919,24 +2950,40 @@ app.get("/api/profile", authenticate, async (req, res) => {
         return res.status(400).json({ message: "enabled must be a boolean" });
       }
 
-      const { error } = await supabase
+      const { data: existing, error: existingError } = await supabase
         .from("profiles")
-        .upsert(
-          {
+        .select("user_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (existingError) throw existingError;
+
+      if (existing?.user_id) {
+        const { error } = await supabase
+          .from("profiles")
+          .update({ inbox_email_notifications_enabled: enabled })
+          .eq("user_id", userId);
+        if (error) throw error;
+      } else {
+        const email = typeof req.user?.email === "string" ? req.user.email : null;
+        if (!email) {
+          return res.status(400).json({ message: "No email on authenticated user" });
+        }
+        const { error } = await supabase
+          .from("profiles")
+          .insert({
             user_id: userId,
-            email: typeof req.user?.email === "string" ? req.user.email : null,
+            email,
             inbox_email_notifications_enabled: enabled,
-          },
-          { onConflict: "user_id" },
-        );
-      if (error) throw error;
+          });
+        if (error) throw error;
+      }
 
       res.json({
         enabled,
         storedPreference: enabled,
       });
     } catch (err) {
-      res.status(500).json({ message: err instanceof Error ? err.message : "Unable to save notification preferences" });
+      res.status(500).json({ message: errorToMessage(err, "Unable to save notification preferences") });
     }
   });
 

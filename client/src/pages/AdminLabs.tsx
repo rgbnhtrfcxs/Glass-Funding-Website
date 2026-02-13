@@ -839,7 +839,7 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">
-                    Partner logos (premier/custom feature)
+                    Partner logos (premier feature)
                   </label>
                   <div className="flex flex-col gap-2">
                     <input

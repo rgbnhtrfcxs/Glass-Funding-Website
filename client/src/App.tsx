@@ -67,6 +67,33 @@ function ScrollToTop() {
   return null;
 }
 
+function AuthLinkBridge() {
+  const [location] = useLocation();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const searchParams = new URLSearchParams(window.location.search);
+    const hashType = (hashParams.get("type") || "").toLowerCase();
+    const queryType = (searchParams.get("type") || "").toLowerCase();
+    const authType = hashType || queryType;
+
+    if (authType !== "invite" && authType !== "recovery") return;
+    if (location === "/reset-password") return;
+
+    if (authType === "invite") {
+      searchParams.set("invite", "1");
+    }
+
+    const query = searchParams.toString();
+    const target = `/reset-password${query ? `?${query}` : ""}${window.location.hash || ""}`;
+    window.location.replace(target);
+  }, [location]);
+
+  return null;
+}
+
 function PageTransition({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const [isActive, setIsActive] = useState(false);
@@ -153,6 +180,7 @@ function App() {
             <TeamsProvider>
               <Navbar />
               <ScrollToTop />
+              <AuthLinkBridge />
               <div className="pt-16">
                 <PageTransition>
                   <Router />

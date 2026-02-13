@@ -219,20 +219,53 @@ export default function Account() {
     setAvatarError(null);
     setAvatarUploading(true);
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      if (!session?.user?.id) {
+        throw new Error("Please sign in again before uploading a photo.");
+      }
       const extension = file.name.split(".").pop()?.toLowerCase() || "png";
-      const path = `${user.id}/${Date.now()}.${extension}`;
+      const path = `${session.user.id}/${Date.now()}.${extension}`;
       const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, {
-        upsert: true,
+        upsert: false,
         contentType: file.type,
       });
       if (uploadError) throw uploadError;
       const { data } = supabase.storage.from("avatars").getPublicUrl(path);
       const publicUrl = data.publicUrl;
-      const { error: profileErr } = await supabase
-        .from("profiles")
-        .upsert({ user_id: user.id, email: user.email, avatar_url: publicUrl }, { onConflict: "user_id" });
-      if (profileErr) throw profileErr;
-      setProfile(prev => (prev ? { ...prev, avatar_url: publicUrl } : prev));
+      const token = session.access_token;
+      if (!token) throw new Error("Please sign in again.");
+
+      const response = await fetch("/api/me/profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ avatarUrl: publicUrl }),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || "Failed to save avatar.");
+      }
+
+      const payload = await response.json();
+      const saved = payload?.profile as Partial<Profile> | null | undefined;
+      setProfile(prev => {
+        const base: Profile = prev ?? {
+          user_id: user.id,
+          email: user.email ?? null,
+          display_name: null,
+          name: null,
+        };
+        return {
+          ...base,
+          user_id: saved?.user_id ?? base.user_id,
+          email: saved?.email ?? base.email,
+          name: saved?.name ?? base.name,
+          avatar_url: saved?.avatar_url ?? publicUrl,
+        };
+      });
     } catch (err: any) {
       setAvatarError(err?.message || "Failed to upload avatar.");
     } finally {
@@ -967,7 +1000,7 @@ export default function Account() {
                 ✕
               </button>
               <h3 className="text-lg font-semibold text-foreground">Post a lab update</h3>
-              <p className="text-sm text-muted-foreground">For premier/custom labs. We’ll review and feature these on the main page.</p>
+              <p className="text-sm text-muted-foreground">For premier labs. We’ll review and feature these on the main page.</p>
 
               <div className="mt-4 grid gap-4">
                 <div className="grid gap-2">

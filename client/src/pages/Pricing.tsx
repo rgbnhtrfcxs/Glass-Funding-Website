@@ -84,14 +84,13 @@ export default function Pricing() {
           <div className="grid gap-6 lg:grid-cols-3">
             {tiers.map(tier => {
               const plan = tier.name.toLowerCase().trim();
-              const paymentHref = tier.name === "Custom" ? `/payments?plan=${plan}#custom` : `/payments?plan=${plan}`;
               const monthlyPrice: any = (tier as any).monthly_price ?? (tier as any).monthlyPrice;
               const yearlyPrice: any = (tier as any).yearly_price ?? (tier as any).yearlyPrice;
               const priceVal = interval === "yearly" ? yearlyPrice : monthlyPrice;
               const isBase = tier.name.toLowerCase().trim() === "base";
               const isFree = isBase || priceVal === 0 || priceVal === "0";
               const hasPrice = priceVal !== null && priceVal !== undefined && !isFree;
-              const priceLabel = isFree ? "Free" : hasPrice ? `€${priceVal}` : "Custom";
+              const priceLabel = isFree ? "Free" : hasPrice ? `€${priceVal}` : "Contact us";
               const isFeatured = tier.name.toLowerCase() === "verified";
               return (
                 <article
@@ -134,14 +133,7 @@ export default function Pricing() {
                   </div>
 
                   <div className="mt-6">
-                    {tier.name === "Custom" ? (
-                      <Link href="/contact">
-                        <a className="inline-flex w-full items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary">
-                          Talk to partnerships
-                          <ArrowUpRight className="ml-2 h-4 w-4" />
-                        </a>
-                      </Link>
-                    ) : tier.name === "Base" ? (
+                    {tier.name === "Base" ? (
                       <Link href="/signup">
                         <a className="inline-flex w-full items-center justify-center rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:bg-foreground/90">
                           Get started free
@@ -179,7 +171,7 @@ export default function Pricing() {
               Verification visits: €250–€500 depending on geography. Remote verifications are available if you already have documented SOPs.
             </p>
             <p className="text-sm text-muted-foreground">
-              Need ACH, wire, or invoices? Use the Custom intake on the plan details page and we’ll send tailored options.
+              Need ACH, wire, or invoices? Use the enterprise intake and we’ll send tailored options.
             </p>
           </div>
           <div className="rounded-[32px] border border-border bg-card/80 p-8 shadow-sm space-y-4">

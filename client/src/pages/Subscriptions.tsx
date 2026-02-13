@@ -33,7 +33,7 @@ export default function Subscriptions() {
           {tiers.map(tier => {
             const isFeatured = (tier as any).featured;
             const plan = tier.name.toLowerCase();
-            const paymentHref = plan === "custom" ? "/payments?plan=custom#custom" : `/payments?plan=${plan}`;
+            const paymentHref = `/payments?plan=${plan}`;
             const priceVal: any = (tier as any).monthly_price ?? (tier as any).monthlyPrice;
             const isFree = priceVal === 0 || priceVal === "0";
             const hasPrice = priceVal !== null && priceVal !== undefined && !isFree;
@@ -64,13 +64,9 @@ export default function Subscriptions() {
                 </ul>
                 <Link href={paymentHref}>
                   <a
-                    className={`mt-6 inline-flex items-center rounded-full px-4 py-2 text-sm font-medium transition ${
-                      plan === "custom"
-                        ? "border border-border text-muted-foreground hover:border-primary hover:text-primary"
-                        : "bg-primary text-primary-foreground hover:bg-primary/90"
-                    }`}
+                    className="mt-6 inline-flex items-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
                   >
-                    {plan === "custom" ? "Talk to us" : "Subscribe"}
+                    {plan === "base" ? "Start free" : "Subscribe"}
                   </a>
                 </Link>
               </article>

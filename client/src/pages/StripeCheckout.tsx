@@ -18,7 +18,7 @@ export default function StripeCheckout() {
     }
   }, [search]);
 
-  const allowedPlans = ["verified", "premier", "custom"];
+  const allowedPlans = ["verified", "premier"];
   const validPlan = selectedPlan && allowedPlans.includes(selectedPlan);
 
   useEffect(() => {
