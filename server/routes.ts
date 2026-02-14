@@ -12,6 +12,10 @@ import jwt from "jsonwebtoken";
 import { supabasePublic } from "./supabasePublicClient.js";
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
+import { promises as fs } from "node:fs";
+import path, { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 import { z, ZodError } from "zod";
 
@@ -29,6 +33,163 @@ import { insertLabViewSchema } from "@shared/views";
 import { insertTeamSchema, updateTeamSchema } from "@shared/teams";
 
 import { insertDonationSchema } from "@shared/donations";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const CERTIFICATE_TEMPLATE_PATH = path.resolve(__dirname, "data", "certificate-template.json");
+const CERTIFICATE_HTML_TEMPLATE_PATHS = [
+  path.resolve(__dirname, "..", "client", "public", "certificate-template.html"),
+  path.resolve(__dirname, "..", "dist", "certificate-template.html"),
+];
+
+const defaultCertificateTemplate = {
+  page: {
+    width: 595,
+    height: 842,
+  },
+  colors: {
+    background: "#FFFFFF",
+    pastelBlue: "#BFE8FF",
+    pastelPink: "#FFD7E8",
+    mist: "#EDF7FF",
+    cardBorder: "#D1DBF2",
+    ink: "#1A2238",
+    mutedInk: "#59647F",
+    subtitle: "#54668F",
+    idLabel: "#53668F",
+    signatureLine: "#B8C1D9",
+    footer: "#6B748D",
+    fallbackLogo: "#22345A",
+  },
+  background: {
+    leftGlow: { x: 96, y: 760, xScale: 168, yScale: 132, opacity: 0.38 },
+    rightGlow: { x: 505, y: 768, xScale: 152, yScale: 128, opacity: 0.36 },
+    bottomGlow: { xScale: 220, yScale: 120, y: 50, opacity: 0.62 },
+  },
+  card: {
+    x: 30,
+    y: 34,
+    borderWidth: 1.25,
+    opacity: 0.93,
+    topAccentHeight: 2.6,
+  },
+  logo: {
+    symbol: { file: "GlassLogo3.png", maxWidth: 58, y: 742, opacity: 0.99 },
+    wordmark: { file: "GlassLogoLettering.png", maxWidth: 156, y: 690, opacity: 0.98 },
+    fallback: { text: "GLASS", y: 710, size: 34 },
+  },
+  heading: {
+    titleY: 668,
+    titleSize: 30,
+    subtitleY: 644,
+    subtitleSize: 12,
+    kickerY: 628,
+    kickerSize: 11,
+  },
+  labName: {
+    introY: 596,
+    topY: 572,
+    largeSize: 29,
+    mediumSize: 24,
+    smallSize: 20,
+    lineGap: 6,
+    maxWidth: 485,
+    maxLines: 3,
+    bodyOffset: 28,
+  },
+  address: {
+    labelOffset: 52,
+    labelSize: 10,
+    textSize: 10,
+    maxWidth: 465,
+    maxLines: 3,
+    lineGap: 12,
+    issuedGap: 18,
+  },
+  idBox: {
+    width: 390,
+    height: 88,
+    y: 364,
+    borderWidth: 1.1,
+    accentHeight: 4,
+    labelYOffset: 60,
+    labelSize: 11,
+    idYOffset: 31,
+    idSize: 22,
+  },
+  signatures: {
+    titleY: 244,
+    slotWidth: 220,
+    gap: 56,
+    imageY: 170,
+    imageHeight: 58,
+    lineY: 128,
+    lineThickness: 1.1,
+    nameGap: 18,
+    titleGap: 32,
+    nameSize: 11,
+    titleSize: 10,
+  },
+  footer: {
+    text: "Issued by GLASS for trusted collaboration visibility across verified labs.",
+    y: 42,
+    size: 9,
+  },
+};
+
+type CertificateTemplate = typeof defaultCertificateTemplate;
+
+let certificateTemplateCache: { mtimeMs: number; value: CertificateTemplate } | null = null;
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const mergeTemplate = <T,>(base: T, override: unknown): T => {
+  if (Array.isArray(base)) return base;
+  if (isPlainObject(base) && isPlainObject(override)) {
+    const result: Record<string, unknown> = { ...base };
+    Object.keys(base).forEach(key => {
+      if (!(key in override)) return;
+      result[key] = mergeTemplate((base as Record<string, unknown>)[key], (override as Record<string, unknown>)[key]);
+    });
+    return result as T;
+  }
+  if (typeof override === typeof base) {
+    return override as T;
+  }
+  return base;
+};
+
+const loadCertificateTemplate = async (): Promise<CertificateTemplate> => {
+  try {
+    const stat = await fs.stat(CERTIFICATE_TEMPLATE_PATH);
+    if (certificateTemplateCache && certificateTemplateCache.mtimeMs === stat.mtimeMs) {
+      return certificateTemplateCache.value;
+    }
+    const raw = await fs.readFile(CERTIFICATE_TEMPLATE_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    const merged = mergeTemplate(defaultCertificateTemplate, parsed);
+    certificateTemplateCache = {
+      mtimeMs: stat.mtimeMs,
+      value: merged,
+    };
+    return merged;
+  } catch {
+    return defaultCertificateTemplate;
+  }
+};
+
+const hexToRgb = (hex: string, fallback: [number, number, number]) => {
+  const normalized = hex.trim().replace(/^#/, "");
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
+    return rgb(fallback[0], fallback[1], fallback[2]);
+  }
+  const r = Number.parseInt(normalized.slice(0, 2), 16) / 255;
+  const g = Number.parseInt(normalized.slice(2, 4), 16) / 255;
+  const b = Number.parseInt(normalized.slice(4, 6), 16) / 255;
+  return rgb(r, g, b);
+};
 
 // Avoid duplicate "viewed" notifications during a single server runtime
 const viewedNotifyCache = new Set<string>();
@@ -117,6 +278,796 @@ const errorToMessage = (error: unknown, fallback: string) => {
     if (joined) return joined;
   }
   return fallback;
+};
+
+const isMissingRelationError = (error: any) =>
+  error?.code === "42P01" || /does not exist/i.test(String(error?.message ?? ""));
+
+const signatureDataUrlSchema = z
+  .string()
+  .min(32, "Signature is required")
+  .regex(
+    /^data:image\/(png|jpe?g);base64,[A-Za-z0-9+/=]+$/i,
+    "Signature must be a PNG or JPEG data URL",
+  );
+
+const upsertVerificationCertificateSchema = z.object({
+  labSignerName: z.string().trim().min(2, "Lab signer name is required").max(120),
+  labSignerTitle: z.string().trim().max(120).optional().nullable(),
+  labSignatureDataUrl: signatureDataUrlSchema,
+  glassSignerName: z.string().trim().min(2, "GLASS signer name is required").max(120),
+  glassSignerTitle: z.string().trim().max(120).optional().nullable(),
+  glassSignatureDataUrl: signatureDataUrlSchema,
+});
+
+type CertificatePdfInput = {
+  labName: string;
+  location: string;
+  glassId: string | null;
+  issuedAt: Date;
+  labSignerName: string;
+  labSignerTitle: string | null;
+  labSignatureDataUrl: string;
+  glassSignerName: string;
+  glassSignerTitle: string | null;
+  glassSignatureDataUrl: string;
+};
+
+const decodeImageDataUrl = (dataUrl: string) => {
+  const match = dataUrl.match(/^data:(image\/(?:png|jpe?g));base64,(.+)$/i);
+  if (!match) {
+    throw new Error("Invalid signature image format");
+  }
+  return {
+    mimeType: match[1].toLowerCase(),
+    bytes: Buffer.from(match[2], "base64"),
+  };
+};
+
+const fitText = (
+  text: string,
+  maxWidth: number,
+  size: number,
+  measure: (value: string, size: number) => number,
+) => {
+  if (measure(text, size) <= maxWidth) return text;
+  let shortened = text;
+  while (shortened.length > 0 && measure(`${shortened}...`, size) > maxWidth) {
+    shortened = shortened.slice(0, -1);
+  }
+  return shortened ? `${shortened}...` : "";
+};
+
+const toCountryCode = (countryValue?: string | null) => {
+  const raw = (countryValue || "").trim();
+  if (!raw) return "GL";
+  if (/^[A-Za-z]{2}$/.test(raw)) return raw.toUpperCase();
+  const tokens = raw.replace(/[^A-Za-z\s]/g, " ").split(/\s+/).filter(Boolean);
+  if (tokens.length >= 2) return `${tokens[0][0]}${tokens[1][0]}`.toUpperCase();
+  if (tokens.length === 1) {
+    const token = tokens[0].toUpperCase();
+    return token.length >= 2 ? token.slice(0, 2) : `${token}X`;
+  }
+  return "GL";
+};
+
+const makeGlassId = (countryCode: string) => {
+  const ts = Date.now().toString(36).toUpperCase();
+  const random = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `GLS-${countryCode}-${ts}-${random}`;
+};
+
+const extractGlassShort = (glassId: string) =>
+  glassId.replace(/[^A-Za-z0-9]/g, "").slice(-8).toUpperCase();
+
+const tryInsertGlassIdRow = async (
+  labId: number,
+  countryCode: string,
+  glassId: string,
+  issuedAtIso: string,
+) => {
+  const attempts: Array<Record<string, unknown>> = [
+    {
+      lab_id: labId,
+      glass_id: glassId,
+      issued_at: issuedAtIso,
+      revoked_at: null,
+      is_active: true,
+      country_code: countryCode,
+      glass_short: extractGlassShort(glassId),
+    },
+    {
+      lab_id: labId,
+      glass_id: glassId,
+      issued_at: issuedAtIso,
+      is_active: true,
+      country_code: countryCode,
+    },
+    {
+      lab_id: labId,
+      glass_id: glassId,
+      issued_at: issuedAtIso,
+      is_active: true,
+    },
+    {
+      lab_id: labId,
+      glass_id: glassId,
+    },
+  ];
+
+  let lastError: any = null;
+  for (const payload of attempts) {
+    const { data, error } = await supabase
+      .from("lab_glass_ids")
+      .insert(payload)
+      .select("glass_id, glass_short, is_active, issued_at")
+      .single();
+    if (!error && data) return data;
+    lastError = error;
+    if (error?.code === "23505") {
+      return null;
+    }
+    if (error?.code === "42703" || /column .* does not exist/i.test(String(error?.message ?? ""))) {
+      continue;
+    }
+  }
+  if (lastError) throw lastError;
+  return null;
+};
+
+const ensureLabGlassId = async (labId: number, countryCode: string) => {
+  const { data: activeRows, error: activeError } = await supabase
+    .from("lab_glass_ids_view")
+    .select("glass_id, glass_short, is_active, issued_at")
+    .eq("lab_id", labId)
+    .eq("is_active", true)
+    .order("issued_at", { ascending: false })
+    .limit(1);
+  if (activeError && !isMissingRelationError(activeError)) throw activeError;
+  const activeRow = Array.isArray(activeRows) && activeRows.length > 0 ? activeRows[0] : null;
+  if (activeRow && ((activeRow as any)?.glass_id || (activeRow as any)?.glass_short)) {
+    return {
+      glassId: ((activeRow as any)?.glass_id || (activeRow as any)?.glass_short) as string,
+      issuedAt: (activeRow as any)?.issued_at ?? null,
+    };
+  }
+
+  const { data: existingRows, error: existingError } = await supabase
+    .from("lab_glass_ids_view")
+    .select("glass_id, glass_short, issued_at")
+    .eq("lab_id", labId)
+    .order("issued_at", { ascending: false })
+    .limit(1);
+  if (existingError && !isMissingRelationError(existingError)) throw existingError;
+  const existingRow = Array.isArray(existingRows) && existingRows.length > 0 ? existingRows[0] : null;
+  if (existingRow && ((existingRow as any)?.glass_id || (existingRow as any)?.glass_short)) {
+    try {
+      await supabase
+        .from("lab_glass_ids")
+        .update({ is_active: true, revoked_at: null })
+        .eq("lab_id", labId)
+        .eq("glass_id", ((existingRow as any)?.glass_id || (existingRow as any)?.glass_short) as string);
+    } catch {
+      // Best effort; if columns differ or update fails, keep using existing id.
+    }
+    return {
+      glassId: ((existingRow as any)?.glass_id || (existingRow as any)?.glass_short) as string,
+      issuedAt: (existingRow as any)?.issued_at ?? null,
+    };
+  }
+
+  const issuedAtIso = new Date().toISOString();
+  for (let i = 0; i < 8; i += 1) {
+    const candidate = makeGlassId(countryCode);
+    const inserted = await tryInsertGlassIdRow(labId, countryCode, candidate, issuedAtIso);
+    if (!inserted) continue;
+    return {
+      glassId: ((inserted as any)?.glass_id || candidate) as string,
+      issuedAt: (inserted as any)?.issued_at ?? issuedAtIso,
+    };
+  }
+  throw new Error("Unable to generate a unique GLASS-ID");
+};
+
+const drawSignatureImage = (
+  page: any,
+  image: any,
+  x: number,
+  y: number,
+  maxWidth: number,
+  maxHeight: number,
+) => {
+  const baseWidth = image.width;
+  const baseHeight = image.height;
+  if (!baseWidth || !baseHeight) return;
+  const ratio = Math.min(maxWidth / baseWidth, maxHeight / baseHeight, 1);
+  const drawWidth = baseWidth * ratio;
+  const drawHeight = baseHeight * ratio;
+  page.drawImage(image, {
+    x: x + (maxWidth - drawWidth) / 2,
+    y: y + (maxHeight - drawHeight) / 2,
+    width: drawWidth,
+    height: drawHeight,
+  });
+};
+
+const tryEmbedImage = async (pdf: PDFDocument, candidates: string[]) => {
+  for (const candidate of candidates) {
+    try {
+      const bytes = await fs.readFile(candidate);
+      if (candidate.toLowerCase().endsWith(".png")) {
+        return await pdf.embedPng(bytes);
+      }
+      if (candidate.toLowerCase().endsWith(".jpg") || candidate.toLowerCase().endsWith(".jpeg")) {
+        return await pdf.embedJpg(bytes);
+      }
+    } catch {
+      // Try next file.
+    }
+  }
+  return null;
+};
+
+const toLocalAssetCandidates = (primaryFile: string | null | undefined, fallbacks: string[]) => {
+  const names = [primaryFile ?? "", ...fallbacks]
+    .map(value => value.trim())
+    .filter(Boolean);
+
+  const candidates: string[] = [];
+  names.forEach(name => {
+    if (/^https?:\/\//i.test(name)) return;
+    if (path.isAbsolute(name)) {
+      candidates.push(name);
+      return;
+    }
+    const normalized = name.replace(/^\/+/, "");
+    candidates.push(path.resolve(__dirname, "..", "client", "public", normalized));
+    candidates.push(path.resolve(__dirname, "..", "dist", normalized));
+    candidates.push(path.resolve(__dirname, "..", normalized));
+  });
+
+  return Array.from(new Set(candidates));
+};
+
+const tryEmbedGlassSymbol = async (pdf: PDFDocument, fileName?: string) =>
+  tryEmbedImage(pdf, toLocalAssetCandidates(fileName, ["GlassLogo3.png", "GlassLogo2.png", "GlassLogo1.png"]));
+
+const tryEmbedGlassLogo = async (pdf: PDFDocument, fileName?: string) =>
+  tryEmbedImage(pdf, toLocalAssetCandidates(fileName, ["GlassLogoLettering.png", "GlassLogo5.png"]));
+
+const readFirstExistingTextFile = async (candidates: string[]) => {
+  for (const candidate of candidates) {
+    try {
+      const text = await fs.readFile(candidate, "utf8");
+      return { path: candidate, text };
+    } catch {
+      // Try next path.
+    }
+  }
+  return null;
+};
+
+const extractTemplateDefaultValue = (html: string, key: string, fallback: string) => {
+  const match = html.match(new RegExp(`${key}\\s*:\\s*["']([^"']+)["']`, "i"));
+  return match?.[1]?.trim() || fallback;
+};
+
+const bytesToDataUrl = (bytes: Buffer, extension: string) => {
+  const normalized = extension.toLowerCase();
+  const mime =
+    normalized === ".png"
+      ? "image/png"
+      : normalized === ".jpg" || normalized === ".jpeg"
+        ? "image/jpeg"
+        : "application/octet-stream";
+  return `data:${mime};base64,${bytes.toString("base64")}`;
+};
+
+const toRenderableImageSource = async (value: string | null | undefined, fallbackFiles: string[]) => {
+  const source = (value ?? "").trim();
+  if (!source) {
+    if (!fallbackFiles.length) return null;
+  } else if (/^data:image\/[a-zA-Z0-9.+-]+;base64,/i.test(source) || /^https?:\/\//i.test(source)) {
+    return source;
+  }
+
+  const candidates = toLocalAssetCandidates(source, fallbackFiles);
+  for (const candidate of candidates) {
+    try {
+      const bytes = await fs.readFile(candidate);
+      const extension = path.extname(candidate);
+      return bytesToDataUrl(bytes, extension);
+    } catch {
+      // Try next path.
+    }
+  }
+  return null;
+};
+
+const injectTemplateBootData = (html: string, payload: Record<string, unknown>) => {
+  const safeJson = JSON.stringify(payload).replace(/</g, "\\u003c");
+  const bootScript =
+    `<script>window.__INITIAL_CERTIFICATE_DATA__=${safeJson};window.__SERVER_RENDER__=true;</script>`;
+  if (html.includes("<script>")) {
+    return html.replace("<script>", `${bootScript}\n<script>`);
+  }
+  if (html.includes("</body>")) {
+    return html.replace("</body>", `${bootScript}\n</body>`);
+  }
+  return `${html}\n${bootScript}`;
+};
+
+const generateVerificationCertificatePdfFromHtmlTemplate = async (input: CertificatePdfInput) => {
+  const templateFile = await readFirstExistingTextFile(CERTIFICATE_HTML_TEMPLATE_PATHS);
+  if (!templateFile) return null;
+
+  const defaultSymbol = extractTemplateDefaultValue(templateFile.text, "symbolLogo", "/GlassLogo1.png");
+  const defaultWordmark = extractTemplateDefaultValue(templateFile.text, "wordmarkLogo", "/GlassLogoLettering.png");
+  const symbolLogo = await toRenderableImageSource(defaultSymbol, ["GlassLogo1.png", "GlassLogo3.png", "GlassLogo2.png"]);
+  const wordmarkLogo = await toRenderableImageSource(defaultWordmark, ["GlassLogoLettering.png", "GlassLogo5.png"]);
+  const issuedDate = input.issuedAt.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const renderPayload = {
+    ...(symbolLogo ? { symbolLogo } : {}),
+    ...(wordmarkLogo ? { wordmarkLogo } : {}),
+    labName: input.labName,
+    labAddress: input.location || "Address not specified",
+    glassId: input.glassId || "Not assigned",
+    issuedDate,
+    labSignerName: input.labSignerName || "Lab representative",
+    labSignerTitle: input.labSignerTitle || "Lab representative",
+    glassSignerName: input.glassSignerName || "GLASS signer",
+    glassSignerTitle: input.glassSignerTitle || "GLASS admin",
+    labSignature: input.labSignatureDataUrl || "",
+    glassSignature: input.glassSignatureDataUrl || "",
+  };
+
+  let html = injectTemplateBootData(templateFile.text, renderPayload);
+  html = html.replace("<body>", '<body class="server-render">');
+
+  let puppeteerModule: any;
+  try {
+    puppeteerModule = await import("puppeteer");
+  } catch {
+    return null;
+  }
+
+  const puppeteer = puppeteerModule?.default ?? puppeteerModule;
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
+
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 595, height: 842, deviceScaleFactor: 2 });
+    await page.setContent(html, { waitUntil: "networkidle0" });
+    await page.evaluate(async () => {
+      if (typeof (window as any).setCertificateData === "function" && (window as any).__INITIAL_CERTIFICATE_DATA__) {
+        (window as any).setCertificateData((window as any).__INITIAL_CERTIFICATE_DATA__);
+      }
+      const images = Array.from(document.images).filter(image => image.src);
+      await Promise.all(
+        images.map(image =>
+          image.complete
+            ? Promise.resolve()
+            : new Promise(resolve => {
+                image.addEventListener("load", () => resolve(null), { once: true });
+                image.addEventListener("error", () => resolve(null), { once: true });
+              }),
+        ),
+      );
+      await new Promise(resolve => setTimeout(resolve, 80));
+    });
+
+    const pdfBuffer = await page.pdf({
+      width: "595px",
+      height: "842px",
+      printBackground: true,
+      margin: { top: "0", right: "0", bottom: "0", left: "0" },
+      preferCSSPageSize: false,
+    });
+    return new Uint8Array(pdfBuffer);
+  } finally {
+    await browser.close();
+  }
+};
+
+const generateVerificationCertificatePdfLegacy = async (input: CertificatePdfInput) => {
+  const template = await loadCertificateTemplate();
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([template.page.width, template.page.height]);
+  const { width, height } = page.getSize();
+  const centerX = width / 2;
+
+  const fontRegular = await pdf.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const fontMono = await pdf.embedFont(StandardFonts.CourierBold);
+
+  const normalizeInlineText = (value: string | null | undefined) =>
+    String(value ?? "")
+      .replace(/[\r\n\t]+/g, " ")
+      .replace(/[\u0000-\u001F\u007F]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  const toFontSafeText = (value: string | null | undefined, font: any) => {
+    const normalized = normalizeInlineText(value);
+    if (!normalized) return "";
+    let safe = "";
+    for (const char of normalized) {
+      try {
+        font.encodeText(char);
+        safe += char;
+      } catch {
+        safe += " ";
+      }
+    }
+    return safe.replace(/\s+/g, " ").trim();
+  };
+
+  const wrapCenteredText = (
+    text: string,
+    maxWidth: number,
+    size: number,
+    font: any,
+    maxLines: number,
+  ) => {
+    const words = text.split(/\s+/).filter(Boolean);
+    if (!words.length) return [""];
+    const lines: string[] = [];
+    let current = "";
+    for (const word of words) {
+      const candidate = current ? `${current} ${word}` : word;
+      if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+        current = candidate;
+        continue;
+      }
+      if (current) lines.push(current);
+      current = word;
+      if (lines.length === maxLines - 1) break;
+    }
+    if (current && lines.length < maxLines) lines.push(current);
+
+    if (words.length && lines.length === maxLines) {
+      const usedWords = lines.join(" ").split(/\s+/).filter(Boolean).length;
+      if (usedWords < words.length) {
+        const last = lines[lines.length - 1];
+        lines[lines.length - 1] = fitText(`${last}...`, maxWidth, size, (value, fontSize) =>
+          font.widthOfTextAtSize(value, fontSize),
+        );
+      }
+    }
+    return lines;
+  };
+
+  const centerText = (text: string, y: number, size: number, font: any, color = rgb(0.12, 0.15, 0.24)) => {
+    const textWidth = font.widthOfTextAtSize(text, size);
+    page.drawText(text, {
+      x: centerX - textWidth / 2,
+      y,
+      size,
+      font,
+      color,
+    });
+  };
+
+  const colors = {
+    background: hexToRgb(template.colors.background, [1, 1, 1]),
+    pastelBlue: hexToRgb(template.colors.pastelBlue, [0.75, 0.91, 1.0]),
+    pastelPink: hexToRgb(template.colors.pastelPink, [1.0, 0.84, 0.91]),
+    mist: hexToRgb(template.colors.mist, [0.93, 0.97, 1]),
+    cardBorder: hexToRgb(template.colors.cardBorder, [0.82, 0.86, 0.95]),
+    ink: hexToRgb(template.colors.ink, [0.1, 0.13, 0.21]),
+    mutedInk: hexToRgb(template.colors.mutedInk, [0.35, 0.39, 0.5]),
+    subtitle: hexToRgb(template.colors.subtitle, [0.33, 0.4, 0.56]),
+    idLabel: hexToRgb(template.colors.idLabel, [0.32, 0.4, 0.57]),
+    signatureLine: hexToRgb(template.colors.signatureLine, [0.72, 0.76, 0.86]),
+    footer: hexToRgb(template.colors.footer, [0.43, 0.47, 0.58]),
+    fallbackLogo: hexToRgb(template.colors.fallbackLogo, [0.13, 0.18, 0.3]),
+  };
+
+  page.drawRectangle({
+    x: 0,
+    y: 0,
+    width,
+    height,
+    color: colors.background,
+  });
+  page.drawEllipse({
+    x: template.background.leftGlow.x,
+    y: template.background.leftGlow.y,
+    xScale: template.background.leftGlow.xScale,
+    yScale: template.background.leftGlow.yScale,
+    color: colors.pastelBlue,
+    opacity: template.background.leftGlow.opacity,
+  });
+  page.drawEllipse({
+    x: template.background.rightGlow.x,
+    y: template.background.rightGlow.y,
+    xScale: template.background.rightGlow.xScale,
+    yScale: template.background.rightGlow.yScale,
+    color: colors.pastelPink,
+    opacity: template.background.rightGlow.opacity,
+  });
+  page.drawEllipse({
+    x: centerX,
+    y: template.background.bottomGlow.y,
+    xScale: template.background.bottomGlow.xScale,
+    yScale: template.background.bottomGlow.yScale,
+    color: colors.mist,
+    opacity: template.background.bottomGlow.opacity,
+  });
+
+  const cardX = template.card.x;
+  const cardY = template.card.y;
+  const cardWidth = width - cardX * 2;
+  const cardHeight = height - cardY * 2;
+  page.drawRectangle({
+    x: cardX,
+    y: cardY,
+    width: cardWidth,
+    height: cardHeight,
+    borderColor: colors.cardBorder,
+    borderWidth: template.card.borderWidth,
+    color: rgb(1, 1, 1),
+    opacity: template.card.opacity,
+  });
+
+  page.drawRectangle({
+    x: cardX,
+    y: cardY + cardHeight - 6,
+    width: cardWidth / 2,
+    height: template.card.topAccentHeight,
+    color: colors.pastelBlue,
+  });
+  page.drawRectangle({
+    x: cardX + cardWidth / 2,
+    y: cardY + cardHeight - 6,
+    width: cardWidth / 2,
+    height: template.card.topAccentHeight,
+    color: colors.pastelPink,
+  });
+
+  const symbolLogo = await tryEmbedGlassSymbol(pdf, template.logo.symbol.file);
+  if (symbolLogo) {
+    const symbolRatio = Math.min(1, template.logo.symbol.maxWidth / symbolLogo.width);
+    const symbolWidth = symbolLogo.width * symbolRatio;
+    const symbolHeight = symbolLogo.height * symbolRatio;
+    page.drawImage(symbolLogo, {
+      x: centerX - symbolWidth / 2,
+      y: template.logo.symbol.y,
+      width: symbolWidth,
+      height: symbolHeight,
+      opacity: template.logo.symbol.opacity,
+    });
+  }
+
+  const logo = await tryEmbedGlassLogo(pdf, template.logo.wordmark.file);
+  if (logo) {
+    const ratio = Math.min(1, template.logo.wordmark.maxWidth / logo.width);
+    const drawWidth = logo.width * ratio;
+    const drawHeight = logo.height * ratio;
+    page.drawImage(logo, {
+      x: centerX - drawWidth / 2,
+      y: template.logo.wordmark.y,
+      width: drawWidth,
+      height: drawHeight,
+      opacity: template.logo.wordmark.opacity,
+    });
+  } else {
+    centerText(
+      toFontSafeText(template.logo.fallback.text, fontBold) || "GLASS",
+      template.logo.fallback.y,
+      template.logo.fallback.size,
+      fontBold,
+      colors.fallbackLogo,
+    );
+  }
+
+  centerText("Verification Certificate", template.heading.titleY, template.heading.titleSize, fontBold, colors.ink);
+  centerText("Verified by GLASS", template.heading.subtitleY, template.heading.subtitleSize, fontRegular, colors.subtitle);
+  centerText("Equipment and Techniques", template.heading.kickerY, template.heading.kickerSize, fontRegular, colors.subtitle);
+
+  const safeLabName = toFontSafeText(input.labName, fontBold) || "Lab";
+  const labNameSize =
+    safeLabName.length > 72
+      ? template.labName.smallSize
+      : safeLabName.length > 52
+        ? template.labName.mediumSize
+        : template.labName.largeSize;
+  const labNameLines = wrapCenteredText(
+    safeLabName,
+    template.labName.maxWidth,
+    labNameSize,
+    fontBold,
+    template.labName.maxLines,
+  );
+  const lineHeight = labNameSize + template.labName.lineGap;
+  const labNameTopY = template.labName.topY;
+
+  centerText("This certifies that", template.labName.introY, 12, fontRegular, colors.mutedInk);
+  labNameLines.forEach((line, index) => {
+    centerText(line, labNameTopY - index * lineHeight, labNameSize, fontBold, colors.ink);
+  });
+  const labNameBottomY = labNameTopY - (labNameLines.length - 1) * lineHeight;
+  centerText(
+    "has been verified for equipment and techniques in the GLASS network.",
+    labNameBottomY - template.labName.bodyOffset,
+    12,
+    fontRegular,
+    colors.mutedInk,
+  );
+
+  const locationSafe = toFontSafeText(input.location || "Address not specified", fontRegular) || "Address not specified";
+  const addressLines = wrapCenteredText(
+    locationSafe,
+    template.address.maxWidth,
+    template.address.textSize,
+    fontRegular,
+    template.address.maxLines,
+  );
+  const addressLabelY = labNameBottomY - template.address.labelOffset;
+  centerText("Address on file", addressLabelY, template.address.labelSize, fontBold, colors.subtitle);
+  addressLines.forEach((line, index) => {
+    centerText(
+      line,
+      addressLabelY - 15 - index * template.address.lineGap,
+      template.address.textSize,
+      fontRegular,
+      colors.mutedInk,
+    );
+  });
+  const addressBottomY = addressLabelY - 15 - (addressLines.length - 1) * template.address.lineGap;
+
+  const issueDate = input.issuedAt.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  centerText(`Issued on ${issueDate}`, addressBottomY - template.address.issuedGap, 10, fontRegular, colors.subtitle);
+
+  const idBoxWidth = template.idBox.width;
+  const idBoxHeight = template.idBox.height;
+  const idBoxX = centerX - idBoxWidth / 2;
+  const idBoxY = template.idBox.y;
+  page.drawRectangle({
+    x: idBoxX,
+    y: idBoxY,
+    width: idBoxWidth,
+    height: idBoxHeight,
+    color: rgb(0.98, 0.99, 1),
+    borderColor: colors.cardBorder,
+    borderWidth: template.idBox.borderWidth,
+  });
+  page.drawRectangle({
+    x: idBoxX,
+    y: idBoxY + idBoxHeight - template.idBox.accentHeight,
+    width: idBoxWidth / 2,
+    height: template.idBox.accentHeight,
+    color: colors.pastelBlue,
+  });
+  page.drawRectangle({
+    x: idBoxX + idBoxWidth / 2,
+    y: idBoxY + idBoxHeight - template.idBox.accentHeight,
+    width: idBoxWidth / 2,
+    height: template.idBox.accentHeight,
+    color: colors.pastelPink,
+  });
+
+  const glassIdText = toFontSafeText(input.glassId ? input.glassId : "Not assigned", fontMono) || "Not assigned";
+  centerText("GLASS-ID", idBoxY + template.idBox.labelYOffset, template.idBox.labelSize, fontBold, colors.idLabel);
+  centerText(glassIdText, idBoxY + template.idBox.idYOffset, template.idBox.idSize, fontMono, colors.ink);
+
+  const signatureAreaY = template.signatures.imageY;
+  const signatureLineY = template.signatures.lineY;
+  const signatureSlotWidth = template.signatures.slotWidth;
+  const signatureGap = template.signatures.gap;
+  const leftX = (width - signatureSlotWidth * 2 - signatureGap) / 2;
+  const rightX = leftX + signatureSlotWidth + signatureGap;
+
+  centerText("Signatures", template.signatures.titleY, 10, fontBold, colors.subtitle);
+
+  const labSignature = decodeImageDataUrl(input.labSignatureDataUrl);
+  const glassSignature = decodeImageDataUrl(input.glassSignatureDataUrl);
+  const labImage =
+    labSignature.mimeType === "image/png"
+      ? await pdf.embedPng(labSignature.bytes)
+      : await pdf.embedJpg(labSignature.bytes);
+  const glassImage =
+    glassSignature.mimeType === "image/png"
+      ? await pdf.embedPng(glassSignature.bytes)
+      : await pdf.embedJpg(glassSignature.bytes);
+  drawSignatureImage(page, labImage, leftX, signatureAreaY, signatureSlotWidth, template.signatures.imageHeight);
+  drawSignatureImage(page, glassImage, rightX, signatureAreaY, signatureSlotWidth, template.signatures.imageHeight);
+
+  page.drawLine({
+    start: { x: leftX, y: signatureLineY },
+    end: { x: leftX + signatureSlotWidth, y: signatureLineY },
+    thickness: template.signatures.lineThickness,
+    color: colors.signatureLine,
+  });
+  page.drawLine({
+    start: { x: rightX, y: signatureLineY },
+    end: { x: rightX + signatureSlotWidth, y: signatureLineY },
+    thickness: template.signatures.lineThickness,
+    color: colors.signatureLine,
+  });
+
+  const labSignerName = fitText(
+    toFontSafeText(input.labSignerName, fontBold) || "Lab representative",
+    signatureSlotWidth,
+    template.signatures.nameSize,
+    (value, size) => fontBold.widthOfTextAtSize(value, size),
+  );
+  const glassSignerName = fitText(
+    toFontSafeText(input.glassSignerName, fontBold) || "GLASS signer",
+    signatureSlotWidth,
+    template.signatures.nameSize,
+    (value, size) => fontBold.widthOfTextAtSize(value, size),
+  );
+  const labSignerTitle = fitText(
+    toFontSafeText(input.labSignerTitle || "Lab representative", fontRegular) || "Lab representative",
+    signatureSlotWidth,
+    template.signatures.titleSize,
+    (value, size) => fontRegular.widthOfTextAtSize(value, size),
+  );
+  const glassSignerTitle = fitText(
+    toFontSafeText(input.glassSignerTitle || "GLASS admin", fontRegular) || "GLASS admin",
+    signatureSlotWidth,
+    template.signatures.titleSize,
+    (value, size) => fontRegular.widthOfTextAtSize(value, size),
+  );
+
+  page.drawText(labSignerName, {
+    x: leftX,
+    y: signatureLineY - template.signatures.nameGap,
+    size: template.signatures.nameSize,
+    font: fontBold,
+    color: colors.ink,
+  });
+  page.drawText(glassSignerName, {
+    x: rightX,
+    y: signatureLineY - template.signatures.nameGap,
+    size: template.signatures.nameSize,
+    font: fontBold,
+    color: colors.ink,
+  });
+  page.drawText(labSignerTitle, {
+    x: leftX,
+    y: signatureLineY - template.signatures.titleGap,
+    size: template.signatures.titleSize,
+    font: fontRegular,
+    color: colors.mutedInk,
+  });
+  page.drawText(glassSignerTitle, {
+    x: rightX,
+    y: signatureLineY - template.signatures.titleGap,
+    size: template.signatures.titleSize,
+    font: fontRegular,
+    color: colors.mutedInk,
+  });
+
+  centerText(
+    toFontSafeText(template.footer.text, fontRegular) || "Issued by GLASS.",
+    template.footer.y,
+    template.footer.size,
+    fontRegular,
+    colors.footer,
+  );
+
+  return pdf.save();
+};
+
+const generateVerificationCertificatePdf = async (input: CertificatePdfInput) => {
+  const htmlPdf = await generateVerificationCertificatePdfFromHtmlTemplate(input);
+  if (htmlPdf && htmlPdf.length > 0) {
+    return htmlPdf;
+  }
+  throw new Error("Unable to render certificate from HTML template.");
 };
 
 const fetchProfileCapabilities = async (userId?: string | null) => {
@@ -337,10 +1288,12 @@ const isActiveSubscriptionStatus = (status: string) =>
   status === "active" || status === "past_due" || status === "trialing";
 
 const authenticate = async (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ message: "Missing token" });
+  const authHeader = typeof req.headers.authorization === "string" ? req.headers.authorization.trim() : "";
+  const token = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7).trim() : authHeader;
+  const normalizedToken = token.replace(/^"+|"+$/g, "");
+  if (!normalizedToken) return res.status(401).json({ message: "Missing token" });
 
-  const { data, error } = await supabasePublic.auth.getUser(token);
+  const { data, error } = await supabasePublic.auth.getUser(normalizedToken);
   if (error || !data?.user) return res.status(401).json({ message: "Invalid token" });
 
   req.user = data.user;
@@ -1279,6 +2232,217 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  app.get("/api/admin/labs/:id/verification-certificate", authenticate, async (req, res) => {
+    try {
+      const labId = Number(req.params.id);
+      if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+
+      const profile = await fetchProfileCapabilities(userId);
+      if (!profile?.isAdmin) {
+        return res.status(403).json({ message: "Only admins can access verification certificates." });
+      }
+
+      const { data, error } = await supabase
+        .from("lab_verification_certificates")
+        .select(
+          [
+            "id",
+            "lab_id",
+            "glass_id",
+            "lab_signer_name",
+            "lab_signer_title",
+            "glass_signer_name",
+            "glass_signer_title",
+            "issued_at",
+            "pdf_bucket",
+            "pdf_path",
+            "pdf_url",
+            "created_at",
+            "updated_at",
+          ].join(","),
+        )
+        .eq("lab_id", labId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return res.status(404).json({ message: "No certificate found for this lab." });
+
+      res.json(data);
+    } catch (error) {
+      if (isMissingRelationError(error)) {
+        return res.status(500).json({
+          message: "Certificate table not found. Run server/sql/lab_verification_certificates.sql first.",
+        });
+      }
+      res.status(500).json({ message: errorToMessage(error, "Unable to load certificate") });
+    }
+  });
+
+  app.get("/api/admin/certificate-template", authenticate, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const profile = await fetchProfileCapabilities(userId);
+      if (!profile?.isAdmin) {
+        return res.status(403).json({ message: "Only admins can view certificate template config." });
+      }
+
+      let raw = JSON.stringify(defaultCertificateTemplate, null, 2);
+      try {
+        raw = await fs.readFile(CERTIFICATE_TEMPLATE_PATH, "utf8");
+      } catch {
+        // Fall back to default template when file is missing.
+      }
+
+      let template = defaultCertificateTemplate;
+      try {
+        template = mergeTemplate(defaultCertificateTemplate, JSON.parse(raw));
+      } catch {
+        // Keep default if file is malformed.
+      }
+
+      res.json({ raw, template });
+    } catch (error) {
+      res.status(500).json({ message: errorToMessage(error, "Unable to load certificate template") });
+    }
+  });
+
+  app.post("/api/admin/labs/:id/verification-certificate", authenticate, async (req, res) => {
+    try {
+      const labId = Number(req.params.id);
+      if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+
+      const profile = await fetchProfileCapabilities(userId);
+      if (!profile?.isAdmin) {
+        return res.status(403).json({ message: "Only admins can issue verification certificates." });
+      }
+
+      const payload = upsertVerificationCertificateSchema.parse(req.body ?? {});
+      const { data: labRow, error: labError } = await supabase
+        .from("labs")
+        .select(
+          "id, name, lab_status, lab_location (address_line1, address_line2, city, state, postal_code, country)",
+        )
+        .eq("id", labId)
+        .maybeSingle();
+      if (labError) throw labError;
+      if (!labRow) return res.status(404).json({ message: "Lab not found" });
+
+      const status = ((labRow as any)?.lab_status || "listed").toLowerCase();
+      if (!["verified_passive", "verified_active", "premier"].includes(status)) {
+        return res.status(409).json({ message: "This lab is not verified yet." });
+      }
+
+      const locationRow = Array.isArray((labRow as any)?.lab_location)
+        ? (labRow as any).lab_location[0]
+        : (labRow as any)?.lab_location;
+      const location = [
+        locationRow?.address_line1,
+        locationRow?.address_line2,
+        locationRow?.city,
+        locationRow?.state,
+        locationRow?.postal_code,
+        locationRow?.country,
+      ]
+        .map(value => (typeof value === "string" ? value.trim() : ""))
+        .filter(Boolean)
+        .join(", ") || "Address not specified";
+
+      const countryCode = toCountryCode(locationRow?.country ?? null);
+      const ensuredGlassId = await ensureLabGlassId(labId, countryCode);
+      const glassId = ensuredGlassId.glassId;
+      const issuedAt = new Date();
+      const pdfBytes = await generateVerificationCertificatePdf({
+        labName: (labRow as any).name || `Lab #${labId}`,
+        location,
+        glassId,
+        issuedAt,
+        labSignerName: payload.labSignerName.trim(),
+        labSignerTitle: payload.labSignerTitle?.trim() || null,
+        labSignatureDataUrl: payload.labSignatureDataUrl,
+        glassSignerName: payload.glassSignerName.trim(),
+        glassSignerTitle: payload.glassSignerTitle?.trim() || null,
+        glassSignatureDataUrl: payload.glassSignatureDataUrl,
+      });
+
+      const pdfVersion = issuedAt.getTime();
+      const pdfPath = `verification-certificates/lab-${labId}/verification-certificate-${pdfVersion}.pdf`;
+      const { error: uploadError } = await supabase.storage
+        .from("lab-pdfs")
+        .upload(pdfPath, pdfBytes, {
+          upsert: true,
+          contentType: "application/pdf",
+        });
+      if (uploadError) throw uploadError;
+      const { data: publicUrlData } = supabase.storage.from("lab-pdfs").getPublicUrl(pdfPath);
+      const issuedAtIso = issuedAt.toISOString();
+      const { error: auditUpdateError } = await supabase
+        .from("labs")
+        .update({
+          audit_passed: true,
+          audit_passed_at: issuedAtIso,
+        })
+        .eq("id", labId);
+      if (auditUpdateError) throw auditUpdateError;
+
+      const recordToSave = {
+        lab_id: labId,
+        glass_id: glassId,
+        lab_signer_name: payload.labSignerName.trim(),
+        lab_signer_title: payload.labSignerTitle?.trim() || null,
+        lab_signature_data_url: payload.labSignatureDataUrl,
+        glass_signer_name: payload.glassSignerName.trim(),
+        glass_signer_title: payload.glassSignerTitle?.trim() || null,
+        glass_signature_data_url: payload.glassSignatureDataUrl,
+        issued_by_user_id: userId,
+        issued_at: issuedAtIso,
+        pdf_bucket: "lab-pdfs",
+        pdf_path: pdfPath,
+        pdf_url: publicUrlData.publicUrl,
+        updated_at: issuedAtIso,
+      };
+
+      const { data: certificate, error: certificateError } = await supabase
+        .from("lab_verification_certificates")
+        .upsert(recordToSave, { onConflict: "lab_id" })
+        .select(
+          [
+            "id",
+            "lab_id",
+            "glass_id",
+            "lab_signer_name",
+            "lab_signer_title",
+            "glass_signer_name",
+            "glass_signer_title",
+            "issued_at",
+            "pdf_bucket",
+            "pdf_path",
+            "pdf_url",
+            "created_at",
+            "updated_at",
+          ].join(","),
+        )
+        .single();
+      if (certificateError) throw certificateError;
+
+      res.status(201).json(certificate);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const issue = error.issues[0];
+        return res.status(400).json({ message: issue?.message ?? "Invalid certificate payload" });
+      }
+      if (isMissingRelationError(error)) {
+        return res.status(500).json({
+          message: "Certificate table not found. Run server/sql/lab_verification_certificates.sql first.",
+        });
+      }
+      res.status(500).json({ message: errorToMessage(error, "Unable to issue verification certificate") });
+    }
+  });
+
   // --------- Teams ----------
   app.get("/api/teams", async (req, res) => {
     const includeHidden = req.query.includeHidden === "true" || req.query.includeHidden === "1";
@@ -2116,9 +3280,6 @@ app.get("/api/profile", authenticate, async (req, res) => {
     const userEmail = typeof req.user?.email === "string" ? req.user.email.trim() : "";
     if (!userId) return res.status(400).json({ message: "No user on request" });
 
-    const isMissingRelationError = (error: any) =>
-      error?.code === "42P01" || /does not exist/i.test(String(error?.message ?? ""));
-
     const runCleanup = async (
       label: string,
       task: () => Promise<{ error: any } | void>,
@@ -2757,6 +3918,29 @@ app.get("/api/profile", authenticate, async (req, res) => {
       res.json(mapped);
     } catch (err) {
       res.status(500).json({ message: err instanceof Error ? err.message : "Unable to load labs" });
+    }
+  });
+
+  app.get("/api/my-labs/certificates", authenticate, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+
+      const labIds = await listLabIdsForUser(userId);
+      if (!labIds.length) return res.json([]);
+
+      const { data, error } = await supabase
+        .from("lab_verification_certificates")
+        .select("id, lab_id, glass_id, issued_at, pdf_url, created_at, updated_at")
+        .in("lab_id", labIds);
+      if (error) throw error;
+
+      res.json(data ?? []);
+    } catch (error) {
+      if (isMissingRelationError(error)) {
+        return res.json([]);
+      }
+      res.status(500).json({ message: errorToMessage(error, "Unable to load verification certificates") });
     }
   });
 

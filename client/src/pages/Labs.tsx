@@ -491,13 +491,30 @@ export default function Labs() {
               </div>
             </div>
           </div>
-          <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm flex-1 min-w-[240px] max-w-sm">
+          <div className="relative rounded-3xl border border-border bg-card/80 p-6 shadow-sm flex-1 min-w-[240px] max-w-sm">
             <div className="flex items-center gap-3 justify-between">
               <div>
                 <p className="text-xs font-medium uppercase tracking-[0.3em] text-muted-foreground">Verified labs</p>
                 <p className="mt-2 text-3xl font-semibold text-foreground">{verifiedCount} verified</p>
                 <p className="mt-1 text-sm text-muted-foreground">Completed verification to boost trust and routing.</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground md:hidden">
+                  <Link href="/verified-by-glass" className="hover:text-primary hover:underline">
+                    What is Verified by GLASS?
+                  </Link>
+                  <span aria-hidden="true">•</span>
+                  <Link href="/glass-id" className="hover:text-primary hover:underline">
+                    What is GLASS-ID?
+                  </Link>
+                </div>
               </div>
+            </div>
+            <div className="hidden md:flex absolute left-full top-0 ml-3 flex-col gap-1 text-xs text-muted-foreground whitespace-nowrap">
+              <Link href="/verified-by-glass" className="hover:text-primary hover:underline">
+                What is Verified by GLASS?
+              </Link>
+              <Link href="/glass-id" className="hover:text-primary hover:underline">
+                What is GLASS-ID?
+              </Link>
             </div>
           </div>
         </motion.div>

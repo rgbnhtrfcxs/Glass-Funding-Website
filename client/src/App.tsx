@@ -6,6 +6,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { Navbar } from "@/components/layout/navbar";
 import Home from "@/pages/home";
 import About from "@/pages/about";
+import GlassId from "@/pages/GlassId";
+import VerifiedByGlass from "@/pages/VerifiedByGlass";
+import CertificateTemplatePreview from "@/pages/CertificateTemplatePreview";
 import Contact from "@/pages/contact";
 import NotFound from "@/pages/not-found";
 import { useEffect, useState } from "react";
@@ -126,6 +129,7 @@ function Router() {
       <Route path="/labs/:id/request" component={LabRequest} />
       <LabRoute path="/labs/:id/collaborate" component={LabCollaboration} />
       <AdminRoute path="/admin/labs" component={AdminLabs} />
+      <AdminRoute path="/certificate-template-preview" component={CertificateTemplatePreview} />
       <Route path="/lab-profile" component={LabProfile} />
       <ProtectedRoute path="/account" component={Account} />
       <ProtectedRoute path="/account/edit" component={Account} />
@@ -156,6 +160,8 @@ function Router() {
       {/* Base Pages */}
       <Route path="/" component={Home} />
       <Route path="/about" component={About} />
+      <Route path="/verified-by-glass" component={VerifiedByGlass} />
+      <Route path="/glass-id" component={GlassId} />
       <Route path="/pricing" component={Pricing} />
       <Route path="/contact" component={Contact} />
       <Route path="/one-pagers" component={OnePagers} />

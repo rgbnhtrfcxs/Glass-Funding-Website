@@ -1,0 +1,143 @@
+{
+  "_comment": "Template for certificate layout and styling. All coordinates are in PDF points from bottom-left. Higher Y moves up.",
+  "page": {
+    "_comment": "A4 portrait by default. Change width/height to switch orientation or page size.",
+    "width": 595,
+    "height": 842
+  },
+  "colors": {
+    "_comment": "Hex colors used across the certificate.",
+    "background": "#FFFFFF",
+    "pastelBlue": "#BFE8FF",
+    "pastelPink": "#FFD7E8",
+    "mist": "#EDF7FF",
+    "cardBorder": "#D1DBF2",
+    "ink": "#1A2238",
+    "mutedInk": "#59647F",
+    "subtitle": "#54668F",
+    "idLabel": "#53668F",
+    "signatureLine": "#B8C1D9",
+    "footer": "#6B748D",
+    "fallbackLogo": "#22345A"
+  },
+  "background": {
+    "_comment": "Soft glow ellipses in the background.",
+    "leftGlow": {
+      "_comment": "Left pastel glow. x/y = center, xScale/yScale = radius-like size, opacity 0-1.",
+      "x": 96,
+      "y": 760,
+      "xScale": 168,
+      "yScale": 132,
+      "opacity": 0.38
+    },
+    "rightGlow": {
+      "_comment": "Right pastel glow.",
+      "x": 505,
+      "y": 768,
+      "xScale": 152,
+      "yScale": 128,
+      "opacity": 0.36
+    },
+    "bottomGlow": {
+      "_comment": "Bottom center mist glow.",
+      "xScale": 220,
+      "yScale": 120,
+      "y": 50,
+      "opacity": 0.62
+    }
+  },
+  "card": {
+    "_comment": "Main certificate card container.",
+    "x": 30,
+    "y": 34,
+    "borderWidth": 1.25,
+    "opacity": 0.93,
+    "topAccentHeight": 2.6
+  },
+  "logo": {
+    "_comment": "Top branding placement.",
+    "symbol": {
+      "_comment": "Top icon/logo symbol. file can be a public asset filename (example: GlassLogo3.png) or full URL.",
+      "file": "GlassLogo3.png",
+      "maxWidth": 58,
+      "y": 742,
+      "opacity": 0.99
+    },
+    "wordmark": {
+      "_comment": "GLASS lettering under symbol. file can be a public asset filename or full URL.",
+      "file": "GlassLogoLettering.png",
+      "maxWidth": 156,
+      "y": 690,
+      "opacity": 0.98
+    },
+    "fallback": {
+      "_comment": "Used if logo image fails to load.",
+      "text": "GLASS",
+      "y": 710,
+      "size": 34
+    }
+  },
+  "heading": {
+    "_comment": "Main title/subtitle text positions and sizes.",
+    "titleY": 668,
+    "titleSize": 30,
+    "subtitleY": 644,
+    "subtitleSize": 12,
+    "kickerY": 628,
+    "kickerSize": 11
+  },
+  "labName": {
+    "_comment": "Lab name block (auto-resizes/wraps for long names).",
+    "introY": 596,
+    "topY": 572,
+    "largeSize": 29,
+    "mediumSize": 24,
+    "smallSize": 20,
+    "lineGap": 6,
+    "maxWidth": 485,
+    "maxLines": 3,
+    "bodyOffset": 28
+  },
+  "address": {
+    "_comment": "Address block under lab name.",
+    "labelOffset": 52,
+    "labelSize": 10,
+    "textSize": 10,
+    "maxWidth": 465,
+    "maxLines": 3,
+    "lineGap": 12,
+    "issuedGap": 18
+  },
+  "idBox": {
+    "_comment": "Centered GLASS-ID panel.",
+    "width": 390,
+    "height": 88,
+    "y": 364,
+    "borderWidth": 1.1,
+    "accentHeight": 4,
+    "labelYOffset": 60,
+    "labelSize": 11,
+    "idYOffset": 31,
+    "idSize": 22
+  },
+  "signatures": {
+    "_comment": "Bottom signature area for lab and GLASS signer.",
+    "titleY": 244,
+    "slotWidth": 220,
+    "gap": 56,
+    "imageY": 170,
+    "imageHeight": 58,
+    "lineY": 128,
+    "lineThickness": 1.1,
+    "nameGap": 18,
+    "titleGap": 32,
+    "nameSize": 11,
+    "titleSize": 10
+  },
+  "footer": {
+    "_comment": "Small line at the very bottom.",
+    "text": "Issued by GLASS for trusted collaboration visibility across verified labs.",
+    "y": 42,
+    "size": 9
+  }
+}

@@ -16,7 +16,7 @@ export function Footer() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="grid md:grid-cols-4 gap-8"
+          className="grid md:grid-cols-5 gap-8"
         >
           <div>
             <h3 className="font-bold text-lg mb-4">Glass</h3>
@@ -41,6 +41,22 @@ export function Footer() {
               <li>
                 <Link href="/contact" className="text-muted-foreground hover:text-primary transition-colors">
                   Contact
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="font-semibold mb-4">Trust</h4>
+            <ul className="space-y-2">
+              <li>
+                <Link href="/verified-by-glass" className="text-muted-foreground hover:text-primary transition-colors">
+                  Verified by GLASS
+                </Link>
+              </li>
+              <li>
+                <Link href="/glass-id" className="text-muted-foreground hover:text-primary transition-colors">
+                  GLASS-ID
                 </Link>
               </li>
             </ul>

@@ -725,22 +725,25 @@ export default function LabDetails({ params }: LabDetailsProps) {
                       lab.country,
                     ].filter(Boolean).join(", ") || "Location not set"}
                   </span>
-                  <span
-                    className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${badgeClass}`}
-                    title={isListedOnly ? listedDisclaimer : undefined}
-                  >
-                    {status === "verified" || status === "premier" ? (
-                      <>
+                  {status === "verified" || status === "premier" ? (
+                    <Link href="/verified-by-glass">
+                      <a
+                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition hover:opacity-90 ${badgeClass}`}
+                        title="Learn what Verified by GLASS means"
+                      >
                         <CheckCircle2 className="h-3.5 w-3.5" />
                         {badgeLabel}
-                      </>
-                    ) : (
-                      <>
-                        <ShieldAlert className="h-3.5 w-3.5" />
-                        {badgeLabel}
-                      </>
-                    )}
-                  </span>
+                      </a>
+                    </Link>
+                  ) : (
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${badgeClass}`}
+                      title={isListedOnly ? listedDisclaimer : undefined}
+                    >
+                      <ShieldAlert className="h-3.5 w-3.5" />
+                      {badgeLabel}
+                    </span>
+                  )}
                   {offersLabSpace && (
                     <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground">
                       <Unlock className="h-3.5 w-3.5 text-primary" />

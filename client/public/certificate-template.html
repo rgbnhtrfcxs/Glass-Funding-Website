@@ -1,0 +1,811 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GLASS Certificate Template</title>
+    <style>
+      :root {
+        --bg: #f4f7fd;
+        --paper: #ffffff;
+        --ink: #1a2238;
+        --muted: #59647f;
+        --subtitle: #54668f;
+        --line: #d1dbf2;
+        --blue: #bfe8ff;
+        --pink: #ffd7e8;
+        --mist: #edf7ff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+        color: var(--ink);
+        background: radial-gradient(circle at 8% 8%, #ffffff 0, #f6f8ff 40%, #eef3fd 100%);
+      }
+
+      .layout {
+        width: min(1400px, 100% - 2rem);
+        margin: 1.5rem auto;
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: minmax(300px, 400px) minmax(620px, 1fr);
+      }
+
+      .controls {
+        border: 1px solid #dbe3f4;
+        border-radius: 16px;
+        background: #ffffffcc;
+        backdrop-filter: blur(8px);
+        padding: 1rem;
+      }
+
+      .controls h1 {
+        margin: 0 0 0.5rem;
+        font-size: 1.15rem;
+      }
+
+      .controls p {
+        margin: 0 0 1rem;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+
+      .field-grid {
+        display: grid;
+        gap: 0.6rem;
+      }
+
+      .field {
+        display: grid;
+        gap: 0.25rem;
+      }
+
+      .field label {
+        font-size: 0.72rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .field input,
+      .field textarea {
+        width: 100%;
+        border: 1px solid #d8dfef;
+        border-radius: 10px;
+        padding: 0.5rem 0.6rem;
+        font: inherit;
+        color: var(--ink);
+        background: #fff;
+      }
+
+      .field textarea {
+        resize: vertical;
+        min-height: 2.8rem;
+      }
+
+      .row-2 {
+        display: grid;
+        gap: 0.6rem;
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .actions {
+        margin-top: 0.85rem;
+        display: flex;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        border: 1px solid #cfd8ec;
+        border-radius: 999px;
+        padding: 0.5rem 0.85rem;
+        font-size: 0.82rem;
+        color: var(--ink);
+        background: #fff;
+        cursor: pointer;
+      }
+
+      .btn.primary {
+        border-color: #a6bddc;
+        background: linear-gradient(135deg, #eff6ff, #fff1f8);
+      }
+
+      .preview-wrap {
+        border: 1px solid #dbe3f4;
+        border-radius: 16px;
+        background: #ffffffbf;
+        padding: 0.9rem;
+        overflow: auto;
+      }
+
+      .sheet {
+        width: 595px;
+        height: 842px;
+        margin: 0 auto;
+        position: relative;
+        background: var(--paper);
+        box-shadow: 0 24px 80px rgba(21, 28, 46, 0.18);
+        overflow: hidden;
+      }
+
+      .glow-left,
+      .glow-right,
+      .glow-bottom {
+        position: absolute;
+        border-radius: 999px;
+        pointer-events: none;
+      }
+
+      .glow-left {
+        width: 336px;
+        height: 264px;
+        left: -72px;
+        top: -52px;
+        background: var(--blue);
+        opacity: 0.35;
+      }
+
+      .glow-right {
+        width: 304px;
+        height: 256px;
+        right: -86px;
+        top: -60px;
+        background: var(--pink);
+        opacity: 0.35;
+      }
+
+      .glow-bottom {
+        width: 440px;
+        height: 220px;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: -120px;
+        background: var(--mist);
+        opacity: 0.9;
+      }
+
+      .card {
+        position: absolute;
+        left: 30px;
+        right: 30px;
+        top: 34px;
+        bottom: 34px;
+        border: 1.2px solid var(--line);
+        background: #ffffffee;
+      }
+
+      .card::before,
+      .card::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        height: 2.6px;
+      }
+
+      .card::before {
+        left: 0;
+        width: 50%;
+        background: var(--blue);
+      }
+
+      .card::after {
+        right: 0;
+        width: 50%;
+        background: var(--pink);
+      }
+
+      .symbol {
+        position: absolute;
+        top: 84px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 58px;
+        max-height: 70px;
+        object-fit: contain;
+      }
+
+      .wordmark {
+        position: absolute;
+        top: 134px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 156px;
+        max-height: 50px;
+        object-fit: contain;
+      }
+
+      .title {
+        position: absolute;
+        top: 188px;
+        width: 100%;
+        text-align: center;
+        font-size: 2rem;
+        font-weight: 650;
+      }
+
+      .subtitle,
+      .kicker {
+        position: absolute;
+        width: 100%;
+        text-align: center;
+        color: var(--subtitle);
+      }
+
+      .subtitle {
+        top: 236px;
+        font-size: 0.8rem;
+      }
+
+      .kicker {
+        top: 258px;
+        font-size: 0.73rem;
+        letter-spacing: 0.04em;
+      }
+
+      .intro {
+        position: absolute;
+        top: 302px;
+        width: 100%;
+        text-align: center;
+        color: var(--muted);
+        font-size: 0.77rem;
+      }
+
+      .lab-name {
+        position: absolute;
+        top: 323px;
+        left: 54px;
+        right: 54px;
+        text-align: center;
+        font-size: 2rem;
+        font-weight: 650;
+        line-height: 1.12;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+      }
+
+      .body-copy {
+        position: absolute;
+        top: 408px;
+        left: 70px;
+        right: 70px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 0.77rem;
+        line-height: 1.4;
+      }
+
+      .address-label {
+        position: absolute;
+        top: 446px;
+        width: 100%;
+        text-align: center;
+        color: var(--subtitle);
+        font-size: 0.67rem;
+        font-weight: 620;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+
+      .address-text {
+        position: absolute;
+        top: 463px;
+        left: 62px;
+        right: 62px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 0.7rem;
+        line-height: 1.45;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+      }
+
+      .issued-date {
+        position: absolute;
+        top: 507px;
+        width: 100%;
+        text-align: center;
+        color: var(--subtitle);
+        font-size: 0.67rem;
+      }
+
+      .id-box {
+        position: absolute;
+        top: 532px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 390px;
+        height: 88px;
+        border: 1.1px solid var(--line);
+        background: #f8fbff;
+      }
+
+      .id-box::before,
+      .id-box::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        height: 4px;
+      }
+
+      .id-box::before {
+        left: 0;
+        width: 50%;
+        background: var(--blue);
+      }
+
+      .id-box::after {
+        right: 0;
+        width: 50%;
+        background: var(--pink);
+      }
+
+      .id-label {
+        position: absolute;
+        top: 16px;
+        width: 100%;
+        text-align: center;
+        color: var(--subtitle);
+        font-size: 0.7rem;
+        letter-spacing: 0.08em;
+      }
+
+      .id-value {
+        position: absolute;
+        top: 35px;
+        width: 100%;
+        text-align: center;
+        font-family: "SF Mono", "Menlo", "Consolas", monospace;
+        font-size: 1.35rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+      }
+
+      .signatures-title {
+        position: absolute;
+        top: 646px;
+        width: 100%;
+        text-align: center;
+        color: var(--subtitle);
+        font-size: 0.67rem;
+        font-weight: 620;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .signature-grid {
+        position: absolute;
+        top: 668px;
+        left: 49px;
+        width: calc(100% - 98px);
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 56px;
+      }
+
+      .signature-slot {
+        min-width: 0;
+      }
+
+      .signature-image {
+        height: 58px;
+        width: 100%;
+        object-fit: contain;
+        object-position: left center;
+      }
+
+      .signature-line {
+        margin-top: 2px;
+        border-top: 1px solid #b8c1d9;
+      }
+
+      .signature-name {
+        margin-top: 8px;
+        font-weight: 650;
+        font-size: 0.72rem;
+        line-height: 1.25;
+        overflow-wrap: anywhere;
+      }
+
+      .signature-role {
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 0.67rem;
+        line-height: 1.25;
+        overflow-wrap: anywhere;
+      }
+
+      .footer {
+        position: absolute;
+        left: 40px;
+        right: 40px;
+        bottom: 37px;
+        text-align: center;
+        color: #6b748d;
+        font-size: 0.58rem;
+      }
+
+      .hide-on-print {
+        display: block;
+      }
+
+      body.server-render .controls {
+        display: none !important;
+      }
+
+      body.server-render .layout {
+        width: auto;
+        margin: 0;
+        display: block;
+      }
+
+      body.server-render .preview-wrap {
+        border: none;
+        border-radius: 0;
+        padding: 0;
+        background: transparent;
+      }
+
+      body.server-render .sheet {
+        box-shadow: none;
+        margin: 0 auto;
+      }
+
+      @media (max-width: 1140px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media print {
+        body {
+          background: #fff;
+        }
+        .hide-on-print {
+          display: none !important;
+        }
+        .layout {
+          width: auto;
+          margin: 0;
+          display: block;
+        }
+        .preview-wrap {
+          border: none;
+          border-radius: 0;
+          padding: 0;
+          background: transparent;
+        }
+        .sheet {
+          box-shadow: none;
+          margin: 0 auto;
+          page-break-inside: avoid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="layout">
+      <aside class="controls hide-on-print">
+        <h1>Certificate HTML Template</h1>
+        <p>
+          Edit fields below. Use Print to save as PDF. You can also edit this file directly.
+        </p>
+        <div class="field-grid">
+          <div class="field">
+            <label for="symbolLogo">Symbol Logo File</label>
+            <input id="symbolLogo" type="text" />
+          </div>
+          <div class="field">
+            <label for="wordmarkLogo">Wordmark Logo File</label>
+            <input id="wordmarkLogo" type="text" />
+          </div>
+          <div class="field">
+            <label for="labName">Lab Name</label>
+            <textarea id="labName"></textarea>
+          </div>
+          <div class="field">
+            <label for="labAddress">Address</label>
+            <textarea id="labAddress"></textarea>
+          </div>
+          <div class="row-2">
+            <div class="field">
+              <label for="glassId">GLASS-ID</label>
+              <input id="glassId" type="text" />
+            </div>
+            <div class="field">
+              <label for="issuedDate">Issued On</label>
+              <input id="issuedDate" type="text" />
+            </div>
+          </div>
+          <div class="row-2">
+            <div class="field">
+              <label for="labSignerName">Lab Signer Name</label>
+              <input id="labSignerName" type="text" />
+            </div>
+            <div class="field">
+              <label for="labSignerTitle">Lab Signer Title</label>
+              <input id="labSignerTitle" type="text" />
+            </div>
+          </div>
+          <div class="row-2">
+            <div class="field">
+              <label for="glassSignerName">GLASS Signer Name</label>
+              <input id="glassSignerName" type="text" />
+            </div>
+            <div class="field">
+              <label for="glassSignerTitle">GLASS Signer Title</label>
+              <input id="glassSignerTitle" type="text" />
+            </div>
+          </div>
+          <div class="row-2">
+            <div class="field">
+              <label for="labSignature">Lab Signature Image URL</label>
+              <input id="labSignature" type="text" />
+            </div>
+            <div class="field">
+              <label for="glassSignature">GLASS Signature Image URL</label>
+              <input id="glassSignature" type="text" />
+            </div>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="printBtn" type="button">Print / Save PDF</button>
+          <button class="btn" id="resetBtn" type="button">Reset Sample</button>
+        </div>
+      </aside>
+
+      <section class="preview-wrap">
+        <article class="sheet" id="sheet">
+          <div class="glow-left"></div>
+          <div class="glow-right"></div>
+          <div class="glow-bottom"></div>
+          <div class="card"></div>
+
+          <img id="symbolImg" class="symbol" alt="GLASS symbol" />
+          <img id="wordmarkImg" class="wordmark" alt="GLASS logo" />
+
+          <div class="title">Verification Certificate</div>
+          <div class="subtitle">Verified by GLASS</div>
+          <div class="kicker">Equipment and Techniques</div>
+
+          <div class="intro">This certifies that</div>
+          <div class="lab-name" id="labNameText"></div>
+          <div class="body-copy">
+            has been verified for equipment and techniques in the GLASS network.
+          </div>
+
+          <div class="address-label">Address:</div>
+          <div class="address-text" id="labAddressText"></div>
+          <div class="issued-date" id="issuedDateText"></div>
+
+          <div class="id-box">
+            <div class="id-label">GLASS-ID</div>
+            <div class="id-value" id="glassIdText"></div>
+          </div>
+
+          <div class="signatures-title">Signatures</div>
+          <div class="signature-grid">
+            <div class="signature-slot">
+              <img id="labSignatureImg" class="signature-image" alt="Lab signature" />
+              <div class="signature-line"></div>
+              <div id="labSignerNameText" class="signature-name"></div>
+              <div id="labSignerTitleText" class="signature-role"></div>
+            </div>
+            <div class="signature-slot">
+              <img id="glassSignatureImg" class="signature-image" alt="GLASS signature" />
+              <div class="signature-line"></div>
+              <div id="glassSignerNameText" class="signature-name"></div>
+              <div id="glassSignerTitleText" class="signature-role"></div>
+            </div>
+          </div>
+
+          <div class="footer">
+            Issued by GLASS for trusted collaboration visibility across verified labs.
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script>
+      const sample = {
+        symbolLogo: "/GlassLogo1.png",
+        wordmarkLogo: "/GlassLogoLettering.png",
+        labName: "International Institute for Translational Biomaterials and Advanced Regenerative Therapeutics",
+        labAddress: "1234 Long Research Avenue, Innovation Tower 12B, Boston, Massachusetts, 02118, United States",
+        glassId: "GLS-US-8K2M91-A93FQ2",
+        issuedDate: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+        labSignerName: "Lab Representative",
+        labSignerTitle: "Director",
+        glassSignerName: "GLASS Admin",
+        glassSignerTitle: "GLASS Verification Team",
+        labSignature: "",
+        glassSignature: "",
+      };
+
+      const data = { ...sample };
+      const bootData =
+        window.__INITIAL_CERTIFICATE_DATA__ && typeof window.__INITIAL_CERTIFICATE_DATA__ === "object"
+          ? window.__INITIAL_CERTIFICATE_DATA__
+          : null;
+      if (bootData) Object.assign(data, bootData);
+      if (window.__SERVER_RENDER__) document.body.classList.add("server-render");
+
+      const $ = id => document.getElementById(id);
+
+      const controls = {
+        symbolLogo: $("symbolLogo"),
+        wordmarkLogo: $("wordmarkLogo"),
+        labName: $("labName"),
+        labAddress: $("labAddress"),
+        glassId: $("glassId"),
+        issuedDate: $("issuedDate"),
+        labSignerName: $("labSignerName"),
+        labSignerTitle: $("labSignerTitle"),
+        glassSignerName: $("glassSignerName"),
+        glassSignerTitle: $("glassSignerTitle"),
+        labSignature: $("labSignature"),
+        glassSignature: $("glassSignature"),
+      };
+
+      const nodes = {
+        symbol: $("symbolImg"),
+        wordmark: $("wordmarkImg"),
+        title: document.querySelector(".title"),
+        subtitle: document.querySelector(".subtitle"),
+        kicker: document.querySelector(".kicker"),
+        intro: document.querySelector(".intro"),
+        labName: $("labNameText"),
+        bodyCopy: document.querySelector(".body-copy"),
+        addressLabel: document.querySelector(".address-label"),
+        addressText: $("labAddressText"),
+        issuedDate: $("issuedDateText"),
+        idBox: document.querySelector(".id-box"),
+      };
+
+      const rememberedFontSizes = new Map();
+      const rememberFontSize = element => {
+        if (!element || rememberedFontSizes.has(element)) return;
+        rememberedFontSizes.set(element, Number.parseFloat(window.getComputedStyle(element).fontSize));
+      };
+      const restoreFontSize = element => {
+        const base = rememberedFontSizes.get(element);
+        if (!element || !base) return;
+        element.style.fontSize = `${base}px`;
+      };
+      const measuredHeight = (element, fallback = 0) => {
+        if (!element) return fallback;
+        const rect = element.getBoundingClientRect();
+        return rect.height > 0 ? rect.height : fallback;
+      };
+      const setTop = (element, top) => {
+        if (!element) return;
+        element.style.top = `${Math.round(top)}px`;
+      };
+      const getTop = (element, fallback = 0) => {
+        if (!element) return fallback;
+        const value = Number.parseFloat(element.style.top || window.getComputedStyle(element).top);
+        return Number.isFinite(value) ? value : fallback;
+      };
+      const fitTextHeight = (element, maxHeight, minSizePx) => {
+        if (!element || maxHeight <= 0) return;
+        const base = rememberedFontSizes.get(element) || Number.parseFloat(window.getComputedStyle(element).fontSize);
+        let size = base;
+        element.style.fontSize = `${size}px`;
+        while (element.scrollHeight > maxHeight && size > minSizePx) {
+          size -= 1;
+          element.style.fontSize = `${size}px`;
+        }
+      };
+      const layoutCertificate = () => {
+        const symbolTop = 84;
+        const symbolToWordmarkGap = 14;
+        const wordmarkToTitleGap = 22;
+        const subtitleGap = 8;
+        const kickerGap = 6;
+        const introGap = 26;
+        const introToLabNameGap = 14;
+
+        setTop(nodes.symbol, symbolTop);
+        const symbolHeight = measuredHeight(nodes.symbol, 64);
+        const wordmarkTop = symbolTop + symbolHeight + symbolToWordmarkGap;
+        setTop(nodes.wordmark, wordmarkTop);
+
+        const wordmarkHeight = measuredHeight(nodes.wordmark, 42);
+        const titleTop = wordmarkTop + wordmarkHeight + wordmarkToTitleGap;
+        setTop(nodes.title, titleTop);
+        const subtitleTop = titleTop + measuredHeight(nodes.title, 38) + subtitleGap;
+        setTop(nodes.subtitle, subtitleTop);
+        const kickerTop = subtitleTop + measuredHeight(nodes.subtitle, 16) + kickerGap;
+        setTop(nodes.kicker, kickerTop);
+        const introTop = kickerTop + measuredHeight(nodes.kicker, 14) + introGap;
+        setTop(nodes.intro, introTop);
+
+        const labNameTop = introTop + measuredHeight(nodes.intro, 14) + introToLabNameGap;
+        setTop(nodes.labName, labNameTop);
+        restoreFontSize(nodes.labName);
+        restoreFontSize(nodes.addressText);
+
+        const idBoxTop = getTop(nodes.idBox, 532);
+        const minimumContentTail = 112;
+        const maxLabNameHeight = Math.max(56, idBoxTop - labNameTop - minimumContentTail);
+        fitTextHeight(nodes.labName, maxLabNameHeight, 18);
+
+        const labNameBottom = labNameTop + measuredHeight(nodes.labName, 62);
+        const bodyTop = labNameBottom + 14;
+        setTop(nodes.bodyCopy, bodyTop);
+        const addressLabelTop = bodyTop + measuredHeight(nodes.bodyCopy, 34) + 12;
+        setTop(nodes.addressLabel, addressLabelTop);
+        const addressTextTop = addressLabelTop + measuredHeight(nodes.addressLabel, 12) + 8;
+        setTop(nodes.addressText, addressTextTop);
+
+        const maxAddressHeight = Math.max(28, idBoxTop - addressTextTop - 40);
+        fitTextHeight(nodes.addressText, maxAddressHeight, 9);
+
+        const issuedTop = addressTextTop + measuredHeight(nodes.addressText, 24) + 10;
+        setTop(nodes.issuedDate, Math.min(issuedTop, idBoxTop - 22));
+      };
+
+      const apply = () => {
+        $("symbolImg").src = data.symbolLogo || "/GlassLogo1.png";
+        $("wordmarkImg").src = data.wordmarkLogo || "/GlassLogoLettering.png";
+        $("labNameText").textContent = data.labName || "Lab Name";
+        $("labAddressText").textContent = data.labAddress || "Address not specified";
+        $("glassIdText").textContent = data.glassId || "Not assigned";
+        $("issuedDateText").textContent = data.issuedDate ? `Issued on ${data.issuedDate}` : "";
+        $("labSignerNameText").textContent = data.labSignerName || "Lab Representative";
+        $("labSignerTitleText").textContent = data.labSignerTitle || "Lab Representative";
+        $("glassSignerNameText").textContent = data.glassSignerName || "GLASS Admin";
+        $("glassSignerTitleText").textContent = data.glassSignerTitle || "GLASS Verification Team";
+        $("labSignatureImg").src = data.labSignature || "";
+        $("glassSignatureImg").src = data.glassSignature || "";
+        window.requestAnimationFrame(layoutCertificate);
+      };
+
+      const syncInputs = () => {
+        Object.entries(controls).forEach(([key, input]) => {
+          input.value = data[key] || "";
+        });
+      };
+
+      const bindInputs = () => {
+        Object.entries(controls).forEach(([key, input]) => {
+          input.addEventListener("input", event => {
+            data[key] = event.target.value;
+            apply();
+          });
+        });
+      };
+
+      $("printBtn").addEventListener("click", () => window.print());
+      $("resetBtn").addEventListener("click", () => {
+        Object.assign(data, sample);
+        syncInputs();
+        apply();
+      });
+
+      window.setCertificateData = next => {
+        if (!next || typeof next !== "object") return;
+        Object.assign(data, next);
+        syncInputs();
+        apply();
+      };
+
+      rememberFontSize(nodes.labName);
+      rememberFontSize(nodes.addressText);
+      nodes.symbol.addEventListener("load", layoutCertificate);
+      nodes.wordmark.addEventListener("load", layoutCertificate);
+      window.addEventListener("resize", layoutCertificate);
+
+      syncInputs();
+      bindInputs();
+      apply();
+    </script>
+  </body>
+</html>

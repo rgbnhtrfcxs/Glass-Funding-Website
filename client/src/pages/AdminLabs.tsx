@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import {
   CheckCircle2,
   Edit2,
+  FileCheck2,
   FileDown,
   ImageIcon,
   MapPin,
@@ -103,8 +104,8 @@ const emptyForm: LabFormState = {
 function labToForm(lab: LabPartner): LabFormState {
   return {
     name: lab.name,
-    labManager: lab.labManager,
-    contactEmail: lab.contactEmail,
+    labManager: lab.labManager || "",
+    contactEmail: lab.contactEmail || "",
     logoUrl: lab.logoUrl || "",
     descriptionShort: lab.descriptionShort || "",
     descriptionLong: lab.descriptionLong || "",
@@ -217,17 +218,54 @@ function formToPayload(
     focusAreas: parseList(form.focusAreas),
     ercDisciplineCodes: parseErcCodes(form.ercDisciplineCodes),
     primaryErcDisciplineCode: normalizeErcCode(form.primaryErcDisciplineCode) || null,
+    ercDisciplines: [],
     offers: form.offers,
     photos,
     complianceDocs,
     isVisible: form.isVisible === "yes",
     halStructureId: form.halStructureId.trim() || null,
     halPersonId: form.halPersonId.trim() || null,
+    teamMembers: [],
+    priorityEquipment: [],
+    techniques: [],
+    field: null,
+    public: null,
+    alternateNames: [],
+    tags: [],
   };
 }
 
 type StatusMessage = { type: "success" | "error"; text: string } | null;
 type EditingState = number | "new" | null;
+type LabVerificationCertificate = {
+  id: number;
+  lab_id: number;
+  glass_id: string | null;
+  lab_signer_name: string;
+  lab_signer_title: string | null;
+  glass_signer_name: string;
+  glass_signer_title: string | null;
+  issued_at: string | null;
+  pdf_url: string;
+};
+
+type CertificateFormState = {
+  labSignerName: string;
+  labSignerTitle: string;
+  labSignatureDataUrl: string | null;
+  glassSignerName: string;
+  glassSignerTitle: string;
+  glassSignatureDataUrl: string | null;
+};
+
+const defaultCertificateFormState: CertificateFormState = {
+  labSignerName: "",
+  labSignerTitle: "",
+  labSignatureDataUrl: null,
+  glassSignerName: "",
+  glassSignerTitle: "GLASS Admin",
+  glassSignatureDataUrl: null,
+};
 
 export default function AdminLabs({ embedded = false }: { embedded?: boolean }) {
   const {
@@ -250,6 +288,163 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [certificateLabId, setCertificateLabId] = useState<number | null>(null);
+  const [certificateForm, setCertificateForm] = useState<CertificateFormState>(defaultCertificateFormState);
+  const [certificateExisting, setCertificateExisting] = useState<LabVerificationCertificate | null>(null);
+  const [certificateLoading, setCertificateLoading] = useState(false);
+  const [certificateSaving, setCertificateSaving] = useState(false);
+  const [certificateError, setCertificateError] = useState<string | null>(null);
+  const [certificateSuccess, setCertificateSuccess] = useState<string | null>(null);
+
+  const selectedCertificateLab = useMemo(
+    () => (certificateLabId ? labs.find(lab => lab.id === certificateLabId) ?? null : null),
+    [certificateLabId, labs],
+  );
+
+  const getAccessToken = async () => {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    const token = sessionData.session?.access_token ?? null;
+    if (!token) return null;
+
+    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+    if (!userError && userData.user) return token;
+
+    const { data: refreshedData, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError) throw refreshError;
+    return refreshedData.session?.access_token ?? null;
+  };
+
+  const fetchAuthed = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const token = await getAccessToken();
+    const headers = new Headers(init?.headers ?? undefined);
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const first = await fetch(input, { ...(init ?? {}), headers });
+    if (first.status !== 401) return first;
+
+    const { data: refreshedData, error: refreshError } = await supabase.auth.refreshSession();
+    const refreshedToken = refreshedData.session?.access_token ?? null;
+    if (refreshError || !refreshedToken) return first;
+
+    headers.set("Authorization", `Bearer ${refreshedToken}`);
+    return fetch(input, { ...(init ?? {}), headers });
+  };
+
+  const parseJsonResponse = async <T,>(response: Response): Promise<T | null> => {
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.toLowerCase().includes("application/json")) return null;
+    try {
+      return (await response.json()) as T;
+    } catch {
+      return null;
+    }
+  };
+
+  const extractApiError = async (response: Response, fallback: string) => {
+    const payload = await parseJsonResponse<{ message?: string; error?: string }>(response);
+    if (payload?.message) return payload.message;
+    if (payload?.error) return payload.error;
+    const raw = (await response.text()).trim();
+    if (!raw) return fallback;
+    if (raw.startsWith("<!DOCTYPE") || raw.startsWith("<html")) {
+      return `${fallback} (API returned HTML instead of JSON).`;
+    }
+    return raw;
+  };
+
+  const closeCertificateModal = () => {
+    setCertificateLabId(null);
+    setCertificateError(null);
+    setCertificateSuccess(null);
+    setCertificateExisting(null);
+    setCertificateLoading(false);
+    setCertificateSaving(false);
+    setCertificateForm(defaultCertificateFormState);
+  };
+
+  const openCertificateModal = async (lab: LabPartner) => {
+    setCertificateLabId(lab.id);
+    setCertificateError(null);
+    setCertificateSuccess(null);
+    setCertificateExisting(null);
+    setCertificateForm(defaultCertificateFormState);
+    setCertificateLoading(true);
+    try {
+      const response = await fetchAuthed(`/api/admin/labs/${lab.id}/verification-certificate`);
+      if (response.status === 404) {
+        setCertificateExisting(null);
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(await extractApiError(response, "Unable to load verification certificate"));
+      }
+      const payload = await parseJsonResponse<LabVerificationCertificate>(response);
+      if (!payload) {
+        throw new Error(
+          "Unable to load verification certificate (API returned non-JSON response).",
+        );
+      }
+      setCertificateExisting(payload);
+      setCertificateForm(prev => ({
+        ...prev,
+        labSignerName: payload.lab_signer_name ?? "",
+        labSignerTitle: payload.lab_signer_title ?? "",
+        glassSignerName: payload.glass_signer_name ?? "",
+        glassSignerTitle: payload.glass_signer_title ?? "",
+      }));
+    } catch (error) {
+      setCertificateError(error instanceof Error ? error.message : "Unable to load certificate");
+    } finally {
+      setCertificateLoading(false);
+    }
+  };
+
+  const issueVerificationCertificate = async () => {
+    if (!certificateLabId) return;
+    if (!certificateForm.labSignerName.trim() || !certificateForm.glassSignerName.trim()) {
+      setCertificateError("Both signer names are required.");
+      return;
+    }
+    if (!certificateForm.labSignatureDataUrl || !certificateForm.glassSignatureDataUrl) {
+      setCertificateError("Both signatures are required.");
+      return;
+    }
+
+    setCertificateSaving(true);
+    setCertificateError(null);
+    setCertificateSuccess(null);
+    try {
+      const response = await fetchAuthed(`/api/admin/labs/${certificateLabId}/verification-certificate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          labSignerName: certificateForm.labSignerName.trim(),
+          labSignerTitle: certificateForm.labSignerTitle.trim() || null,
+          labSignatureDataUrl: certificateForm.labSignatureDataUrl,
+          glassSignerName: certificateForm.glassSignerName.trim(),
+          glassSignerTitle: certificateForm.glassSignerTitle.trim() || null,
+          glassSignatureDataUrl: certificateForm.glassSignatureDataUrl,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await extractApiError(response, "Unable to issue verification certificate"));
+      }
+      const payload = await parseJsonResponse<LabVerificationCertificate>(response);
+      if (!payload) {
+        throw new Error(
+          "Unable to issue verification certificate (API returned non-JSON response).",
+        );
+      }
+      setCertificateExisting(payload);
+      setCertificateSuccess("Verification certificate generated.");
+    } catch (error) {
+      setCertificateError(error instanceof Error ? error.message : "Unable to issue certificate");
+    } finally {
+      setCertificateSaving(false);
+    }
+  };
 
   useEffect(() => {
     // Ensure admins can see hidden labs as well
@@ -567,6 +762,14 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                 Lab profile guide
               </a>
             </Link>
+            <a
+              href="/certificate-template.html"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+            >
+              Certificate template
+            </a>
             <button
               type="button"
               onClick={startCreate}
@@ -597,11 +800,168 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
             <span>{labsError}</span>
             <button
               type="button"
-              onClick={refresh}
+              onClick={() => {
+                void refresh();
+              }}
               className="rounded-full border border-destructive/40 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em]"
             >
               Retry
             </button>
+          </div>
+        )}
+
+        {certificateLabId && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 py-6"
+            onClick={closeCertificateModal}
+          >
+            <div
+              className="relative w-full max-w-3xl rounded-3xl border border-border bg-card p-6 shadow-2xl"
+              onClick={event => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={closeCertificateModal}
+                className="absolute right-4 top-4 inline-flex h-7 w-7 items-center justify-center rounded-full border border-border text-muted-foreground transition hover:border-primary hover:text-primary"
+                aria-label="Close certificate modal"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <h3 className="text-xl font-semibold text-foreground">Verification certificate</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {selectedCertificateLab
+                  ? `Lab: ${selectedCertificateLab.name}`
+                  : "Select the lab you are issuing this certificate for."}
+              </p>
+
+              {certificateLoading ? (
+                <p className="mt-6 text-sm text-muted-foreground">Loading certificate details...</p>
+              ) : (
+                <div className="mt-6 space-y-5">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Lab signer name</label>
+                      <input
+                        type="text"
+                        value={certificateForm.labSignerName}
+                        onChange={event =>
+                          setCertificateForm(prev => ({ ...prev, labSignerName: event.target.value }))
+                        }
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        placeholder="Name of lab representative"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Lab signer title</label>
+                      <input
+                        type="text"
+                        value={certificateForm.labSignerTitle}
+                        onChange={event =>
+                          setCertificateForm(prev => ({ ...prev, labSignerTitle: event.target.value }))
+                        }
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        placeholder="Director, Lab manager, etc."
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">GLASS signer name</label>
+                      <input
+                        type="text"
+                        value={certificateForm.glassSignerName}
+                        onChange={event =>
+                          setCertificateForm(prev => ({ ...prev, glassSignerName: event.target.value }))
+                        }
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        placeholder="Name of GLASS admin"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">GLASS signer title</label>
+                      <input
+                        type="text"
+                        value={certificateForm.glassSignerTitle}
+                        onChange={event =>
+                          setCertificateForm(prev => ({ ...prev, glassSignerTitle: event.target.value }))
+                        }
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        placeholder="GLASS admin"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <SignaturePad
+                      label="Lab representative signature"
+                      value={certificateForm.labSignatureDataUrl}
+                      onChange={value =>
+                        setCertificateForm(prev => ({ ...prev, labSignatureDataUrl: value }))
+                      }
+                    />
+                    <SignaturePad
+                      label="GLASS signature"
+                      value={certificateForm.glassSignatureDataUrl}
+                      onChange={value =>
+                        setCertificateForm(prev => ({ ...prev, glassSignatureDataUrl: value }))
+                      }
+                    />
+                  </div>
+
+                  {certificateExisting && (
+                    <div className="rounded-2xl border border-border bg-background/70 px-4 py-3 text-xs text-muted-foreground">
+                      <p>
+                        Existing certificate issued on{" "}
+                        {certificateExisting.issued_at
+                          ? new Date(certificateExisting.issued_at).toLocaleDateString()
+                          : "unknown date"}
+                        .
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <a
+                          href={certificateExisting.pdf_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                        >
+                          <FileDown className="h-3.5 w-3.5" />
+                          View current PDF
+                        </a>
+                      </div>
+                    </div>
+                  )}
+
+                  {certificateError && (
+                    <p className="rounded-xl border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                      {certificateError}
+                    </p>
+                  )}
+                  {certificateSuccess && (
+                    <p className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                      {certificateSuccess}
+                    </p>
+                  )}
+
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={closeCertificateModal}
+                      className="inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void issueVerificationCertificate();
+                      }}
+                      disabled={certificateSaving}
+                      className="inline-flex items-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {certificateSaving ? "Generating PDF..." : "Generate certificate PDF"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -733,6 +1093,16 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                   </dl>
 
                   <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void openCertificateModal(lab);
+                      }}
+                      className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+                    >
+                      <FileCheck2 className="h-3.5 w-3.5" />
+                      Verification certificate
+                    </button>
                     <button
                       type="button"
                       onClick={() => startEdit(lab)}
@@ -1413,5 +1783,141 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
         </div>
       </div>
     </section>
+  );
+}
+
+function SignaturePad({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string | null;
+  onChange: (value: string | null) => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const drawingRef = useRef(false);
+  const resizedRef = useRef(false);
+
+  const resizeCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const parent = canvas.parentElement;
+    const width = Math.max(240, parent?.clientWidth ?? 320);
+    const height = 150;
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(width * ratio);
+    canvas.height = Math.floor(height * ratio);
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#111827";
+    resizedRef.current = true;
+  };
+
+  useEffect(() => {
+    resizeCanvas();
+    const onResize = () => {
+      resizeCanvas();
+      if (!value) return;
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (!canvas || !ctx) return;
+      const image = new Image();
+      image.onload = () => {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+        ctx.drawImage(image, 0, 0, canvas.clientWidth, canvas.clientHeight);
+      };
+      image.src = value;
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+    };
+  }, [value]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx || !resizedRef.current) return;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+    if (!value) return;
+    const image = new Image();
+    image.onload = () => {
+      ctx.drawImage(image, 0, 0, canvas.clientWidth, canvas.clientHeight);
+    };
+    image.src = value;
+  }, [value]);
+
+  const drawPoint = (clientX: number, clientY: number, start = false) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    if (start) {
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      return;
+    }
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="text-sm font-medium text-foreground">{label}</label>
+        <button
+          type="button"
+          onClick={() => {
+            const canvas = canvasRef.current;
+            const ctx = canvas?.getContext("2d");
+            if (!canvas || !ctx) return;
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+            onChange(null);
+          }}
+          className="rounded-full border border-border px-3 py-1 text-[11px] font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+        >
+          Clear
+        </button>
+      </div>
+      <div className="rounded-xl border border-border bg-background p-2">
+        <canvas
+          ref={canvasRef}
+          className="w-full touch-none cursor-crosshair rounded-lg bg-white"
+          onPointerDown={event => {
+            drawingRef.current = true;
+            event.currentTarget.setPointerCapture(event.pointerId);
+            drawPoint(event.clientX, event.clientY, true);
+          }}
+          onPointerMove={event => {
+            if (!drawingRef.current) return;
+            drawPoint(event.clientX, event.clientY);
+          }}
+          onPointerUp={event => {
+            drawingRef.current = false;
+            event.currentTarget.releasePointerCapture(event.pointerId);
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            onChange(canvas.toDataURL("image/png"));
+          }}
+          onPointerLeave={() => {
+            drawingRef.current = false;
+          }}
+        />
+      </div>
+    </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   ClipboardList,
   FlaskConical,
   Heart,
+  IdCard,
   Mail,
   ShieldCheck,
   ShieldAlert,
@@ -25,6 +26,7 @@ import ManageSelect from "@/pages/ManageSelect";
 import ManageTeams from "@/pages/ManageTeams";
 import AdminLabs from "@/pages/AdminLabs";
 import Favorites from "@/pages/Favorites";
+import { GlassIdCard, type GlassIdCardData } from "@/components/GlassIdCard";
 import type { Team } from "@shared/teams";
 
 type Profile = {
@@ -64,6 +66,66 @@ type TeamMemberForm = {
   roleRank: string;
   isLead: boolean;
 };
+
+type LabGlassIdRow = {
+  lab_id: number;
+  glass_id: string;
+  issued_at: string | null;
+  revoked_at: string | null;
+  is_active: boolean | null;
+  country_code: string | null;
+  glass_short: string | null;
+  lab_name: string | null;
+};
+
+type LabVerificationCertificateRow = {
+  id: number;
+  lab_id: number;
+  glass_id: string | null;
+  issued_at: string | null;
+  pdf_url: string;
+  updated_at?: string | null;
+};
+
+type AccountTab = "overview" | "edit" | "requests" | "manageLab" | "manageTeams" | "adminLabs" | "favorites" | "legal";
+type OverviewTab = "overview" | "labs" | "equipment" | "team" | "activity";
+
+const ACCOUNT_SECTION_STORAGE_KEY = "glass.account.section";
+const ACCOUNT_TABS: AccountTab[] = [
+  "overview",
+  "edit",
+  "requests",
+  "manageLab",
+  "manageTeams",
+  "adminLabs",
+  "favorites",
+  "legal",
+];
+const OVERVIEW_TABS: OverviewTab[] = ["overview", "labs", "equipment", "team", "activity"];
+
+function readStoredAccountSection() {
+  if (typeof window === "undefined") {
+    return { activeTab: null as AccountTab | null, overviewTab: null as OverviewTab | null };
+  }
+  try {
+    const raw = window.localStorage.getItem(ACCOUNT_SECTION_STORAGE_KEY);
+    if (!raw) {
+      return { activeTab: null as AccountTab | null, overviewTab: null as OverviewTab | null };
+    }
+    const parsed = JSON.parse(raw) as { activeTab?: unknown; overviewTab?: unknown };
+    const activeTab =
+      typeof parsed.activeTab === "string" && ACCOUNT_TABS.includes(parsed.activeTab as AccountTab)
+        ? (parsed.activeTab as AccountTab)
+        : null;
+    const overviewTab =
+      typeof parsed.overviewTab === "string" && OVERVIEW_TABS.includes(parsed.overviewTab as OverviewTab)
+        ? (parsed.overviewTab as OverviewTab)
+        : null;
+    return { activeTab, overviewTab };
+  } catch {
+    return { activeTab: null as AccountTab | null, overviewTab: null as OverviewTab | null };
+  }
+}
 
 export default function Account() {
   const [location] = useLocation();
@@ -139,10 +201,8 @@ export default function Account() {
   const [legalError, setLegalError] = useState<string | null>(null);
   const [legalSuccess, setLegalSuccess] = useState<string | null>(null);
   const [legalSubmitting, setLegalSubmitting] = useState(false);
-  const [activeTab, setActiveTab] = useState<
-    "overview" | "edit" | "requests" | "manageLab" | "manageTeams" | "adminLabs" | "favorites" | "legal"
-  >("overview");
-  const [overviewTab, setOverviewTab] = useState<"overview" | "labs" | "equipment" | "team" | "activity">("overview");
+  const [activeTab, setActiveTab] = useState<AccountTab>(() => readStoredAccountSection().activeTab ?? "overview");
+  const [overviewTab, setOverviewTab] = useState<OverviewTab>(() => readStoredAccountSection().overviewTab ?? "overview");
   const [equipmentDrafts, setEquipmentDrafts] = useState<Record<number, string[]>>({});
   const [equipmentInput, setEquipmentInput] = useState<Record<number, string>>({});
   const [equipmentSaving, setEquipmentSaving] = useState<Record<number, boolean>>({});
@@ -156,6 +216,10 @@ export default function Account() {
   const [managedTeamsLoading, setManagedTeamsLoading] = useState(false);
   const [managedTeamsError, setManagedTeamsError] = useState<string | null>(null);
   const [resettingPassword, setResettingPassword] = useState(false);
+  const [glassIdsByLab, setGlassIdsByLab] = useState<Record<number, LabGlassIdRow>>({});
+  const [certificatesByLab, setCertificatesByLab] = useState<Record<number, LabVerificationCertificateRow>>({});
+  const [showGlassIdModal, setShowGlassIdModal] = useState(false);
+  const [glassIdModalLabId, setGlassIdModalLabId] = useState<number | null>(null);
   const teamMemberCount = useMemo(
     () => managedTeams.reduce((acc, team) => acc + (team.members?.length ?? 0), 0),
     [managedTeams],
@@ -173,10 +237,6 @@ export default function Account() {
   const managedTeamsCount = managedTeams.length;
   const equipmentCount = useMemo(
     () => Object.values(equipmentDrafts).reduce((acc, items) => acc + (items?.length ?? 0), 0),
-    [equipmentDrafts],
-  );
-  const labsWithEquipmentCount = useMemo(
-    () => Object.values(equipmentDrafts).filter(items => (items?.length ?? 0) > 0).length,
     [equipmentDrafts],
   );
 
@@ -198,6 +258,45 @@ export default function Account() {
   const avatarLabel = useMemo(() => {
     return profileName || profileEmail || "Your Account";
   }, [profileName, profileEmail]);
+
+  const getAccessToken = async () => {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    const initialToken = sessionData.session?.access_token ?? null;
+    if (!initialToken) return null;
+
+    const { data: userData, error: userError } = await supabase.auth.getUser(initialToken);
+    if (!userError && userData.user) return initialToken;
+
+    const { data: refreshedData, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError) throw refreshError;
+    return refreshedData.session?.access_token ?? null;
+  };
+
+  const fetchAuthed = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const token = await getAccessToken();
+    const headers = new Headers(init?.headers ?? undefined);
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const first = await fetch(input, { ...(init ?? {}), headers });
+    if (first.status !== 401) return first;
+
+    let shouldRetry = false;
+    try {
+      const text = (await first.clone().text()).toLowerCase();
+      shouldRetry = text.includes("invalid token") || text.includes("missing token");
+    } catch {
+      shouldRetry = false;
+    }
+    if (!shouldRetry) return first;
+
+    const { data: refreshedData, error: refreshError } = await supabase.auth.refreshSession();
+    const refreshedToken = refreshedData.session?.access_token ?? null;
+    if (refreshError || !refreshedToken) return first;
+
+    headers.set("Authorization", `Bearer ${refreshedToken}`);
+    return fetch(input, { ...(init ?? {}), headers });
+  };
+
   const handleProfileSaved = ({ name, avatarUrl }: { name: string | null; avatarUrl: string | null }) => {
     setProfile(prev => {
       const base = prev ?? {
@@ -333,11 +432,7 @@ export default function Account() {
       }
       setLabsLoading(true);
       try {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-        const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
-        const statsRes = await fetch("/api/my-labs/analytics", { headers });
+        const statsRes = await fetchAuthed("/api/my-labs/analytics");
         if (statsRes.ok) {
           const payload = await statsRes.json();
           setLabStats(payload?.labs ?? []);
@@ -349,7 +444,7 @@ export default function Account() {
 
         // Requests counts (collaboration and contact)
         try {
-          const reqRes = await fetch("/api/my-labs/requests", { headers });
+          const reqRes = await fetchAuthed("/api/my-labs/requests");
           const ct = reqRes.headers.get("content-type") || "";
           if (reqRes.ok && ct.includes("application/json")) {
             const reqPayload = await reqRes.json();
@@ -362,7 +457,7 @@ export default function Account() {
 
         // Favorites
         try {
-          const favRes = await fetch("/api/favorites", { headers });
+          const favRes = await fetchAuthed("/api/favorites");
           const ct = favRes.headers.get("content-type") || "";
           if (favRes.ok && ct.includes("application/json")) {
             const favPayload = await favRes.json();
@@ -391,10 +486,7 @@ export default function Account() {
       }
       setManagedTeamsLoading(true);
       try {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-        const headers = token ? { Authorization: `Bearer ${token}` } : {};
-        const response = await fetch("/api/my-teams", { headers });
+        const response = await fetchAuthed("/api/my-teams");
         if (response.status === 403) {
           if (active) {
             setManagedTeams([]);
@@ -428,6 +520,14 @@ export default function Account() {
 
   const labStatusValue = (lab: { labStatus?: string | null; lab_status?: string | null }) =>
     (lab.labStatus || lab.lab_status || "listed").toLowerCase();
+  const labStatusLabel = (lab: { labStatus?: string | null; lab_status?: string | null }) => {
+    const status = labStatusValue(lab);
+    if (status === "verified_passive" || status === "verified_active") return "Verified";
+    if (status === "premier") return "Premier";
+    if (status === "confirmed") return "Confirmed";
+    if (status === "listed") return "Listed";
+    return status.replaceAll("_", " ");
+  };
   const isPremierLab = (lab: { labStatus?: string | null }) =>
     labStatusValue(lab) === "premier";
 
@@ -499,6 +599,32 @@ export default function Account() {
       l => (l as any).ownerUserId === user?.id || (l as any).owner_user_id === user?.id || labStats.some(s => s.id === l.id),
     );
   }, [allLabs, labStats, user?.id]);
+  const selectedGlassLab = useMemo(
+    () => ownedLabs.find(l => l.id === glassIdModalLabId) ?? null,
+    [ownedLabs, glassIdModalLabId],
+  );
+  const selectedGlassRecord = useMemo(
+    () => (glassIdModalLabId ? glassIdsByLab[glassIdModalLabId] ?? null : null),
+    [glassIdModalLabId, glassIdsByLab],
+  );
+  const selectedGlassCardData = useMemo<GlassIdCardData | null>(() => {
+    if (!selectedGlassLab) return null;
+
+    const city = (selectedGlassLab as any).city ?? null;
+    const country = (selectedGlassLab as any).country ?? null;
+    const location = [city, country].filter(Boolean).join(", ") || selectedGlassRecord?.country_code || null;
+    const fallbackGlassId = `GLS-PENDING-${String(selectedGlassLab.id).padStart(4, "0")}`;
+
+    return {
+      glassId: selectedGlassRecord?.glass_id || selectedGlassRecord?.glass_short || fallbackGlassId,
+      labName: selectedGlassRecord?.lab_name || selectedGlassLab.name,
+      location,
+      countryCode: selectedGlassRecord?.country_code || country,
+      isActive: selectedGlassRecord?.is_active ?? isLabVerified(selectedGlassLab.id),
+      revokedAt: selectedGlassRecord?.revoked_at ?? null,
+      issuedAt: selectedGlassRecord?.issued_at ?? null,
+    };
+  }, [isLabVerified, selectedGlassLab, selectedGlassRecord]);
   const ownedUnverifiedLabs = useMemo(() => ownedLabs.filter(l => !isLabVerified(l.id)), [ownedLabs]);
   const canManageLabs = toBool(profile?.can_create_lab);
   const emptyTeamForm: TeamMemberForm = {
@@ -518,11 +644,146 @@ export default function Account() {
     return `https://${trimmed}`;
   };
 
+  const openGlassIdModal = (labId: number) => {
+    setGlassIdModalLabId(labId);
+    setShowGlassIdModal(true);
+  };
+  const closeGlassIdModal = () => {
+    setShowGlassIdModal(false);
+    setGlassIdModalLabId(null);
+  };
+
   useEffect(() => {
     if (newsLabId) return;
     const fallbackId = ownedLabs[0]?.id ?? labStats[0]?.id ?? null;
     if (fallbackId) setNewsLabId(fallbackId);
   }, [ownedLabs, labStats, newsLabId]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadGlassIds() {
+      if (!user) {
+        if (active) setGlassIdsByLab({});
+        return;
+      }
+
+      const ownedLabIds = ownedLabs.map(lab => lab.id).filter(id => Number.isFinite(id));
+      if (!ownedLabIds.length) {
+        if (active) setGlassIdsByLab({});
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("lab_glass_ids_view")
+        .select("lab_id, glass_id, issued_at, revoked_at, is_active, country_code, glass_short, lab_name")
+        .in("lab_id", ownedLabIds);
+
+      if (!active) return;
+      if (error || !Array.isArray(data)) {
+        setGlassIdsByLab({});
+        return;
+      }
+
+      const next: Record<number, LabGlassIdRow> = {};
+      data.forEach((rawRow: any) => {
+        const labId = Number(rawRow?.lab_id);
+        if (!Number.isFinite(labId)) return;
+
+        const row: LabGlassIdRow = {
+          lab_id: labId,
+          glass_id: String(rawRow?.glass_id ?? ""),
+          issued_at: rawRow?.issued_at ?? null,
+          revoked_at: rawRow?.revoked_at ?? null,
+          is_active: rawRow?.is_active ?? null,
+          country_code: rawRow?.country_code ?? null,
+          glass_short: rawRow?.glass_short ?? null,
+          lab_name: rawRow?.lab_name ?? null,
+        };
+
+        const prev = next[labId];
+        if (!prev) {
+          next[labId] = row;
+          return;
+        }
+
+        const prevScore = (prev.is_active ? 2 : 0) + (prev.issued_at ? 1 : 0);
+        const rowScore = (row.is_active ? 2 : 0) + (row.issued_at ? 1 : 0);
+        const prevIssued = prev.issued_at ? new Date(prev.issued_at).getTime() : 0;
+        const rowIssued = row.issued_at ? new Date(row.issued_at).getTime() : 0;
+
+        if (rowScore > prevScore || rowIssued > prevIssued) {
+          next[labId] = row;
+        }
+      });
+
+      setGlassIdsByLab(next);
+    }
+
+    if (!authLoading) {
+      void loadGlassIds();
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [authLoading, ownedLabs, user?.id]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadVerificationCertificates() {
+      if (!user) {
+        if (active) setCertificatesByLab({});
+        return;
+      }
+
+      try {
+        const response = await fetchAuthed("/api/my-labs/certificates");
+        if (!active) return;
+        if (!response.ok) {
+          setCertificatesByLab({});
+          return;
+        }
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          setCertificatesByLab({});
+          return;
+        }
+        const rows = (await response.json()) as LabVerificationCertificateRow[];
+        if (!Array.isArray(rows)) {
+          setCertificatesByLab({});
+          return;
+        }
+        const next: Record<number, LabVerificationCertificateRow> = {};
+        rows.forEach(row => {
+          const labId = Number(row?.lab_id);
+          if (!Number.isFinite(labId) || !row?.pdf_url) return;
+          const previous = next[labId];
+          if (!previous) {
+            next[labId] = row;
+            return;
+          }
+          const previousIssued = previous.issued_at ? new Date(previous.issued_at).getTime() : 0;
+          const currentIssued = row.issued_at ? new Date(row.issued_at).getTime() : 0;
+          if (currentIssued >= previousIssued) {
+            next[labId] = row;
+          }
+        });
+        setCertificatesByLab(next);
+      } catch {
+        if (active) setCertificatesByLab({});
+      }
+    }
+
+    if (!authLoading) {
+      void loadVerificationCertificates();
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [authLoading, user?.id, ownedLabs]);
 
   useEffect(() => {
     if (!ownedLabs.length) {
@@ -903,27 +1164,28 @@ export default function Account() {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get("tab");
       const sub = params.get("sub");
-      const allowedTabs = [
-        "overview",
-        "edit",
-        "requests",
-        "manageLab",
-        "manageTeams",
-        "adminLabs",
-        "favorites",
-        "legal",
-      ] as const;
-      const allowedOverview = ["overview", "labs", "equipment", "team", "activity"] as const;
-      if (tab && (allowedTabs as readonly string[]).includes(tab)) {
-        setActiveTab(tab as typeof allowedTabs[number]);
-        if (tab === "overview" && sub && (allowedOverview as readonly string[]).includes(sub)) {
-          setOverviewTab(sub as typeof allowedOverview[number]);
+      if (tab && ACCOUNT_TABS.includes(tab as AccountTab)) {
+        setActiveTab(tab as AccountTab);
+        if (tab === "overview" && sub && OVERVIEW_TABS.includes(sub as OverviewTab)) {
+          setOverviewTab(sub as OverviewTab);
         }
       }
     } catch {
       // ignore invalid query params
     }
   }, [location]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        ACCOUNT_SECTION_STORAGE_KEY,
+        JSON.stringify({ activeTab, overviewTab }),
+      );
+    } catch {
+      // ignore storage write issues
+    }
+  }, [activeTab, overviewTab]);
 
   const tabs: Array<{ id: typeof activeTab; label: ReactNode; hidden?: boolean }> = [
     { id: "overview", label: "Overview" },
@@ -1172,6 +1434,51 @@ export default function Account() {
           </div>
         )}
 
+        {showGlassIdModal && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4 py-10"
+            onClick={closeGlassIdModal}
+          >
+            {selectedGlassCardData ? (
+              <div
+                className="pointer-events-auto relative w-[min(92vw,420px)] overflow-visible"
+                onClick={event => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="absolute -right-6 -top-6 z-10 rounded-full border border-white/50 bg-black/25 px-2.5 py-0.5 text-sm text-white/90 transition hover:bg-black/45 hover:text-white"
+                  onClick={closeGlassIdModal}
+                  aria-label="Close GLASS-ID card"
+                >
+                  ✕
+                </button>
+                <GlassIdCard
+                  data={selectedGlassCardData}
+                  variant="issuance"
+                  issued
+                  showFullId
+                  className="max-w-none"
+                />
+              </div>
+            ) : (
+              <div
+                className="pointer-events-auto relative rounded-2xl border border-border bg-background px-4 py-3 text-sm text-muted-foreground"
+                onClick={event => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="absolute -right-6 -top-6 z-10 rounded-full border border-white/50 bg-black/25 px-2.5 py-0.5 text-sm text-white/90 transition hover:bg-black/45 hover:text-white"
+                  onClick={closeGlassIdModal}
+                  aria-label="Close GLASS-ID card"
+                >
+                  ✕
+                </button>
+                Unable to load GLASS-ID for this lab.
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="mt-6 grid gap-6 lg:grid-cols-[220px_1fr]">
           <aside className="space-y-4">
             <div className="space-y-2">
@@ -1362,7 +1669,7 @@ export default function Account() {
                                           <div>
                                             <p className="font-semibold text-foreground">{lab.name}</p>
                                             <p className="text-xs text-muted-foreground">
-                                              {premium ? "Premier" : status} • {lab.isVisible === false ? "Hidden" : "Visible"}
+                                              {premium ? "Premier" : labStatusLabel(lab as any)} • {lab.isVisible === false ? "Hidden" : "Visible"}
                                             </p>
                                           </div>
                                           <Link href={`/lab/manage/${lab.id}`} className="text-xs font-medium text-primary hover:underline">
@@ -1430,34 +1737,83 @@ export default function Account() {
 
                     <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                       <InfoTile label="Labs linked" value={labStats.length.toString()} />
-                      <InfoTile label="Visible" value={labsVisibleCount.toString()} />
-                      <InfoTile label="Hidden" value={labsHiddenCount.toString()} />
                       <InfoTile label="Equipment" value={equipmentCount.toString()} />
-                      <InfoTile label="Labs with equipment" value={labsWithEquipmentCount.toString()} />
                     </div>
 
-                    {labStats.length > 0 && (
-                      <div className="mt-6 grid gap-4 md:grid-cols-2">
-                        {bestViewLab && (
-                          <HighlightCard
-                            title="Best performing"
-                            subtitle="Most views (30d)"
-                            primary={`${bestViewLab.views30d} views`}
-                            secondary={bestViewLab.name}
-                            badge={isPremierLab(bestViewLab) ? "Premium" : undefined}
-                          />
-                        )}
-                        {bestFavoriteLab && (
-                          <HighlightCard
-                            title="Most favorited"
-                            subtitle="Total favorites"
-                            primary={`${bestFavoriteLab.favorites} favorites`}
-                            secondary={bestFavoriteLab.name}
-                            badge={isPremierLab(bestFavoriteLab) ? "Premium" : undefined}
-                          />
-                        )}
-                      </div>
-                    )}
+                    <div className="mt-8">
+                      <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">All linked labs</p>
+                      {ownedLabs.length === 0 ? (
+                        <div className="mt-3 rounded-2xl border border-border bg-background/70 px-4 py-3 text-sm text-muted-foreground">
+                          No labs linked yet.
+                        </div>
+                      ) : (
+                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                          {ownedLabs.map(lab => {
+                            const status = labStatusValue(lab as any);
+                            const verified = isLabVerified(lab.id);
+                            const city = (lab as any).city ?? null;
+                            const country = (lab as any).country ?? null;
+                            const location = [city, country].filter(Boolean).join(", ");
+                            const glassRecord = glassIdsByLab[lab.id];
+                            const isActiveGlassId =
+                              glassRecord?.is_active ?? ["verified_passive", "verified_active", "premier"].includes(status);
+                            const verificationCertificate = certificatesByLab[lab.id] ?? null;
+                            return (
+                              <div
+                                key={lab.id}
+                                className="rounded-2xl border border-border bg-background/70 px-4 py-3 text-sm"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold text-foreground">{lab.name}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {labStatusLabel(lab as any)} • {(lab as any).isVisible === false ? "Hidden" : "Visible"}
+                                    </p>
+                                    {location ? (
+                                      <p className="mt-1 text-xs text-muted-foreground">{location}</p>
+                                    ) : null}
+                                  </div>
+                                  <Link href={`/lab/manage/${lab.id}`} className="text-xs font-medium text-primary hover:underline">
+                                    Manage
+                                  </Link>
+                                </div>
+
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                  <span className="rounded-full border border-border px-2 py-1 text-xs text-muted-foreground">
+                                    Status: {verified ? "Verified" : "Unverified"}
+                                  </span>
+                                </div>
+
+                                {(verified || verificationCertificate) && (
+                                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                                    {verified && (
+                                      <button
+                                        type="button"
+                                        onClick={() => openGlassIdModal(lab.id)}
+                                        className="inline-flex items-center gap-2 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:bg-primary/90"
+                                      >
+                                        <IdCard className="h-3.5 w-3.5" />
+                                        {isActiveGlassId ? "View GLASS-ID" : "View GLASS-ID (inactive)"}
+                                      </button>
+                                    )}
+                                    {verificationCertificate && (
+                                      <a
+                                        href={verificationCertificate.pdf_url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                                      >
+                                        View certificate
+                                      </a>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </motion.div>
               )}
