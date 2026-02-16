@@ -13,7 +13,7 @@ import {
 } from "@shared/labs";
 import { supabase } from "./supabaseClient";
 
-const LAB_SELECT = `
+const LAB_SELECT_BASE = `
   id,
   name,
   owner_user_id,
@@ -35,9 +35,19 @@ const LAB_SELECT = `
   lab_equipment (item, is_priority),
   lab_techniques (name, description),
   lab_focus_areas (focus_area),
-  lab_offers (offer),
+`;
+
+const LAB_SELECT_SUFFIX = `
   lab_erc_disciplines (erc_code, is_primary, erc_disciplines (code, domain, title))
 `;
+
+const LAB_SELECT = `${LAB_SELECT_BASE}${LAB_SELECT_SUFFIX}`;
+
+type ProfileLabOfferRow = {
+  supports_bench_rental?: boolean | string | null;
+  supports_equipment_access?: boolean | string | null;
+  pricing_model?: string | null;
+};
 
 type LabRow = {
   id: number;
@@ -91,7 +101,7 @@ type LabRow = {
   lab_equipment: Array<{ item: string; is_priority: boolean | string | null }> | null;
   lab_techniques: Array<{ name: string; description: string | null }> | null;
   lab_focus_areas: Array<{ focus_area: string }> | null;
-  lab_offers: Array<{ offer: OfferOption }> | null;
+  lab_offers?: Array<ProfileLabOfferRow> | null;
   lab_erc_disciplines: Array<{
     erc_code: string;
     is_primary: boolean | string | null;
@@ -145,6 +155,24 @@ async function resolveOwnerUserId(explicit?: string | null): Promise<string | nu
   return explicit ?? null;
 }
 
+function deriveLegacyOffersFromProfile(profileOffer?: ProfileLabOfferRow | null): OfferOption[] {
+  if (!profileOffer) return [];
+  const offers: OfferOption[] = [];
+  const pricingModel = (profileOffer.pricing_model ?? "").toString().trim().toLowerCase();
+  if (pricingModel.includes("hour")) offers.push("Hourly rate");
+  if (pricingModel.includes("day")) offers.push("Day rate");
+  if (pricingModel.includes("month")) offers.push("Monthly rent");
+  if (parseBoolean(profileOffer.supports_equipment_access, false)) {
+    offers.push("Equipment use rate");
+  }
+  const supportsBenchRental = parseBoolean(profileOffer.supports_bench_rental, false);
+  const hasRateOffer = offers.includes("Monthly rent") || offers.includes("Hourly rate") || offers.includes("Day rate");
+  if (supportsBenchRental && !hasRateOffer) {
+    offers.push("Monthly rent");
+  }
+  return Array.from(new Set(offers));
+}
+
 function mapLabRow(row: LabRow): LabPartner {
   const pickOne = <T>(value: T[] | T | null | undefined) =>
     (Array.isArray(value) ? value[0] : value) ?? null;
@@ -191,6 +219,8 @@ function mapLabRow(row: LabRow): LabPartner {
   const ercDisciplines = ercDisciplineCodes
     .map(code => ercMetaByCode.get(code))
     .filter((item): item is { code: string; domain: "PE" | "LS" | "SH"; title: string } => Boolean(item));
+  const profileOffer = pickOne(row.lab_offers ?? null);
+  const offers = deriveLegacyOffersFromProfile(profileOffer);
   const mapped = {
     id: Number(row.id),
     name: row.name,
@@ -252,7 +282,7 @@ function mapLabRow(row: LabRow): LabPartner {
     ercDisciplineCodes,
     primaryErcDisciplineCode,
     ercDisciplines,
-    offers: (row.lab_offers ?? []).map(item => item.offer),
+    offers,
     field: null,
     public: parseBoolean(profileRow?.public, false),
     alternateNames: profileRow?.alternate_names ?? [],
@@ -355,11 +385,21 @@ async function replaceLabFocusAreas(labId: number, areas: string[]) {
 }
 
 async function replaceLabOffers(labId: number, offers: OfferOption[]) {
+  const uniqueOffers = Array.from(new Set(offers));
   const del = await supabase.from("lab_offers").delete().eq("lab_id", labId);
   if (del.error) throw del.error;
-  if (!offers.length) return;
-  const ins = await supabase.from("lab_offers").insert(offers.map(offer => ({ lab_id: labId, offer })));
-  if (ins.error) throw ins.error;
+  if (!uniqueOffers.length) return;
+  const profileUpsert = await supabase
+    .from("lab_offers")
+    .upsert(
+      {
+        lab_id: labId,
+        supports_bench_rental: uniqueOffers.some(offer => offer !== "Equipment use rate"),
+        supports_equipment_access: uniqueOffers.includes("Equipment use rate"),
+      },
+      { onConflict: "lab_id" },
+    );
+  if (profileUpsert.error) throw profileUpsert.error;
 }
 
 async function replaceLabErcDisciplines(
