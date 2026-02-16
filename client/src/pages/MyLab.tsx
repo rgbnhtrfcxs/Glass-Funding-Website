@@ -256,6 +256,18 @@ export default function MyLab({ params }: { params: { id: string } }) {
       ),
     [ercOptions, secondaryErcDomain, form.primaryErcDisciplineCode],
   );
+  const basicsRequiredProgress = useMemo(() => {
+    const checks = [
+      form.name.trim().length > 0,
+      form.labManager.trim().length > 0,
+      form.contactEmail.trim().length > 0,
+      form.descriptionShort.trim().length > 0,
+    ];
+    const completed = checks.filter(Boolean).length;
+    const total = checks.length;
+    const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+    return { completed, total, percent };
+  }, [form.name, form.labManager, form.contactEmail, form.descriptionShort]);
 
   useEffect(() => {
     let active = true;
@@ -1070,6 +1082,20 @@ export default function MyLab({ params }: { params: { id: string } }) {
                       );
                     })}
                   </div>
+                  <div className="mt-3 rounded-xl border border-border/70 bg-background/40 px-3 py-2">
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>Basics progress</span>
+                      <span>
+                        {basicsRequiredProgress.completed}/{basicsRequiredProgress.total}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all duration-300"
+                        style={{ width: `${basicsRequiredProgress.percent}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 md:flex-col">
                   <button
@@ -1098,23 +1124,49 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   This section is what collaborators read first. Clear, specific details increase trust and help you
                   receive better-matched requests.
                 </p>
-                <Field label="Lab name" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                <Field
+                  label={
+                    <span>
+                      Lab name <span className="text-destructive">*</span>
+                    </span>
+                  }
+                  labelClassName={BASICS_LABEL_CLASS}
+                  containerClassName={BASICS_FIELD_CLASS}
+                >
                   <input
                     className={BASICS_INPUT_CLASS}
                     value={form.name}
                     onChange={e => setForm({ ...form, name: e.target.value })}
                     placeholder="Official public name, e.g., UAR 3286 CNRS/Unistra"
+                    required
                   />
                 </Field>
-                <Field label="Lab manager / Director" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                <Field
+                  label={
+                    <span>
+                      Lab manager / Director <span className="text-destructive">*</span>
+                    </span>
+                  }
+                  labelClassName={BASICS_LABEL_CLASS}
+                  containerClassName={BASICS_FIELD_CLASS}
+                >
                   <input
                     className={BASICS_INPUT_CLASS}
                     value={form.labManager}
                     onChange={e => setForm({ ...form, labManager: e.target.value })}
                     placeholder="Decision-maker or scientific lead (full name)"
+                    required
                   />
                 </Field>
-                <Field label="Contact email" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                <Field
+                  label={
+                    <span>
+                      Contact email <span className="text-destructive">*</span>
+                    </span>
+                  }
+                  labelClassName={BASICS_LABEL_CLASS}
+                  containerClassName={BASICS_FIELD_CLASS}
+                >
                   <div className="flex items-center gap-2">
                     <input className={BASICS_INPUT_CLASS} value={form.contactEmail} disabled />
                     <span className="text-muted-foreground" aria-hidden="true">
@@ -1125,7 +1177,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
                     </span>
                   </div>
                 </Field>
-                <Field label="Organization role (optional)" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                <Field label="Organization role" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                   <select
                     className={BASICS_INPUT_CLASS}
                     value={form.orgRole}
@@ -1139,7 +1191,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
                     ))}
                   </select>
                 </Field>
-                <Field label="Primary ERC discipline (optional)" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                <Field label="Primary ERC discipline" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                   <div className="space-y-3">
                     <div className="grid gap-2 sm:grid-cols-2">
                       <select
@@ -1169,7 +1221,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
                     </p>
                   </div>
                 </Field>
-                <Field label="Secondary ERC disciplines (optional)" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                <Field label="Secondary ERC disciplines" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                   <div className="space-y-3">
                     <select
                       className={BASICS_INPUT_CLASS}
@@ -1239,7 +1291,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
                 <Field
                   label={
                     <span className="inline-flex items-center gap-2">
-                      <span>HAL structure ID (optional)</span>
+                      <span>HAL structure ID</span>
                       <span className="group relative inline-flex h-4 w-4 items-center justify-center rounded-full border border-border bg-background/85 text-[9px] font-semibold text-muted-foreground transition hover:border-primary hover:text-primary">
                         ↗
                         <span className="pointer-events-none absolute left-full top-1/2 ml-2 -translate-y-1/2 whitespace-nowrap rounded-full border border-border bg-background/95 px-2 py-1 text-[10px] font-medium normal-case tracking-normal text-muted-foreground opacity-0 shadow-sm transition-opacity duration-200 group-hover:opacity-100">
@@ -1258,13 +1310,22 @@ export default function MyLab({ params }: { params: { id: string } }) {
                     placeholder="If indexed in HAL, enter structure ID (e.g., struct-123456)"
                   />
                 </Field>
-                <Field label="Short description" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                <Field
+                  label={
+                    <span>
+                      Short description <span className="text-destructive">*</span>
+                    </span>
+                  }
+                  labelClassName={BASICS_LABEL_CLASS}
+                  containerClassName={BASICS_FIELD_CLASS}
+                >
                   <textarea
                     className={BASICS_INPUT_CLASS}
                     rows={4}
                     value={form.descriptionShort}
                     onChange={e => setForm({ ...form, descriptionShort: e.target.value })}
                     placeholder="1-2 lines: who you are, what you do best, and who you typically support."
+                    required
                   />
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-muted-foreground">Recommended: 120-180 characters</span>
@@ -1279,7 +1340,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
                     </span>
                   </div>
                 </Field>
-                <Field label="Long description (optional)" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                <Field label="Long description" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                   <textarea
                     className={BASICS_INPUT_CLASS}
                     rows={6}
