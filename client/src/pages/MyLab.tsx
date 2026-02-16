@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { FileDown, X } from "lucide-react";
+import {
+  ClipboardList,
+  Edit2,
+  FileCheck2,
+  FileDown,
+  ImageIcon,
+  MapPin,
+  ShieldCheck,
+  Users,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useConsent } from "@/context/ConsentContext";
 import { supabase } from "@/lib/supabaseClient";
@@ -31,6 +42,11 @@ import { Link, useLocation } from "wouter";
 
 const INPUT_CLASS =
   "w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
+const PHOTO_THUMB_CLASS = "h-24 w-full rounded object-cover transition duration-200 group-hover:brightness-110";
+const BASICS_INPUT_CLASS =
+  "w-full rounded-none border-0 border-b border-border bg-transparent px-0 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-0 focus-visible:border-primary";
+const BASICS_LABEL_CLASS = "text-xs font-semibold tracking-[0.02em] text-foreground/90";
+const BASICS_HELP_CLASS = "text-xs text-muted-foreground leading-relaxed";
 
 const ROLE_RANK_HELP_ITEMS = [
   "1 = Lab Director",
@@ -45,12 +61,22 @@ const ROLE_RANK_HELP_ITEMS = [
 const TAB_ORDER = [
   "Basics",
   "Branding",
-  "Company details",
+  "Location",
   "Compliance",
   "Team",
   "Photos",
   "Offers",
 ] as const;
+
+const TAB_ICONS: Record<(typeof TAB_ORDER)[number], LucideIcon> = {
+  Basics: Edit2,
+  Branding: ClipboardList,
+  Location: MapPin,
+  Compliance: ShieldCheck,
+  Team: Users,
+  Photos: ImageIcon,
+  Offers: FileCheck2,
+};
 
 type Form = {
   name: string;
@@ -129,7 +155,6 @@ export default function MyLab({ params }: { params: { id: string } }) {
   const [labId, setLabId] = useState<number | null>(Number.isNaN(labIdParam) ? null : labIdParam);
   const [isVisible, setIsVisible] = useState<boolean>(true);
   const [photos, setPhotos] = useState<MediaAsset[]>([]);
-  const [photoUrlInput, setPhotoUrlInput] = useState("");
   const [complianceDocs, setComplianceDocs] = useState<MediaAsset[]>([]);
   const [complianceUploading, setComplianceUploading] = useState(false);
   const [complianceError, setComplianceError] = useState<string | null>(null);
@@ -187,6 +212,9 @@ export default function MyLab({ params }: { params: { id: string } }) {
   const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [draggingPhotoIndex, setDraggingPhotoIndex] = useState<number | null>(null);
+  const [photoDeleteConfirmOpen, setPhotoDeleteConfirmOpen] = useState(false);
+  const [pendingPhotoDelete, setPendingPhotoDelete] = useState<MediaAsset | null>(null);
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [showRoleHelp, setShowRoleHelp] = useState(false);
   const [pinRoleHelp, setPinRoleHelp] = useState(false);
@@ -383,8 +411,9 @@ export default function MyLab({ params }: { params: { id: string } }) {
       if (Array.isArray(parsed?.photos) && parsed.photos.length > 0) setPhotos(parsed.photos);
       if (Array.isArray(parsed?.partnerLogos) && parsed.partnerLogos.length > 0) setPartnerLogos(parsed.partnerLogos);
       if (Array.isArray(parsed?.complianceDocs) && parsed.complianceDocs.length > 0) setComplianceDocs(parsed.complianceDocs);
-      if (typeof parsed?.activeTab === "string" && (TAB_ORDER as readonly string[]).includes(parsed.activeTab)) {
-        setActiveTab(parsed.activeTab as (typeof TAB_ORDER)[number]);
+      const normalizedActiveTab = parsed?.activeTab === "Company details" ? "Location" : parsed?.activeTab;
+      if (typeof normalizedActiveTab === "string" && (TAB_ORDER as readonly string[]).includes(normalizedActiveTab)) {
+        setActiveTab(normalizedActiveTab as (typeof TAB_ORDER)[number]);
       }
     } catch {
       // Ignore invalid drafts.
@@ -478,15 +507,26 @@ export default function MyLab({ params }: { params: { id: string } }) {
     }));
   };
 
-  const addPhotoFromUrl = () => {
-    const url = photoUrlInput.trim();
-    if (!url) return;
-    setPhotos(prev => [...prev, { name: url.split("/").pop() ?? `Photo ${prev.length + 1}`, url }]);
-    setPhotoUrlInput("");
-  };
-
   const removePhoto = (asset: MediaAsset) => {
     setPhotos(prev => prev.filter(item => item.url !== asset.url));
+  };
+
+  const movePhoto = (fromIndex: number, toIndex: number) => {
+    setPhotos(prev => {
+      if (
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= prev.length ||
+        toIndex >= prev.length ||
+        fromIndex === toIndex
+      ) {
+        return prev;
+      }
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
   };
 
   async function handlePhotoUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -937,7 +977,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
 
   return (
     <section className="bg-background min-h-screen">
-      <div className="container mx-auto px-4 py-20 lg:py-24 max-w-3xl">
+      <div className="container mx-auto px-4 py-20 lg:py-24 max-w-6xl">
         <Link href="/account?tab=manageLab" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-4 rounded-full border border-border px-3 py-1">
           ← Back to manage labs
         </Link>
@@ -1001,218 +1041,279 @@ export default function MyLab({ params }: { params: { id: string } }) {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className="mt-8 space-y-8"
+            className="mt-8"
             onSubmit={e => { e.preventDefault(); setSaveConfirmOpen(true); }}
           >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap gap-2">
-                {TAB_ORDER.map(tab => (
+            <div className="grid gap-6 md:grid-cols-[220px_minmax(0,1fr)] md:items-start">
+              <aside className="space-y-4 md:sticky md:top-24">
+                <div className="rounded-2xl border border-border bg-card/70 p-3">
+                  <div className="flex flex-wrap gap-2 md:flex-col">
+                    {TAB_ORDER.map(tab => {
+                      const TabIcon = TAB_ICONS[tab];
+                      return (
+                        <button
+                          key={tab}
+                          type="button"
+                          onClick={() => setActiveTab(tab)}
+                          className={`rounded-full border px-4 py-1.5 text-sm font-medium text-left transition md:w-full ${
+                            activeTab === tab
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border text-muted-foreground hover:border-primary/50 hover:text-primary"
+                          }`}
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            <TabIcon className="h-4 w-4 flex-shrink-0" />
+                            <span>{tab}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 md:flex-col">
                   <button
-                    key={tab}
                     type="button"
-                    onClick={() => setActiveTab(tab)}
-                    className={`rounded-full border px-4 py-1.5 text-sm font-medium transition ${
-                      activeTab === tab
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border text-muted-foreground hover:border-primary/50 hover:text-primary"
-                    }`}
+                    onClick={() => setSaveConfirmOpen(true)}
+                    className="rounded-full bg-primary px-4 py-2 text-sm text-primary-foreground md:w-full"
+                    disabled={saving}
                   >
-                    {tab}
+                    {saving ? "Saving…" : "Save"}
                   </button>
-                ))}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDeleteConfirmOpen(true)}
-                  className="rounded-full border border-destructive/50 px-4 py-2 text-sm font-medium text-destructive hover:border-destructive"
-                >
-                  Delete lab
-                </button>
-                <button
-                  className="rounded-full bg-primary px-4 py-2 text-primary-foreground"
-                  type="button"
-                  onClick={() => setSaveConfirmOpen(true)}
-                  disabled={saving}
-                >
-                  {saving ? "Saving…" : "Save"}
-                </button>
-              </div>
-            </div>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConfirmOpen(true)}
+                    className="rounded-full border border-destructive/50 px-4 py-2 text-sm font-medium text-destructive hover:border-destructive md:w-full"
+                  >
+                    Delete lab
+                  </button>
+                </div>
+              </aside>
+
+              <div className="min-w-0 space-y-8">
 
             {activeTab === "Basics" && (
               <Section title="Basics">
-              <Field label="Lab name">
-                <input className={INPUT_CLASS} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-              </Field>
-              <Field label="Lab manager">
-                <input className={INPUT_CLASS} value={form.labManager} onChange={e => setForm({ ...form, labManager: e.target.value })} />
-              </Field>
-            <Field label="Contact email">
-              <div className="flex items-center gap-2">
-                <input className={INPUT_CLASS} value={form.contactEmail} disabled />
-                <span className="text-muted-foreground" aria-hidden="true">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-                    <rect x="5" y="11" width="14" height="9" rx="2" />
-                    <path d="M8 11v-2a4 4 0 0 1 8 0v2" />
-                  </svg>
-                </span>
-              </div>
-            </Field>
-              <Field label="Short description">
-                <textarea
-                  className={INPUT_CLASS}
-                  rows={4}
-                  value={form.descriptionShort}
-                  onChange={e => setForm({ ...form, descriptionShort: e.target.value })}
-                  placeholder="Short intro under your lab name."
-                />
-              </Field>
-              <Field label="Long description (optional)">
-                <textarea
-                  className={INPUT_CLASS}
-                  rows={6}
-                  value={form.descriptionLong}
-                  onChange={e => setForm({ ...form, descriptionLong: e.target.value })}
-                  placeholder="Longer overview shown later on the page."
-                />
-              </Field>
-              <Field label="Organization role (optional)">
-                <select
-                  className={INPUT_CLASS}
-                  value={form.orgRole}
-                  onChange={e => setForm({ ...form, orgRole: e.target.value as "" | OrgRoleOption })}
-                >
-                  <option value="">Select role type</option>
-                  {orgRoleOptions.map(role => (
-                    <option key={role} value={role}>
-                      {role}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Primary ERC discipline (optional)">
-                <div className="space-y-3">
-                  <div className="grid gap-2 sm:grid-cols-2">
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  This section is what collaborators read first. Clear, specific details increase trust and help you
+                  receive better-matched requests.
+                </p>
+                <Field label="Lab name" labelClassName={BASICS_LABEL_CLASS}>
+                  <input
+                    className={BASICS_INPUT_CLASS}
+                    value={form.name}
+                    onChange={e => setForm({ ...form, name: e.target.value })}
+                    placeholder="e.g., UAR 3286 CNRS/Unistra"
+                  />
+                  <p className={BASICS_HELP_CLASS}>Use the official public lab name so others can verify you quickly.</p>
+                </Field>
+                <Field label="Lab manager / Director" labelClassName={BASICS_LABEL_CLASS}>
+                  <input
+                    className={BASICS_INPUT_CLASS}
+                    value={form.labManager}
+                    onChange={e => setForm({ ...form, labManager: e.target.value })}
+                    placeholder="Full name of lead contact"
+                  />
+                  <p className={BASICS_HELP_CLASS}>
+                    Add the decision-maker or scientific lead most relevant for collaborations.
+                  </p>
+                </Field>
+                <Field label="Contact email" labelClassName={BASICS_LABEL_CLASS}>
+                  <div className="flex items-center gap-2">
+                    <input className={BASICS_INPUT_CLASS} value={form.contactEmail} disabled />
+                    <span className="text-muted-foreground" aria-hidden="true">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+                        <rect x="5" y="11" width="14" height="9" rx="2" />
+                        <path d="M8 11v-2a4 4 0 0 1 8 0v2" />
+                      </svg>
+                    </span>
+                  </div>
+                  <p className={BASICS_HELP_CLASS}>This email is used for trusted routing and cannot be edited here.</p>
+                </Field>
+                <Field label="Short description" labelClassName={BASICS_LABEL_CLASS}>
+                  <div className="relative">
+                    <textarea
+                      className={`${BASICS_INPUT_CLASS} pr-16`}
+                      rows={4}
+                      value={form.descriptionShort}
+                      onChange={e => setForm({ ...form, descriptionShort: e.target.value })}
+                      placeholder="Short intro under your lab name."
+                    />
+                    <span
+                      className={`pointer-events-none absolute bottom-1 right-0 text-[11px] ${
+                        form.descriptionShort.length >= 120 && form.descriptionShort.length <= 180
+                          ? "text-emerald-600"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {form.descriptionShort.length} / 350
+                    </span>
+                  </div>
+                  <p className={BASICS_HELP_CLASS}>
+                    Aim for 1-2 lines: who you are, what you do best, and who you typically support.
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">Recommended: 120-180 characters</p>
+                </Field>
+                <Field label="Long description (optional)" labelClassName={BASICS_LABEL_CLASS}>
+                  <div className="relative">
+                    <textarea
+                      className={`${BASICS_INPUT_CLASS} pr-16`}
+                      rows={6}
+                      value={form.descriptionLong}
+                      onChange={e => setForm({ ...form, descriptionLong: e.target.value })}
+                      placeholder="Longer overview shown later on the page."
+                    />
+                    <span
+                      className={`pointer-events-none absolute bottom-1 right-0 text-[11px] ${
+                        form.descriptionLong.length >= 400 && form.descriptionLong.length <= 900
+                          ? "text-emerald-600"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {form.descriptionLong.length} / 8000
+                    </span>
+                  </div>
+                  <p className={BASICS_HELP_CLASS}>
+                    Useful details: capabilities, sample types, turnaround expectations, compliance context, and collaboration style.
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">Recommended: 400-900 characters</p>
+                </Field>
+                <Field label="Organization role (optional)" labelClassName={BASICS_LABEL_CLASS}>
+                  <select
+                    className={BASICS_INPUT_CLASS}
+                    value={form.orgRole}
+                    onChange={e => setForm({ ...form, orgRole: e.target.value as "" | OrgRoleOption })}
+                  >
+                    <option value="">Select role type</option>
+                    {orgRoleOptions.map(role => (
+                      <option key={role} value={role}>
+                        {role}
+                      </option>
+                    ))}
+                  </select>
+                  <p className={BASICS_HELP_CLASS}>This helps visitors understand your operating model at a glance.</p>
+                </Field>
+                <Field label="Primary ERC discipline (optional)" labelClassName={BASICS_LABEL_CLASS}>
+                  <div className="space-y-3">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <select
+                        className={BASICS_INPUT_CLASS}
+                        value={primaryErcDomain}
+                        onChange={e => setPrimaryErcDomain(e.target.value as ErcDomainOption)}
+                      >
+                        <option value="PE">PE - Physical Sciences & Engineering</option>
+                        <option value="LS">LS - Life Sciences</option>
+                        <option value="SH">SH - Social Sciences & Humanities</option>
+                      </select>
+                      <select
+                        className={BASICS_INPUT_CLASS}
+                        value={form.primaryErcDisciplineCode}
+                        onChange={e => setPrimaryErcDiscipline(e.target.value)}
+                      >
+                        <option value="">No primary discipline</option>
+                        {primaryDomainOptions.map(option => (
+                          <option key={option.code} value={option.code}>
+                            {option.code} - {option.title}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Pick one primary ERC discipline first, then add any secondary disciplines below.
+                    </p>
+                  </div>
+                </Field>
+                <Field label="Secondary ERC disciplines (optional)" labelClassName={BASICS_LABEL_CLASS}>
+                  <div className="space-y-3">
                     <select
-                      className={INPUT_CLASS}
-                      value={primaryErcDomain}
-                      onChange={e => setPrimaryErcDomain(e.target.value as ErcDomainOption)}
+                      className={BASICS_INPUT_CLASS}
+                      value={secondaryErcDomain}
+                      disabled={!form.primaryErcDisciplineCode}
+                      onChange={e => setSecondaryErcDomain(e.target.value as ErcDomainOption)}
                     >
                       <option value="PE">PE - Physical Sciences & Engineering</option>
                       <option value="LS">LS - Life Sciences</option>
                       <option value="SH">SH - Social Sciences & Humanities</option>
                     </select>
-                    <select
-                      className={INPUT_CLASS}
-                      value={form.primaryErcDisciplineCode}
-                      onChange={e => setPrimaryErcDiscipline(e.target.value)}
-                    >
-                      <option value="">No primary discipline</option>
-                      {primaryDomainOptions.map(option => (
-                        <option key={option.code} value={option.code}>
-                          {option.code} - {option.title}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Pick one primary ERC discipline first, then add any secondary disciplines below.
-                  </p>
-                </div>
-              </Field>
-              <Field label="Secondary ERC disciplines (optional)">
-                <div className="space-y-3">
-                  <select
-                    className={INPUT_CLASS}
-                    value={secondaryErcDomain}
-                    disabled={!form.primaryErcDisciplineCode}
-                    onChange={e => setSecondaryErcDomain(e.target.value as ErcDomainOption)}
-                  >
-                    <option value="PE">PE - Physical Sciences & Engineering</option>
-                    <option value="LS">LS - Life Sciences</option>
-                    <option value="SH">SH - Social Sciences & Humanities</option>
-                  </select>
-                  <div className="max-h-56 overflow-auto rounded-xl border border-border bg-background px-3 py-2">
-                    {!form.primaryErcDisciplineCode ? (
-                      <p className="text-xs text-muted-foreground">Select a primary ERC discipline first.</p>
-                    ) : ercLoading ? (
-                      <p className="text-xs text-muted-foreground">Loading ERC disciplines...</p>
-                    ) : ercOptions.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">No ERC disciplines available.</p>
-                    ) : (
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {secondaryDomainOptions.map(option => {
-                          const checked = form.ercDisciplineCodes.includes(option.code);
+                    <div className="max-h-56 overflow-auto rounded-xl border border-border bg-background px-3 py-2">
+                      {!form.primaryErcDisciplineCode ? (
+                        <p className="text-xs text-muted-foreground">Select a primary ERC discipline first.</p>
+                      ) : ercLoading ? (
+                        <p className="text-xs text-muted-foreground">Loading ERC disciplines...</p>
+                      ) : ercOptions.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No ERC disciplines available.</p>
+                      ) : (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {secondaryDomainOptions.map(option => {
+                            const checked = form.ercDisciplineCodes.includes(option.code);
+                            return (
+                              <label
+                                key={option.code}
+                                className="flex items-start gap-2 rounded-lg border border-border/60 px-2 py-1.5 text-xs text-foreground"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="mt-0.5"
+                                  checked={checked}
+                                  onChange={event => toggleSecondaryErcDiscipline(option.code, event.target.checked)}
+                                />
+                                <span>
+                                  <span className="font-semibold">{option.code}</span>
+                                  <span className="text-muted-foreground"> {option.title}</span>
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    {ercError && <p className="text-xs text-destructive">{ercError}</p>}
+                    {form.ercDisciplineCodes.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {form.ercDisciplineCodes.map(code => {
+                          const isPrimary = code === form.primaryErcDisciplineCode;
                           return (
-                            <label
-                              key={option.code}
-                              className="flex items-start gap-2 rounded-lg border border-border/60 px-2 py-1.5 text-xs text-foreground"
+                            <span
+                              key={code}
+                              className={`rounded-full px-3 py-1 text-xs ${
+                                isPrimary
+                                  ? "border border-primary/40 bg-primary/10 text-primary"
+                                  : "border border-border text-muted-foreground"
+                              }`}
                             >
-                              <input
-                                type="checkbox"
-                                className="mt-0.5"
-                                checked={checked}
-                                onChange={event => toggleSecondaryErcDiscipline(option.code, event.target.checked)}
-                              />
-                              <span>
-                                <span className="font-semibold">{option.code}</span>
-                                <span className="text-muted-foreground"> {option.title}</span>
-                              </span>
-                            </label>
+                              {ercLabelByCode.get(code) ?? code}
+                              {isPrimary ? " (Primary)" : ""}
+                            </span>
                           );
                         })}
                       </div>
                     )}
                   </div>
-                  {ercError && <p className="text-xs text-destructive">{ercError}</p>}
-                  {form.ercDisciplineCodes.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {form.ercDisciplineCodes.map(code => {
-                        const isPrimary = code === form.primaryErcDisciplineCode;
-                        return (
-                          <span
-                            key={code}
-                            className={`rounded-full px-3 py-1 text-xs ${
-                              isPrimary
-                                ? "border border-primary/40 bg-primary/10 text-primary"
-                                : "border border-border text-muted-foreground"
-                            }`}
-                          >
-                            {ercLabelByCode.get(code) ?? code}
-                            {isPrimary ? " (Primary)" : ""}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </Field>
-              <Field label="HAL structure ID (optional)">
-                <input
-                  className={INPUT_CLASS}
-                  value={form.halStructureId}
-                  onChange={e => setForm({ ...form, halStructureId: e.target.value })}
-                  placeholder="e.g., struct-123456"
-                />
-              </Field>
-              <Field label="HAL person ID (optional)">
-                <input
-                  className={INPUT_CLASS}
-                  value={form.halPersonId}
-                  onChange={e => setForm({ ...form, halPersonId: e.target.value })}
-                  placeholder="e.g., 123456"
-                />
-              </Field>
-              <label className="flex items-center gap-3 text-sm text-foreground">
-                <input
-                  type="checkbox"
-                  checked={form.offersLabSpace}
-                  onChange={e => setForm({ ...form, offersLabSpace: e.target.checked })}
-                />
-                Offers lab space (enables pricing/offers on your page)
-              </label>
-            </Section>
+                </Field>
+                <Field
+                  label={
+                    <span className="inline-flex items-center gap-2">
+                      <span>HAL structure ID (optional)</span>
+                      <span className="group relative inline-flex h-4 w-4 items-center justify-center rounded-full border border-border bg-background/85 text-[9px] font-semibold text-muted-foreground transition hover:border-primary hover:text-primary">
+                        ↗
+                        <span className="pointer-events-none absolute left-full top-1/2 ml-2 -translate-y-1/2 whitespace-nowrap rounded-full border border-border bg-background/95 px-2 py-1 text-[10px] font-medium normal-case tracking-normal text-muted-foreground opacity-0 shadow-sm transition-opacity duration-200 group-hover:opacity-100">
+                          Used to link your lab profile to HAL organization records.
+                        </span>
+                      </span>
+                    </span>
+                  }
+                  labelClassName={BASICS_LABEL_CLASS}
+                >
+                  <input
+                    className={BASICS_INPUT_CLASS}
+                    value={form.halStructureId}
+                    onChange={e => setForm({ ...form, halStructureId: e.target.value })}
+                    placeholder="e.g., struct-123456"
+                  />
+                  <p className={BASICS_HELP_CLASS}>
+                    Add this if your organization is indexed in HAL, so profile metadata can be mapped consistently.
+                  </p>
+                </Field>
+              </Section>
             )}
 
             {activeTab === "Branding" && (
@@ -1237,8 +1338,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
             </Section>
             )}
 
-            {activeTab === "Company details" && (
-            <Section title="Company details">
+            {activeTab === "Location" && (
+            <Section title="Location">
               <Field label="Address line 1">
                 <input className={INPUT_CLASS} value={form.addressLine1} onChange={e => setForm({ ...form, addressLine1: e.target.value })} />
               </Field>
@@ -1632,157 +1733,278 @@ export default function MyLab({ params }: { params: { id: string } }) {
             {activeTab === "Photos" && (
             <Section title="Photos">
               {canUseLogo && (
-                <Field label="Logo (verified labs)">
-                  <div className="flex flex-col gap-2">
-                    <label className="inline-flex items-center gap-3">
-                      <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
-                        Choose file
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleLogoUpload}
-                          className="hidden"
-                        />
-                      </span>
-                      {form.logoUrl && (
-                        <button
-                          type="button"
-                          onClick={() => setForm({ ...form, logoUrl: "" })}
-                          className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-destructive hover:text-destructive"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </label>
+                <div className="grid gap-2">
+                  <div className="rounded-2xl border border-border bg-card/50 p-3 overflow-hidden">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <p className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
+                        <span>Logo</span>
+                        <span className="rounded-full border border-emerald-300/60 bg-emerald-400/20 px-2 py-0.5 text-[10px] font-medium text-emerald-700 shadow-sm backdrop-blur-md">
+                          verified labs
+                        </span>
+                      </p>
+                      <label className="inline-flex items-center">
+                        <span className="rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
+                          Upload file
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleLogoUpload}
+                            className="hidden"
+                          />
+                        </span>
+                      </label>
+                    </div>
                     {logoUploading && <p className="text-xs text-muted-foreground">Uploading logo…</p>}
                     {logoError && <p className="text-xs text-destructive">{logoError}</p>}
-                    {form.logoUrl && (
-                      <div className="mt-2 inline-flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
-                        <img src={form.logoUrl} alt={`${form.name || "Lab"} logo`} className="h-10 w-10 rounded-full object-cover" />
-                        <span className="text-xs text-muted-foreground break-all max-w-[200px] truncate">{form.logoUrl}</span>
+                    {form.logoUrl ? (
+                      <div className="flex w-full max-w-full gap-3 overflow-x-auto overflow-y-hidden pb-1 pr-3 pt-2">
+                        <div className="group relative flex w-[170px] max-w-[170px] flex-shrink-0 flex-col gap-2 rounded-xl border border-border bg-muted/40 p-2 transition hover:border-primary/60 hover:bg-background/80 hover:shadow-md">
+                          <button
+                            type="button"
+                            onClick={() => setForm({ ...form, logoUrl: "" })}
+                            className="absolute -right-1.5 -top-1.5 z-10 inline-flex h-5 w-5 items-center justify-center rounded-full border border-destructive/70 bg-destructive/70 text-destructive-foreground ring-2 ring-background shadow-sm backdrop-blur-md transition hover:bg-destructive/85"
+                            aria-label="Remove logo"
+                            title="Remove logo"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                          <div className="relative">
+                            <img
+                              src={form.logoUrl}
+                              alt={`${form.name || "Lab"} logo`}
+                              draggable={false}
+                              className={PHOTO_THUMB_CLASS}
+                            />
+                            <span className="absolute bottom-2 left-2 rounded-full border border-white/40 bg-white/25 px-1.5 py-0.5 text-[9px] font-medium text-white shadow-sm backdrop-blur-md">
+                              Logo
+                            </span>
+                          </div>
+                        </div>
                       </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-muted-foreground">No logo uploaded yet.</p>
                     )}
                   </div>
-                </Field>
+                </div>
               )}
 
               {canUsePartnerLogos ? (
-                <Field label="Partner logos (premier or multi-lab feature)">
-                  <div className="flex flex-col gap-2">
-                    <label className="inline-flex items-center gap-3">
-                      <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
-                        Choose file
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handlePartnerLogoUpload}
-                          className="hidden"
-                        />
-                      </span>
-                    </label>
-                    {partnerLogos.length > 0 && (
-                      <div className="flex gap-3 overflow-x-auto pb-2">
+                <div className="grid gap-2">
+                  <div className="rounded-2xl border border-border bg-card/50 p-3 overflow-hidden">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <p className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
+                        <span>Partner logos</span>
+                        <span className="rounded-full border border-emerald-300/60 bg-emerald-400/20 px-2 py-0.5 text-[10px] font-medium text-emerald-700 shadow-sm backdrop-blur-md">
+                          premier or multi-lab feature
+                        </span>
+                      </p>
+                      <label className="inline-flex items-center">
+                        <span className="rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
+                          Upload file
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handlePartnerLogoUpload}
+                            className="hidden"
+                          />
+                        </span>
+                      </label>
+                    </div>
+                    {partnerLogos.length > 0 ? (
+                      <div className="flex w-full max-w-full gap-3 overflow-x-auto overflow-y-hidden pb-1 pr-3 pt-2">
                         {partnerLogos.map(logo => (
-                          <div key={logo.url} className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 flex-shrink-0">
-                            <img src={logo.url} alt={logo.name} className="h-10 w-10 rounded object-cover" />
+                          <div
+                            key={logo.url}
+                            className="group relative flex w-[210px] flex-shrink-0 flex-col gap-2 rounded-xl border border-border bg-muted/40 p-2 transition hover:border-primary/60 hover:bg-background/80 hover:shadow-md"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => removePartnerLogo(logo.url)}
+                              className="absolute -right-1.5 -top-1.5 z-10 inline-flex h-5 w-5 items-center justify-center rounded-full border border-destructive/70 bg-destructive/70 text-destructive-foreground ring-2 ring-background shadow-sm backdrop-blur-md transition hover:bg-destructive/85"
+                              aria-label="Remove partner logo"
+                              title="Remove partner logo"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                            <div className="relative">
+                              <img
+                                src={logo.url}
+                                alt={logo.name}
+                                draggable={false}
+                                className={PHOTO_THUMB_CLASS}
+                              />
+                              <span className="absolute bottom-2 left-2 rounded-full border border-white/40 bg-white/25 px-1.5 py-0.5 text-[9px] font-medium text-white shadow-sm backdrop-blur-md">
+                                Partner logo
+                              </span>
+                            </div>
                             <input
-                              className="w-48 rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              className="w-full rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                               placeholder="Partner website"
                               value={logo.website ?? ""}
                               onChange={e => updatePartnerLogo(logo.url, { website: e.target.value })}
                             />
-                            <button
-                              type="button"
-                              onClick={() => removePartnerLogo(logo.url)}
-                              className="text-xs text-muted-foreground hover:text-destructive"
-                            >
-                              Remove
-                            </button>
                           </div>
                         ))}
                       </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-muted-foreground">No partner logos yet. Upload files to add partner logos.</p>
                     )}
-                    <p className="text-xs text-muted-foreground">Stored in `lab-logos` under partners/ folders. Shown for premier labs.</p>
                   </div>
-                </Field>
+                </div>
               ) : (
                 <p className="text-xs text-muted-foreground">Partner logos are available on the premier plan or multi-lab accounts.</p>
               )}
 
-              <Field label="Lab photos">
-                <div className="flex flex-col gap-2">
-                  <div className="flex flex-wrap gap-2">
-                    <label className="inline-flex items-center gap-3">
-                      <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
-                        Upload file
-                        <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
-                      </span>
-                    </label>
-                    <div className="flex flex-1 gap-2">
-                      <input
-                        className="input flex-1"
-                        value={photoUrlInput}
-                        onChange={e => setPhotoUrlInput(e.target.value)}
-                        placeholder="https://images.example.com/photo.jpg"
-                      />
-                      <button
-                        type="button"
-                        onClick={addPhotoFromUrl}
-                        className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+              <div className="rounded-2xl border border-border bg-card/50 p-3 overflow-hidden">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-foreground">Lab photos</p>
+                  <label className="inline-flex items-center">
+                    <span className="rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
+                      Upload file
+                      <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                    </span>
+                  </label>
+                </div>
+                {photoUploading && <p className="mt-2 text-xs text-muted-foreground">Uploading photo…</p>}
+                {photoError && <p className="mt-2 text-xs text-destructive">{photoError}</p>}
+                {photos.length > 0 ? (
+                  <div className="flex w-full max-w-full gap-3 overflow-x-auto overflow-y-hidden pb-1 pr-3 pt-2">
+                    {photos.map((photo, index) => (
+                      <div
+                        key={photo.url}
+                        draggable
+                        onDragStart={event => {
+                          event.dataTransfer.setData("text/plain", String(index));
+                          event.dataTransfer.effectAllowed = "move";
+                          setDraggingPhotoIndex(index);
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          event.dataTransfer.setDragImage(
+                            event.currentTarget,
+                            rect.width / 2,
+                            rect.height / 2,
+                          );
+                        }}
+                        onDragEnd={() => setDraggingPhotoIndex(null)}
+                        onDragOver={event => {
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = "move";
+                        }}
+                        onDrop={event => {
+                          event.preventDefault();
+                          const fromIndex = Number(event.dataTransfer.getData("text/plain"));
+                          if (Number.isNaN(fromIndex)) return;
+                          movePhoto(fromIndex, index);
+                          setDraggingPhotoIndex(null);
+                        }}
+                        className={`group relative flex w-[170px] flex-shrink-0 flex-col gap-2 rounded-xl border border-border bg-muted/40 p-2 transition hover:border-primary/60 hover:bg-background/80 hover:shadow-md ${
+                          draggingPhotoIndex === index ? "ring-2 ring-primary/30 opacity-90" : ""
+                        }`}
+                        title="Drag to reorder"
                       >
-                        Add
-                      </button>
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPendingPhotoDelete(photo);
+                            setPhotoDeleteConfirmOpen(true);
+                          }}
+                          className="absolute -right-1.5 -top-1.5 z-10 inline-flex h-5 w-5 items-center justify-center rounded-full border border-destructive/70 bg-destructive/70 text-destructive-foreground ring-2 ring-background shadow-sm backdrop-blur-md transition hover:bg-destructive/85"
+                          aria-label="Remove photo"
+                          title="Remove photo"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                        <div className="relative">
+                          <img
+                            src={photo.url}
+                            alt={photo.name}
+                            draggable={false}
+                            className={PHOTO_THUMB_CLASS}
+                          />
+                          {index === 0 && (
+                            <span className="absolute bottom-2 left-2 rounded-full border border-white/40 bg-white/25 px-1.5 py-0.5 text-[9px] font-medium text-white shadow-sm backdrop-blur-md">
+                              Cover on Labs cards
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  {photoUploading && <p className="text-xs text-muted-foreground">Uploading photo…</p>}
-                  {photoError && <p className="text-xs text-destructive">{photoError}</p>}
-                </div>
-              </Field>
-              {photos.length > 0 && (
-                <div className="flex flex-wrap gap-3">
-                  {photos.map(photo => (
-                    <div
-                      key={photo.url}
-                      className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2"
-                    >
-                      <img src={photo.url} alt={photo.name} className="h-14 w-20 rounded object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => removePhoto(photo)}
-                        className="text-xs text-muted-foreground hover:text-destructive"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+                ) : (
+                  <p className="mt-2 text-xs text-muted-foreground">No photos yet. Upload files to build your photo order bar.</p>
+                )}
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Drag to reorder. Leftmost photo is the cover used on Labs cards.
+                </p>
+              </div>
             </Section>
             )}
 
             {activeTab === "Offers" && (
             <Section title="Offers">
-              <LabOfferProfileEditor
-                draft={offerProfileDraft}
-                onChange={setOfferProfileDraft}
-                taxonomy={offerTaxonomy}
-                loading={offerTaxonomyLoading}
-                error={offerProfileError}
-                disabled={!form.offersLabSpace}
-              />
-              {!form.offersLabSpace && (
+              <label className="flex items-center gap-3 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={form.offersLabSpace}
+                  onChange={e => setForm({ ...form, offersLabSpace: e.target.checked })}
+                />
+                Offers lab space (enables pricing/offers on your page)
+              </label>
+              {form.offersLabSpace ? (
+                <LabOfferProfileEditor
+                  draft={offerProfileDraft}
+                  onChange={setOfferProfileDraft}
+                  taxonomy={offerTaxonomy}
+                  loading={offerTaxonomyLoading}
+                  error={offerProfileError}
+                />
+              ) : (
                 <p className="text-xs text-muted-foreground">
-                  Enable “Offers lab space” in Basics to edit rental offers.
+                  Enable “Offers lab space” to reveal and edit rental offer details.
                 </p>
               )}
             </Section>
             )}
+              </div>
+            </div>
 
           </motion.form>
         )}
         {message && <p className="mt-4 text-sm text-emerald-600">{message}</p>}
         {deleteError && <p className="mt-4 text-sm text-destructive">{deleteError}</p>}
       </div>
+      {photoDeleteConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8">
+          <div className="w-full max-w-md rounded-3xl border border-border bg-background p-6 shadow-xl">
+            <h2 className="text-lg font-semibold text-foreground">Delete this photo?</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              This removes the photo from your lab gallery. You can keep it or delete it now.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPhotoDeleteConfirmOpen(false);
+                  setPendingPhotoDelete(null);
+                }}
+                className="rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary"
+              >
+                Keep photo
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (pendingPhotoDelete) removePhoto(pendingPhotoDelete);
+                  setPhotoDeleteConfirmOpen(false);
+                  setPendingPhotoDelete(null);
+                }}
+                className="rounded-full bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground transition hover:bg-destructive/90"
+              >
+                Delete photo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {saveConfirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8">
           <div className="w-full max-w-md rounded-3xl border border-border bg-background p-6 shadow-xl">
@@ -1858,10 +2080,18 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+  labelClassName,
+}: {
+  label: React.ReactNode;
+  children: React.ReactNode;
+  labelClassName?: string;
+}) {
   return (
     <div className="grid gap-2">
-      <label className="text-sm font-medium text-foreground">{label}</label>
+      <label className={labelClassName ?? "text-sm font-medium text-foreground"}>{label}</label>
       {children}
     </div>
   );
