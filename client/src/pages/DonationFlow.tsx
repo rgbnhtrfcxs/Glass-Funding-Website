@@ -80,12 +80,13 @@ export default function DonateFlow() {
 
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from("profiles")
-      .select("email, display_name, name, legal_full_name, address_line1, address_line2, city, postal_code, country")
-      .eq("user_id", user.id)
-      .maybeSingle()
-      .then(({ data }) => {
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("email, display_name, name, legal_full_name, address_line1, address_line2, city, postal_code, country")
+          .eq("user_id", user.id)
+          .maybeSingle();
         if (!data) return;
         if (!storedEmail) setEmail(data.email || user.email || "");
         setDetails(prev => ({
@@ -97,27 +98,32 @@ export default function DonateFlow() {
           postalCode: data.postal_code || prev.postalCode,
           country: data.country || prev.country || "France",
         }));
-      })
-      .catch(() => {});
+      } catch {
+        // ignore
+      }
+    })();
   }, [storedEmail, user?.id]);
 
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from("labs")
-      .select(
-        "id, name, siret_number, lab_manager, contact_email, address_line1, address_line2, city, postal_code, country",
-      )
-      .eq("owner_user_id", user.id)
-      .then(({ data }) => {
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("labs")
+          .select(
+            "id, name, siret_number, lab_manager, contact_email, address_line1, address_line2, city, postal_code, country",
+          )
+          .eq("owner_user_id", user.id);
         if (data && Array.isArray(data)) {
           setOwnedLabs(data);
           if (!selectedLabId && data.length > 0) {
             setSelectedLabId(data[0].id);
           }
         }
-      })
-      .catch(() => {});
+      } catch {
+        // ignore
+      }
+    })();
   }, [user?.id, user?.email]);
 
   useEffect(() => {

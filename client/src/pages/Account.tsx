@@ -54,7 +54,7 @@ type TeamMember = {
   website?: string | null;
   teamName?: string | null;
   roleRank?: number | null;
-  isLead?: boolean;
+  isLead: boolean;
 };
 
 type TeamMemberForm = {
@@ -182,6 +182,15 @@ export default function Account() {
 
   const toBool = (value: unknown) =>
     value === true || value === "true" || value === 1 || value === "1";
+  const normalizeTeamMember = (value: any): TeamMember => ({
+    name: typeof value?.name === "string" ? value.name : "",
+    title: typeof value?.title === "string" ? value.title : "",
+    linkedin: typeof value?.linkedin === "string" ? value.linkedin : null,
+    website: typeof value?.website === "string" ? value.website : null,
+    teamName: typeof value?.teamName === "string" ? value.teamName : null,
+    roleRank: typeof value?.roleRank === "number" && Number.isFinite(value.roleRank) ? value.roleRank : null,
+    isLead: Boolean(value?.isLead),
+  });
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [verifyLabId, setVerifyLabId] = useState<number | null>(null);
   const [verifySubmitting, setVerifySubmitting] = useState(false);
@@ -417,7 +426,7 @@ export default function Account() {
         setError(error.message);
         setProfile(null);
       } else {
-        setProfile((data as Profile) ?? null);
+        setProfile((data as unknown as Profile | null) ?? null);
       }
       setLoading(false);
     }
@@ -799,7 +808,9 @@ export default function Account() {
     );
     setTeamDrafts(
       ownedLabs.reduce((acc: Record<number, TeamMember[]>, lab) => {
-        acc[lab.id] = Array.isArray((lab as any).teamMembers) ? (lab as any).teamMembers : [];
+        acc[lab.id] = Array.isArray((lab as any).teamMembers)
+          ? ((lab as any).teamMembers as any[]).map(normalizeTeamMember).filter(member => member.name && member.title)
+          : [];
         return acc;
       }, {}),
     );
@@ -937,7 +948,9 @@ export default function Account() {
       const updated = await updateLab(labId, { teamMembers: members });
       setTeamDrafts(prev => ({
         ...prev,
-        [labId]: Array.isArray((updated as any).teamMembers) ? (updated as any).teamMembers : members,
+        [labId]: Array.isArray((updated as any).teamMembers)
+          ? ((updated as any).teamMembers as any[]).map(normalizeTeamMember).filter(member => member.name && member.title)
+          : members,
       }));
     } catch (err: any) {
       setTeamError(prev => ({ ...prev, [labId]: err?.message || "Unable to update team members" }));
@@ -1135,7 +1148,8 @@ export default function Account() {
       try {
         const { data: session } = await supabase.auth.getSession();
         const token = session.session?.access_token;
-        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        const headers = new Headers();
+        if (token) headers.set("Authorization", `Bearer ${token}`);
         const res = await fetch("/api/news/mine", { headers });
         const ct = res.headers.get("content-type") || "";
         if (!res.ok || !ct.includes("application/json")) {

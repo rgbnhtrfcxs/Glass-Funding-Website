@@ -197,7 +197,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const [viewRecorded, setViewRecorded] = useState(false);
   const [showInvestor, setShowInvestor] = useState(false);
   const [investorName, setInvestorName] = useState("");
-  const [investorEmail, setInvestorEmail] = useState(user?.email || "");
+  const [investorEmail, setInvestorEmail] = useState<string>(user?.email || "");
   const [investorCompany, setInvestorCompany] = useState("");
   const [investorWebsite, setInvestorWebsite] = useState("");
   const [investorMessage, setInvestorMessage] = useState("");
@@ -303,6 +303,10 @@ export default function LabDetails({ params }: LabDetailsProps) {
       setFavoriteError("Sign in to favorite labs.");
       return;
     }
+    if (!labId) {
+      setFavoriteError("Lab not found.");
+      return;
+    }
     setFavoriteLoading(true);
     setFavoriteError(null);
     try {
@@ -313,7 +317,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
         return;
       }
       const method = isFavorite ? "DELETE" : "POST";
-      const res = await fetch(`/api/labs/${lab.id}/favorite`, {
+      const res = await fetch(`/api/labs/${labId}/favorite`, {
         method,
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -451,11 +455,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
       : `${url}${url.includes("?") ? "&" : "?"}auto=format&fit=crop&w=${width}&q=80`;
   const labStatus = ((lab.labStatus || (lab as any).lab_status || "listed") as string).toLowerCase().trim();
   const isPremier = labStatus === "premier";
-  const auditPassed =
-    lab.auditPassed === true ||
-    lab.auditPassed === "true" ||
-    lab.auditPassed === 1 ||
-    lab.auditPassed === "1";
+  const auditPassed = Boolean(lab.auditPassed);
   const isPendingStatus = ["pending", "confirmed"].includes(labStatus);
   const logoUrl = (lab as any)?.logoUrl ?? (lab as any)?.logo_url ?? null;
   const status = (() => {
@@ -467,11 +467,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
     return "listed";
   })();
   const canRequestLab = status === "verified" || status === "premier";
-  const offersLabSpace =
-    lab.offersLabSpace === true ||
-    lab.offersLabSpace === "true" ||
-    lab.offersLabSpace === 1 ||
-    lab.offersLabSpace === "1";
+  const offersLabSpace = Boolean(lab.offersLabSpace);
   const teamGroups = (() => {
     const groups = new Map<string, typeof lab.teamMembers>();
     for (const member of lab.teamMembers) {

@@ -96,13 +96,22 @@ type TeamRow = {
   team_focus_areas: Array<{ focus_area: string }> | null;
   lab_team_links: Array<{
     lab_id: number | string;
-    labs: {
-      id: number;
-      name: string;
-      lab_status: string | null;
-      lab_location: Array<{ city: string | null; country: string | null }> | null;
-      lab_profile: Array<{ logo_url: string | null }> | null;
-    } | null;
+    labs:
+      | {
+          id: number;
+          name: string;
+          lab_status: string | null;
+          lab_location: Array<{ city: string | null; country: string | null }> | null;
+          lab_profile: Array<{ logo_url: string | null }> | null;
+        }
+      | Array<{
+          id: number;
+          name: string;
+          lab_status: string | null;
+          lab_location: Array<{ city: string | null; country: string | null }> | null;
+          lab_profile: Array<{ logo_url: string | null }> | null;
+        }>
+      | null;
   }> | null;
 };
 
@@ -113,6 +122,15 @@ function parseBoolean(value: boolean | string | null | undefined, fallback = fal
   return normalized === "true" || normalized === "t" || normalized === "1";
 }
 
+function normalizeTeamLabStatus(value?: string | null): TeamLab["labStatus"] {
+  const normalized = (value || "listed").toLowerCase();
+  if (normalized === "confirmed") return "confirmed";
+  if (normalized === "verified_passive") return "verified_passive";
+  if (normalized === "verified_active") return "verified_active";
+  if (normalized === "premier") return "premier";
+  return "listed";
+}
+
 function mapTeamRow(row: TeamRow): Team {
   const equipmentRows = row.team_equipment ?? [];
   const equipment = equipmentRows.map(item => item.item).filter(Boolean);
@@ -120,22 +138,22 @@ function mapTeamRow(row: TeamRow): Team {
     .filter(item => parseBoolean(item.is_priority, false))
     .map(item => item.item)
     .filter(Boolean);
-  const labs: TeamLab[] = (row.lab_team_links ?? [])
-    .map(link => link.labs)
-    .filter((lab): lab is NonNullable<typeof lab> => Boolean(lab))
-    .map(lab => {
+  const labs: TeamLab[] = (row.lab_team_links ?? []).reduce<TeamLab[]>((acc, link) => {
       const pickOne = (value: any) => (Array.isArray(value) ? value[0] : value) ?? null;
+      const lab = pickOne(link.labs);
+      if (!lab) return acc;
       const location = pickOne(lab.lab_location);
       const profile = pickOne(lab.lab_profile);
-      return {
+      acc.push({
         id: Number(lab.id),
         name: lab.name,
         city: location?.city ?? null,
         country: location?.country ?? null,
         logoUrl: profile?.logo_url ?? null,
-        labStatus: lab.lab_status ?? null,
-      };
-    });
+        labStatus: normalizeTeamLabStatus(lab.lab_status),
+      });
+      return acc;
+    }, []);
   const labIds = (row.lab_team_links ?? [])
     .map(link => Number(link.lab_id))
     .filter(id => Number.isFinite(id));
@@ -265,7 +283,7 @@ export class TeamStore {
   async list(): Promise<Team[]> {
     const { data, error } = await supabase.from("teams").select(TEAM_SELECT).order("id", { ascending: true });
     if (error) throw error;
-    const teams = (data as TeamRow[] | null) ?? [];
+    const teams = (data as unknown as TeamRow[] | null) ?? [];
     return teamListSchema.parse(teams.map(mapTeamRow));
   }
 
@@ -276,7 +294,7 @@ export class TeamStore {
       .eq("is_visible", true)
       .order("id", { ascending: true });
     if (error) throw error;
-    const teams = (data as TeamRow[] | null) ?? [];
+    const teams = (data as unknown as TeamRow[] | null) ?? [];
     return teamListSchema.parse(teams.map(mapTeamRow));
   }
 
@@ -284,7 +302,7 @@ export class TeamStore {
     const { data, error } = await supabase.from("teams").select(TEAM_SELECT).eq("id", id).maybeSingle();
     if (error) throw error;
     if (!data) return undefined;
-    return mapTeamRow(data as TeamRow);
+    return mapTeamRow(data as unknown as TeamRow);
   }
 
   async listByOwner(ownerUserId: string): Promise<Team[]> {
@@ -294,7 +312,7 @@ export class TeamStore {
       .eq("owner_user_id", ownerUserId)
       .order("id", { ascending: true });
     if (error) throw error;
-    const teams = (data as TeamRow[] | null) ?? [];
+    const teams = (data as unknown as TeamRow[] | null) ?? [];
     return teamListSchema.parse(teams.map(mapTeamRow));
   }
 
@@ -305,7 +323,7 @@ export class TeamStore {
       .eq("lab_team_links.lab_id", labId)
       .order("id", { ascending: true });
     if (error) throw error;
-    const teams = (data as TeamRow[] | null) ?? [];
+    const teams = (data as unknown as TeamRow[] | null) ?? [];
     return teamListSchema.parse(teams.map(mapTeamRow));
   }
 

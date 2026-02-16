@@ -53,17 +53,20 @@ export default function Subscribe() {
 
   useEffect(() => {
     if (!user?.id) return;
-    supabase
-      .from("profiles")
-      .select("subscription_tier, subscription_status")
-      .eq("user_id", user.id)
-      .maybeSingle()
-      .then(({ data }) => {
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("subscription_tier, subscription_status")
+          .eq("user_id", user.id)
+          .maybeSingle();
         if (!data) return;
         setCurrentTier((data.subscription_tier || "base").toLowerCase());
         setCurrentStatus((data.subscription_status || "none").toLowerCase());
-      })
-      .catch(() => {});
+      } catch {
+        // ignore
+      }
+    })();
   }, [user?.id]);
 
   useEffect(() => {
@@ -95,10 +98,12 @@ export default function Subscribe() {
     setError(null);
   }, [interval, plan]);
 
-  const getAuthHeaders = async () => {
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
-    return token ? { Authorization: `Bearer ${token}` } : {};
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return headers;
   };
 
   const createIntent = async () => {

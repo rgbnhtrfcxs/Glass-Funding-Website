@@ -13,6 +13,62 @@ process.on("uncaughtException", (err) => {
 });
 
 const app = express();
+const trustProxy = (process.env.TRUST_PROXY || "").toLowerCase();
+if (trustProxy === "true" || trustProxy === "1") {
+  app.set("trust proxy", 1);
+}
+app.disable("x-powered-by");
+
+const allowedOrigins = new Set<string>();
+const configuredSiteUrl = (process.env.PUBLIC_SITE_URL || "").trim();
+if (configuredSiteUrl) {
+  try {
+    allowedOrigins.add(new URL(configuredSiteUrl).origin);
+  } catch {
+    // ignore malformed PUBLIC_SITE_URL
+  }
+}
+if (app.get("env") === "development") {
+  allowedOrigins.add("http://localhost:3000");
+  allowedOrigins.add("http://localhost:4173");
+  allowedOrigins.add("http://localhost:5000");
+  allowedOrigins.add("http://127.0.0.1:3000");
+  allowedOrigins.add("http://127.0.0.1:4173");
+  allowedOrigins.add("http://127.0.0.1:5000");
+}
+
+app.use((req, res, next) => {
+  const origin = typeof req.headers.origin === "string" ? req.headers.origin.trim() : "";
+  const originAllowed = origin ? allowedOrigins.has(origin) : false;
+
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.setHeader("Cross-Origin-Resource-Policy", "same-site");
+  const forwardedProto = typeof req.headers["x-forwarded-proto"] === "string" ? req.headers["x-forwarded-proto"] : "";
+  if (req.secure || forwardedProto === "https") {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+
+  if (originAllowed) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+  }
+
+  if (req.method === "OPTIONS") {
+    if (!origin || originAllowed) {
+      return res.status(204).end();
+    }
+    return res.status(403).json({ message: "Origin not allowed" });
+  }
+
+  next();
+});
+
 app.use(
   express.json({
     verify: (req, _res, buf) => {
@@ -25,21 +81,11 @@ app.use(express.urlencoded({ extended: false }));
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
 
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
 
       if (logLine.length > 80) {
         logLine = logLine.slice(0, 79) + "…";

@@ -20,7 +20,8 @@ export default function Favorites({ embedded = false }: { embedded?: boolean }) 
       try {
         const { data: session } = await supabase.auth.getSession();
         const token = session.session?.access_token;
-        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        const headers = new Headers();
+        if (token) headers.set("Authorization", `Bearer ${token}`);
         const res = await fetch("/api/favorites", { headers });
         const ct = res.headers.get("content-type") || "";
         if (!res.ok || !ct.includes("application/json")) {

@@ -20,8 +20,8 @@ import ResetPassword from "@/pages/ResetPassword";
 import ConfirmEmail from "@/pages/ConfirmEmail";
 
 import Labs from "@/pages/Labs";
-import Terms from "@/pages/terms";
-import Privacy from "@/pages/privacy";
+import Terms from "@/pages/Terms";
+import Privacy from "@/pages/Privacy";
 import Waitlist1 from "@/pages/Waitlist";
 import OnePagers from "@/pages/OnePagers";
 import Roadmap from "@/pages/Roadmap";
