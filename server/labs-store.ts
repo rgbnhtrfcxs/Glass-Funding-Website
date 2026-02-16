@@ -11,6 +11,13 @@ import {
   type OfferOption,
   type UpdateLab,
 } from "@shared/labs";
+import {
+  labOfferProfileSchema,
+  labOfferTaxonomyListSchema,
+  type LabOfferProfile,
+  type LabOfferTaxonomyOption,
+  type UpsertLabOfferProfile,
+} from "@shared/labOffers";
 import { supabase } from "./supabaseClient";
 
 const LAB_SELECT_BASE = `
@@ -101,12 +108,44 @@ type LabRow = {
   lab_equipment: Array<{ item: string; is_priority: boolean | string | null }> | null;
   lab_techniques: Array<{ name: string; description: string | null }> | null;
   lab_focus_areas: Array<{ focus_area: string }> | null;
-  lab_offers?: Array<ProfileLabOfferRow> | null;
   lab_erc_disciplines: Array<{
     erc_code: string;
     is_primary: boolean | string | null;
     erc_disciplines: Array<{ code: string; domain: string; title: string }> | { code: string; domain: string; title: string } | null;
   }> | null;
+};
+
+type LabOfferProfileRow = {
+  lab_id: number | string;
+  supports_bench_rental: boolean | string | null;
+  supports_equipment_access: boolean | string | null;
+  rentable_lab_levels: string[] | null;
+  offer_formats: string[] | null;
+  application_modes: string[] | null;
+  operational_status: string | null;
+  expected_opening_year: number | string | null;
+  technical_services: string[] | null;
+  general_services: string[] | null;
+  pricing_model: string | null;
+  price_from: number | string | null;
+  price_to: number | string | null;
+  currency: string | null;
+  pricing_notes: string | null;
+  additional_info: string | null;
+  total_area_m2: number | string | null;
+  min_rent_area_m2: number | string | null;
+  max_rent_area_m2: number | string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+type LabOfferTaxonomyRow = {
+  option_group: string;
+  code: string;
+  label_en: string;
+  label_fr: string;
+  is_active: boolean | string | null;
+  sort_order: number | string | null;
 };
 
 function parseBoolean(value: boolean | string | null | undefined, fallback = false): boolean {
@@ -158,10 +197,6 @@ async function resolveOwnerUserId(explicit?: string | null): Promise<string | nu
 function deriveLegacyOffersFromProfile(profileOffer?: ProfileLabOfferRow | null): OfferOption[] {
   if (!profileOffer) return [];
   const offers: OfferOption[] = [];
-  const pricingModel = (profileOffer.pricing_model ?? "").toString().trim().toLowerCase();
-  if (pricingModel.includes("hour")) offers.push("Hourly rate");
-  if (pricingModel.includes("day")) offers.push("Day rate");
-  if (pricingModel.includes("month")) offers.push("Monthly rent");
   if (parseBoolean(profileOffer.supports_equipment_access, false)) {
     offers.push("Equipment use rate");
   }
@@ -173,7 +208,82 @@ function deriveLegacyOffersFromProfile(profileOffer?: ProfileLabOfferRow | null)
   return Array.from(new Set(offers));
 }
 
-function mapLabRow(row: LabRow): LabPartner {
+const parseNullableNumber = (value: number | string | null | undefined): number | null => {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const parseNullableInteger = (value: number | string | null | undefined): number | null => {
+  const parsed = parseNullableNumber(value);
+  if (parsed === null) return null;
+  return Number.isInteger(parsed) ? parsed : Math.round(parsed);
+};
+
+const normalizeStringArray = (value: string[] | null | undefined) =>
+  Array.isArray(value)
+    ? value.map(entry => entry?.toString().trim()).filter((entry): entry is string => Boolean(entry))
+    : [];
+
+const mapOfferProfileRow = (row: LabOfferProfileRow): LabOfferProfile =>
+  labOfferProfileSchema.parse({
+    labId: Number(row.lab_id),
+    supportsBenchRental: parseBoolean(row.supports_bench_rental, false),
+    supportsEquipmentAccess: parseBoolean(row.supports_equipment_access, false),
+    rentableLabLevels: normalizeStringArray(row.rentable_lab_levels),
+    offerFormats: normalizeStringArray(row.offer_formats),
+    applicationModes: normalizeStringArray(row.application_modes),
+    operationalStatus: (row.operational_status ?? "open").toString(),
+    expectedOpeningYear: parseNullableInteger(row.expected_opening_year),
+    technicalServices: normalizeStringArray(row.technical_services),
+    generalServices: normalizeStringArray(row.general_services),
+    pricingModel: (row.pricing_model ?? "request_quote").toString(),
+    priceFrom: parseNullableNumber(row.price_from),
+    priceTo: parseNullableNumber(row.price_to),
+    currency: row.currency?.toUpperCase() ?? null,
+    pricingNotes: row.pricing_notes ?? null,
+    additionalInfo: row.additional_info ?? null,
+    totalAreaM2: parseNullableNumber(row.total_area_m2),
+    minRentAreaM2: parseNullableNumber(row.min_rent_area_m2),
+    maxRentAreaM2: parseNullableNumber(row.max_rent_area_m2),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
+
+const mapTaxonomyRow = (row: LabOfferTaxonomyRow): LabOfferTaxonomyOption => ({
+  optionGroup: row.option_group as LabOfferTaxonomyOption["optionGroup"],
+  code: row.code,
+  labelEn: row.label_en,
+  labelFr: row.label_fr,
+  isActive: parseBoolean(row.is_active, true),
+  sortOrder: parseNullableInteger(row.sort_order) ?? 100,
+});
+
+async function loadOfferProfilesMap(labIds: number[]): Promise<Map<number, ProfileLabOfferRow>> {
+  const map = new Map<number, ProfileLabOfferRow>();
+  if (!labIds.length) return map;
+  const { data, error } = await supabase
+    .from("lab_offers")
+    .select("lab_id, supports_bench_rental, supports_equipment_access, pricing_model")
+    .in("lab_id", labIds);
+  if (error) {
+    console.warn("[labs-store] Unable to load lab_offers profiles", error);
+    return map;
+  }
+  (data ?? []).forEach((row: any) => {
+    const id = Number(row.lab_id);
+    if (Number.isNaN(id)) return;
+    map.set(id, {
+      supports_bench_rental: row.supports_bench_rental,
+      supports_equipment_access: row.supports_equipment_access,
+      pricing_model: row.pricing_model,
+    });
+  });
+  return map;
+}
+
+function mapLabRow(row: LabRow, profileOffer?: ProfileLabOfferRow | null): LabPartner {
   const pickOne = <T>(value: T[] | T | null | undefined) =>
     (Array.isArray(value) ? value[0] : value) ?? null;
   const contactRow = pickOne(row.lab_contacts);
@@ -219,7 +329,6 @@ function mapLabRow(row: LabRow): LabPartner {
   const ercDisciplines = ercDisciplineCodes
     .map(code => ercMetaByCode.get(code))
     .filter((item): item is { code: string; domain: "PE" | "LS" | "SH"; title: string } => Boolean(item));
-  const profileOffer = pickOne(row.lab_offers ?? null);
   const offers = deriveLegacyOffersFromProfile(profileOffer);
   const mapped = {
     id: Number(row.id),
@@ -558,10 +667,11 @@ export class LabStore {
     const { data, error } = await supabase.from("labs").select(LAB_SELECT).order("id", { ascending: true });
     if (error) throw error;
     const labs = (data as LabRow[] | null) ?? [];
+    const offerMap = await loadOfferProfilesMap(labs.map(row => Number(row.id)).filter(id => !Number.isNaN(id)));
     const mapped: LabPartner[] = [];
     for (const row of labs) {
       try {
-        mapped.push(mapLabRow(row));
+        mapped.push(mapLabRow(row, offerMap.get(Number(row.id)) ?? null));
       } catch (err) {
         console.warn("[labs-store] Skipping lab with invalid data", { id: row.id, name: row.name, error: err });
       }
@@ -577,10 +687,11 @@ export class LabStore {
       .order("id", { ascending: true });
     if (error) throw error;
     const labs = (data as LabRow[] | null) ?? [];
+    const offerMap = await loadOfferProfilesMap(labs.map(row => Number(row.id)).filter(id => !Number.isNaN(id)));
     const mapped: LabPartner[] = [];
     for (const row of labs) {
       try {
-        mapped.push(mapLabRow(row));
+        mapped.push(mapLabRow(row, offerMap.get(Number(row.id)) ?? null));
       } catch (err) {
         console.warn("[labs-store] Skipping lab with invalid data", { id: row.id, name: row.name, error: err });
       }
@@ -593,7 +704,8 @@ export class LabStore {
     if (error) throw error;
     if (!data) return undefined;
     const row = data as LabRow;
-    return mapLabRow(row);
+    const offerMap = await loadOfferProfilesMap([id]);
+    return mapLabRow(row, offerMap.get(id) ?? null);
   }
 
   async create(payload: InsertLab): Promise<LabPartner> {
@@ -788,6 +900,103 @@ export class LabStore {
     if (!existing) throw new Error("Lab not found");
     const { error } = await supabase.from("labs").delete().eq("id", id);
     if (error) throw error;
+  }
+
+  async listOfferTaxonomy(): Promise<LabOfferTaxonomyOption[]> {
+    const { data, error } = await supabase
+      .from("lab_offer_taxonomy")
+      .select("option_group, code, label_en, label_fr, is_active, sort_order")
+      .eq("is_active", true)
+      .order("option_group", { ascending: true })
+      .order("sort_order", { ascending: true })
+      .order("code", { ascending: true });
+    if (error) throw error;
+    return labOfferTaxonomyListSchema.parse((data ?? []).map(row => mapTaxonomyRow(row as LabOfferTaxonomyRow)));
+  }
+
+  async findOfferProfileByLabId(labId: number): Promise<LabOfferProfile | null> {
+    const { data, error } = await supabase
+      .from("lab_offers")
+      .select([
+        "lab_id",
+        "supports_bench_rental",
+        "supports_equipment_access",
+        "rentable_lab_levels",
+        "offer_formats",
+        "application_modes",
+        "operational_status",
+        "expected_opening_year",
+        "technical_services",
+        "general_services",
+        "pricing_model",
+        "price_from",
+        "price_to",
+        "currency",
+        "pricing_notes",
+        "additional_info",
+        "total_area_m2",
+        "min_rent_area_m2",
+        "max_rent_area_m2",
+        "created_at",
+        "updated_at",
+      ].join(","))
+      .eq("lab_id", labId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    return mapOfferProfileRow(data as unknown as LabOfferProfileRow);
+  }
+
+  async upsertOfferProfile(labId: number, payload: UpsertLabOfferProfile): Promise<LabOfferProfile> {
+    const dbPayload: Record<string, unknown> = {};
+    const has = (key: keyof UpsertLabOfferProfile) => Object.prototype.hasOwnProperty.call(payload, key);
+    if (has("supportsBenchRental")) dbPayload.supports_bench_rental = payload.supportsBenchRental;
+    if (has("supportsEquipmentAccess")) dbPayload.supports_equipment_access = payload.supportsEquipmentAccess;
+    if (has("rentableLabLevels")) dbPayload.rentable_lab_levels = payload.rentableLabLevels;
+    if (has("offerFormats")) dbPayload.offer_formats = payload.offerFormats;
+    if (has("applicationModes")) dbPayload.application_modes = payload.applicationModes;
+    if (has("operationalStatus")) dbPayload.operational_status = payload.operationalStatus;
+    if (has("expectedOpeningYear")) dbPayload.expected_opening_year = payload.expectedOpeningYear;
+    if (has("technicalServices")) dbPayload.technical_services = payload.technicalServices;
+    if (has("generalServices")) dbPayload.general_services = payload.generalServices;
+    if (has("pricingModel")) dbPayload.pricing_model = payload.pricingModel;
+    if (has("priceFrom")) dbPayload.price_from = payload.priceFrom;
+    if (has("priceTo")) dbPayload.price_to = payload.priceTo;
+    if (has("currency")) dbPayload.currency = payload.currency;
+    if (has("pricingNotes")) dbPayload.pricing_notes = payload.pricingNotes;
+    if (has("additionalInfo")) dbPayload.additional_info = payload.additionalInfo;
+    if (has("totalAreaM2")) dbPayload.total_area_m2 = payload.totalAreaM2;
+    if (has("minRentAreaM2")) dbPayload.min_rent_area_m2 = payload.minRentAreaM2;
+    if (has("maxRentAreaM2")) dbPayload.max_rent_area_m2 = payload.maxRentAreaM2;
+    const { data, error } = await supabase
+      .from("lab_offers")
+      .upsert({ lab_id: labId, ...dbPayload }, { onConflict: "lab_id" })
+      .select([
+        "lab_id",
+        "supports_bench_rental",
+        "supports_equipment_access",
+        "rentable_lab_levels",
+        "offer_formats",
+        "application_modes",
+        "operational_status",
+        "expected_opening_year",
+        "technical_services",
+        "general_services",
+        "pricing_model",
+        "price_from",
+        "price_to",
+        "currency",
+        "pricing_notes",
+        "additional_info",
+        "total_area_m2",
+        "min_rent_area_m2",
+        "max_rent_area_m2",
+        "created_at",
+        "updated_at",
+      ].join(","))
+      .single();
+    if (error) throw error;
+    return mapOfferProfileRow(data as unknown as LabOfferProfileRow);
   }
 }
 

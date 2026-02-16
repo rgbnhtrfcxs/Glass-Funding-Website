@@ -21,7 +21,6 @@ import {
 import { useLabs } from "@/context/LabsContext";
 import { supabase } from "@/lib/supabaseClient";
 import {
-  offerOptions,
   orgRoleOptions,
   type LabPartner,
   type MediaAsset,
@@ -29,6 +28,17 @@ import {
   type PartnerLogo,
   type OfferOption,
 } from "@shared/labs";
+import type { LabOfferTaxonomyOption } from "@shared/labOffers";
+import { LabOfferProfileEditor } from "@/components/labs/LabOfferProfileEditor";
+import {
+  defaultLabOfferProfileDraft,
+  draftFromProfile,
+  draftToLegacyOffers,
+  draftToProfilePayload,
+  fetchLabOfferProfile,
+  fetchLabOfferTaxonomy,
+  type LabOfferProfileDraft,
+} from "@/lib/labOfferProfile";
 
 type VerificationOption = "yes" | "no";
 type LabStatusOption = "listed" | "confirmed" | "verified_passive" | "verified_active" | "premier";
@@ -280,6 +290,10 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
   const [editing, setEditing] = useState<EditingState>(null);
   const [formState, setFormState] = useState<LabFormState>(emptyForm);
   const [statusMessage, setStatusMessage] = useState<StatusMessage>(null);
+  const [offerProfileDraft, setOfferProfileDraft] = useState<LabOfferProfileDraft>(defaultLabOfferProfileDraft);
+  const [offerTaxonomy, setOfferTaxonomy] = useState<LabOfferTaxonomyOption[]>([]);
+  const [offerTaxonomyLoading, setOfferTaxonomyLoading] = useState(false);
+  const [offerProfileError, setOfferProfileError] = useState<string | null>(null);
   const [photoAssets, setPhotoAssets] = useState<MediaAsset[]>([]);
   const [complianceAssets, setComplianceAssets] = useState<MediaAsset[]>([]);
   const [partnerLogos, setPartnerLogos] = useState<PartnerLogo[]>([]);
@@ -451,6 +465,27 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
     refresh(true).catch(() => {});
   }, [refresh]);
 
+  useEffect(() => {
+    let active = true;
+    setOfferTaxonomyLoading(true);
+    fetchLabOfferTaxonomy()
+      .then(options => {
+        if (!active) return;
+        setOfferTaxonomy(options);
+      })
+      .catch((error: any) => {
+        if (!active) return;
+        setOfferProfileError(error?.message || "Unable to load offer options.");
+      })
+      .finally(() => {
+        if (!active) return;
+        setOfferTaxonomyLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const filteredLabs = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     if (!term) return labs;
@@ -477,6 +512,8 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
   const startCreate = () => {
     setEditing("new");
     setFormState(emptyForm);
+    setOfferProfileDraft(defaultLabOfferProfileDraft);
+    setOfferProfileError(null);
     setStatusMessage(null);
     setPhotoAssets([]);
     setComplianceAssets([]);
@@ -484,9 +521,27 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
     setLogoError(null);
   };
 
-  const startEdit = (lab: LabPartner) => {
+  const startEdit = async (lab: LabPartner) => {
     setEditing(lab.id);
     setFormState(labToForm(lab));
+    setOfferProfileError(null);
+    try {
+      const profile = await fetchLabOfferProfile(lab.id);
+      setOfferProfileDraft(
+        draftFromProfile(profile, {
+          offersLabSpace: lab.offersLabSpace ?? false,
+          offers: lab.offers ?? [],
+        }),
+      );
+    } catch (error: any) {
+      setOfferProfileError(error?.message || "Unable to load offer profile.");
+      setOfferProfileDraft(
+        draftFromProfile(null, {
+          offersLabSpace: lab.offersLabSpace ?? false,
+          offers: lab.offers ?? [],
+        }),
+      );
+    }
     setStatusMessage(null);
     setPhotoAssets(lab.photos);
     setComplianceAssets(lab.complianceDocs);
@@ -497,6 +552,7 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
   const cancelEdit = () => {
     setEditing(null);
     setFormState(emptyForm);
+    setOfferProfileDraft(defaultLabOfferProfileDraft);
     setPhotoAssets([]);
     setComplianceAssets([]);
     setPartnerLogos([]);
@@ -521,15 +577,6 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
         text: error instanceof Error ? error.message : "Unable to update visibility",
       });
     }
-  };
-
-  const toggleOffer = (offer: OfferOption) => {
-    setFormState(prev => {
-      const offers = prev.offers.includes(offer)
-        ? prev.offers.filter(item => item !== offer)
-        : [...prev.offers, offer];
-      return { ...prev, offers };
-    });
   };
 
   const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -685,12 +732,41 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
       setIsSaving(true);
       validateRequiredFields();
       const payload = formToPayload(formState, photoAssets, complianceAssets, partnerLogos);
+      payload.offers = draftToLegacyOffers(offerProfileDraft);
 
       if (editing === "new") {
         const created = await addLab(payload);
+        await fetchAuthed(`/api/labs/${created.id}/offers-profile`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(
+            draftToProfilePayload(offerProfileDraft, {
+              forceSupportsBenchRental:
+                payload.offersLabSpace ? offerProfileDraft.supportsBenchRental : false,
+              forceSupportsEquipmentAccess:
+                payload.offersLabSpace ? offerProfileDraft.supportsEquipmentAccess : false,
+            }),
+          ),
+        });
         setStatusMessage({ type: "success", text: `Created ${created.name}` });
       } else if (typeof editing === "number") {
         await updateLab(editing, payload);
+        await fetchAuthed(`/api/labs/${editing}/offers-profile`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(
+            draftToProfilePayload(offerProfileDraft, {
+              forceSupportsBenchRental:
+                payload.offersLabSpace ? offerProfileDraft.supportsBenchRental : false,
+              forceSupportsEquipmentAccess:
+                payload.offersLabSpace ? offerProfileDraft.supportsEquipmentAccess : false,
+            }),
+          ),
+        });
         setStatusMessage({ type: "success", text: "Lab details updated" });
       }
 
@@ -1668,20 +1744,20 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                 </div>
 
                 <div className="space-y-2">
-                  <span className="text-sm font-medium text-foreground">Offers</span>
-                  <div className="flex flex-wrap gap-3">
-                    {offerOptions.map(option => (
-                      <label key={option} className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                        <input
-                          type="checkbox"
-                          checked={formState.offers.includes(option)}
-                          onChange={() => toggleOffer(option)}
-                          className="h-4 w-4 rounded border-border text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
-                        />
-                        {option}
-                      </label>
-                    ))}
-                  </div>
+                  <span className="text-sm font-medium text-foreground">Rental offer profile</span>
+                  <LabOfferProfileEditor
+                    draft={offerProfileDraft}
+                    onChange={setOfferProfileDraft}
+                    taxonomy={offerTaxonomy}
+                    loading={offerTaxonomyLoading}
+                    error={offerProfileError}
+                    disabled={formState.offersLabSpace !== "yes"}
+                  />
+                  {formState.offersLabSpace !== "yes" && (
+                    <p className="text-xs text-muted-foreground">
+                      Set “Offers lab space?” to “Yes” to enable offer profile editing.
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">

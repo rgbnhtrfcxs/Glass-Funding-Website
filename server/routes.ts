@@ -29,6 +29,7 @@ import {
   insertLabRequestSchema,
   updateLabRequestStatusSchema,
 } from "@shared/labRequests";
+import { upsertLabOfferProfileSchema } from "@shared/labOffers";
 import { insertLabViewSchema } from "@shared/views";
 import { insertTeamSchema, updateTeamSchema } from "@shared/teams";
 
@@ -2151,10 +2152,50 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  app.get("/api/lab-offer-taxonomy", async (_req, res) => {
+    try {
+      const options = await labStore.listOfferTaxonomy();
+      res.json(options);
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load offer taxonomy" });
+    }
+  });
+
   app.get("/api/labs", async (req, res) => {
     const includeHidden = req.query.includeHidden === "true" || req.query.includeHidden === "1";
     const labs = includeHidden ? await labStore.list() : await labStore.listVisible();
     res.json(labs);
+  });
+
+  app.get("/api/labs/:id/offers-profile", async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ message: "Invalid lab id" });
+    }
+    try {
+      const profile = await labStore.findOfferProfileByLabId(id);
+      res.json(profile);
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load lab offers profile" });
+    }
+  });
+
+  app.put("/api/labs/:id/offers-profile", async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ message: "Invalid lab id" });
+    }
+    try {
+      const payload = upsertLabOfferProfileSchema.parse(req.body);
+      const profile = await labStore.upsertOfferProfile(id, payload);
+      res.json(profile);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const issue = error.issues[0];
+        return res.status(400).json({ message: issue?.message ?? "Invalid offers profile payload" });
+      }
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to update lab offers profile" });
+    }
   });
 
   app.post("/api/labs", async (req, res) => {

@@ -5,7 +5,6 @@ import { useLabs } from "@/context/LabsContext";
 import { useAuth } from "@/context/AuthContext";
 import { useConsent } from "@/context/ConsentContext";
 import {
-  offerOptions,
   orgRoleOptions,
   type ErcDomainOption,
   type ErcDisciplineOption,
@@ -14,9 +13,19 @@ import {
   type OrgRoleOption,
   type PartnerLogo,
 } from "@shared/labs";
+import type { LabOfferTaxonomyOption } from "@shared/labOffers";
 import type { MediaAsset } from "@shared/labs";
 import { supabase } from "@/lib/supabaseClient";
 import { fetchErcDisciplineOptions } from "@/lib/ercDisciplines";
+import { LabOfferProfileEditor } from "@/components/labs/LabOfferProfileEditor";
+import {
+  defaultLabOfferProfileDraft,
+  draftToLegacyOffers,
+  draftToProfilePayload,
+  fetchLabOfferTaxonomy,
+  type LabOfferProfileDraft,
+  upsertLabOfferProfile,
+} from "@/lib/labOfferProfile";
 import { Link } from "wouter";
 
 const TAB_ORDER = [
@@ -97,6 +106,10 @@ export default function NewLab() {
   const [ercOptions, setErcOptions] = useState<ErcDisciplineOption[]>([]);
   const [ercLoading, setErcLoading] = useState(false);
   const [ercError, setErcError] = useState<string | null>(null);
+  const [offerProfileDraft, setOfferProfileDraft] = useState<LabOfferProfileDraft>(defaultLabOfferProfileDraft);
+  const [offerTaxonomy, setOfferTaxonomy] = useState<LabOfferTaxonomyOption[]>([]);
+  const [offerTaxonomyLoading, setOfferTaxonomyLoading] = useState(false);
+  const [offerProfileError, setOfferProfileError] = useState<string | null>(null);
   const [primaryErcDomain, setPrimaryErcDomain] = useState<ErcDomainOption>("LS");
   const [secondaryErcDomain, setSecondaryErcDomain] = useState<ErcDomainOption>("LS");
   const [complianceUploading, setComplianceUploading] = useState(false);
@@ -190,6 +203,27 @@ export default function NewLab() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    setOfferTaxonomyLoading(true);
+    fetchLabOfferTaxonomy()
+      .then(options => {
+        if (!active) return;
+        setOfferTaxonomy(options);
+      })
+      .catch((err: any) => {
+        if (!active) return;
+        setOfferProfileError(err?.message || "Unable to load offer options.");
+      })
+      .finally(() => {
+        if (!active) return;
+        setOfferTaxonomyLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const primaryCode = form.primaryErcDisciplineCode;
     if (!primaryCode) return;
     const option = ercOptions.find(item => item.code === primaryCode);
@@ -200,23 +234,26 @@ export default function NewLab() {
 
   useEffect(() => {
     if (!user?.id) return;
-    supabase
-      .from("profiles")
-      .select(
-        [
-          "is_admin",
-          "can_create_lab",
-          "can_manage_multiple_labs",
-          "can_manage_teams",
-          "can_manage_multiple_teams",
-          "can_post_news",
-          "can_broker_requests",
-          "can_receive_investor",
-        ].join(","),
-      )
-      .eq("user_id", user.id)
-      .maybeSingle()
-      .then(({ data }) => {
+    let active = true;
+    void (async () => {
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select(
+            [
+              "is_admin",
+              "can_create_lab",
+              "can_manage_multiple_labs",
+              "can_manage_teams",
+              "can_manage_multiple_teams",
+              "can_post_news",
+              "can_broker_requests",
+              "can_receive_investor",
+            ].join(","),
+          )
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (!active) return;
         setProfileCaps({
           isAdmin: Boolean((data as any)?.is_admin),
           canCreateLab: Boolean((data as any)?.can_create_lab),
@@ -227,8 +264,13 @@ export default function NewLab() {
           canBrokerRequests: Boolean((data as any)?.can_broker_requests),
           canReceiveInvestor: Boolean((data as any)?.can_receive_investor),
         });
-      })
-      .catch(() => {});
+      } catch {
+        // Ignore profile capability load errors here.
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, [user?.id]);
 
   useEffect(() => {
@@ -436,7 +478,8 @@ export default function NewLab() {
         focusAreas: form.focusTags,
         ercDisciplineCodes: form.ercDisciplineCodes,
         primaryErcDisciplineCode: form.primaryErcDisciplineCode || null,
-        offers: form.offers,
+        ercDisciplines: [],
+        offers: draftToLegacyOffers(offerProfileDraft),
         photos,
         logoUrl: form.logoUrl.trim() || null,
         siretNumber: form.siretNumber.trim() || null,
@@ -445,11 +488,24 @@ export default function NewLab() {
         orgRole: form.orgRole || null,
         halStructureId: form.halStructureId.trim() || null,
         halPersonId: form.halPersonId.trim() || null,
-        teamMembers: form.teamMembers,
+        auditPassed: false,
+        alternateNames: [],
+        tags: [],
+        teamMembers: form.teamMembers.map(member => ({
+          ...member,
+          isLead: Boolean(member.isLead),
+        })),
       });
       if (hasFunctionalConsent) {
         localStorage.removeItem(draftKey);
       }
+      await upsertLabOfferProfile(
+        created.id,
+        draftToProfilePayload(offerProfileDraft, {
+          forceSupportsBenchRental: form.offersLabSpace ? offerProfileDraft.supportsBenchRental : false,
+          forceSupportsEquipmentAccess: form.offersLabSpace ? offerProfileDraft.supportsEquipmentAccess : false,
+        }),
+      );
       setLocation(`/lab/manage/${created.id}`);
     } catch (err: any) {
       setError(err?.message || "Unable to create lab");
@@ -1303,27 +1359,19 @@ export default function NewLab() {
 
             {activeTab === "Offers" && (
               <Section title="Offers">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-foreground">Offers</p>
-                  <div className="flex flex-wrap gap-2">
-                    {offerOptions.map(opt => (
-                      <label key={opt} className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm text-foreground">
-                        <input
-                          type="checkbox"
-                          className="rounded border-border text-primary"
-                          checked={form.offers.includes(opt)}
-                          onChange={e => {
-                            const next = e.target.checked
-                              ? [...form.offers, opt]
-                              : form.offers.filter(item => item !== opt);
-                            handleChange("offers", next);
-                          }}
-                        />
-                        {opt}
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                <LabOfferProfileEditor
+                  draft={offerProfileDraft}
+                  onChange={setOfferProfileDraft}
+                  taxonomy={offerTaxonomy}
+                  loading={offerTaxonomyLoading}
+                  error={offerProfileError}
+                  disabled={!form.offersLabSpace}
+                />
+                {!form.offersLabSpace && (
+                  <p className="text-xs text-muted-foreground">
+                    Enable “Offers lab space” in Basics to configure rental offers.
+                  </p>
+                )}
               </Section>
             )}
 
