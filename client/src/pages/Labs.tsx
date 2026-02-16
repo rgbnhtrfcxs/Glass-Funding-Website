@@ -9,6 +9,7 @@ import {
   Heart,
   ShieldAlert,
   ShieldCheck,
+  ArrowUpRight,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useMemo, useState, useEffect, useRef } from "react";
@@ -483,10 +484,7 @@ export default function Labs() {
           className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between"
         >
           <div className="max-w-3xl">
-            <span className="text-sm uppercase tracking-[0.35em] text-muted-foreground">
-              Partner Labs
-            </span>
-            <h1 className="mt-4 text-4xl md:text-5xl font-semibold leading-tight">
+            <h1 className="text-4xl md:text-5xl font-semibold leading-tight">
               {directoryMode === "rent"
                 ? "Find your next lab home."
                 : "Discover labs across the Glass network."}
@@ -536,7 +534,7 @@ export default function Labs() {
           >
             <div className="flex items-center gap-3 justify-between">
               <div>
-                <p className="text-xs font-medium uppercase tracking-[0.3em] text-muted-foreground">Network size</p>
+                <p className="text-sm font-medium uppercase tracking-[0.3em] text-muted-foreground">Network size</p>
                 <p className="mt-2 text-3xl font-semibold text-foreground">{labCount} labs</p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {directoryMode === "rent"
@@ -550,23 +548,26 @@ export default function Labs() {
             <div className="relative rounded-3xl border border-border bg-card/80 p-6 shadow-sm flex-1 min-w-[240px] max-w-sm">
               <div className="flex items-center gap-3 justify-between">
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-[0.3em] text-muted-foreground">Verified labs</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium uppercase tracking-[0.3em] text-muted-foreground">Verified labs</p>
+                  </div>
                   <p className="mt-2 text-3xl font-semibold text-foreground">{verifiedCount} verified</p>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Completed verification to boost trust and routing.
                   </p>
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground md:hidden">
-                    <Link href="/verified-by-glass" className="transition-colors hover:text-sky-600 hover:underline">
-                      What is Verified by GLASS?
-                    </Link>
-                  </div>
                 </div>
               </div>
-              <div className="hidden md:flex absolute left-full top-2 ml-3 flex-col gap-1 text-xs text-muted-foreground whitespace-nowrap">
-                <Link href="/verified-by-glass" className="transition-colors hover:text-sky-600 hover:underline">
+              <Link
+                href="/verified-by-glass"
+                className="group absolute right-3.5 top-5 inline-flex items-center rounded-full border border-border bg-background/85 px-2 py-0.5 text-[11px] font-semibold text-muted-foreground transition hover:border-primary hover:text-primary"
+                title="What is Verified by GLASS?"
+                aria-label="What is Verified by GLASS?"
+              >
+                <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 group-hover:mr-1 group-hover:max-w-[200px] group-hover:opacity-100">
                   What is Verified by GLASS?
-                </Link>
-              </div>
+                </span>
+                <ArrowUpRight className="h-3 w-3" />
+              </Link>
             </div>
           )}
         </motion.div>

@@ -747,20 +747,6 @@ export default function LabDetails({ params }: LabDetailsProps) {
                     </span>
                   )}
                 </div>
-                {(lab.orgRole || topErcLabel) && (
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    {lab.orgRole && (
-                      <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 font-medium text-foreground">
-                        {lab.orgRole}
-                      </span>
-                    )}
-                    {topErcLabel && (
-                      <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 font-medium text-foreground">
-                        {topErcLabel}
-                      </span>
-                    )}
-                  </div>
-                )}
               </div>
               <div className="flex items-center gap-2">
                 {isListedOnly && (
@@ -810,6 +796,20 @@ export default function LabDetails({ params }: LabDetailsProps) {
               )}
               <h1 className="text-4xl font-semibold text-foreground">{lab.name}</h1>
             </div>
+            {(lab.orgRole || topErcLabel) && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                {lab.orgRole && (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 font-medium text-foreground">
+                    {lab.orgRole}
+                  </span>
+                )}
+                {topErcLabel && (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 font-medium text-foreground">
+                    {topErcLabel}
+                  </span>
+                )}
+              </div>
+            )}
             {lab.descriptionShort ? (
               <p className="text-muted-foreground text-base leading-relaxed text-justify">{lab.descriptionShort}</p>
             ) : (
