@@ -73,7 +73,7 @@ export default function Signup() {
               Build your Glass profile and direct capital where breakthroughs happen.
             </h1>
             <p className="text-sm md:text-base text-muted-foreground leading-relaxed">
-              Tell us a little about you and we’ll surface handpicked projects, personalized reports, and donation workflows.
+              Tell us a little about you and we’ll surface handpicked projects and personalized reports.
             </p>
             <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground shadow-sm">
               <p className="font-medium text-foreground">Already supporting teams?</p>

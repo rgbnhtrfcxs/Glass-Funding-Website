@@ -48,7 +48,6 @@ import NewLab from "@/pages/NewLab";
 import Favorites from "@/pages/Favorites";
 import Subscribe from "@/pages/Subscribe";
 import Subscriptions from "@/pages/Subscriptions";
-import DonationDisabled from "@/pages/DonationDisabled";
 import { LabsProvider } from "@/context/LabsContext";
 import { TeamsProvider } from "@/context/TeamsContext";
 import { AuthProvider } from "@/context/AuthContext";
@@ -144,8 +143,6 @@ function Router() {
       <ProtectedRoute path="/team/manage/:id" component={TeamEditor} />
       <Route path="/payments" component={PaymentFlow} />
       <Route path="/stripe" component={StripeCheckout} />
-      <Route path="/donate" component={DonationDisabled} />
-      <Route path="/donate-confirmation" component={DonationDisabled} />
       <ProtectedRoute path="/subscribe" component={Subscribe} />
       <Route path="/logout" component={Logout} />
 

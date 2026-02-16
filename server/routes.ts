@@ -1509,16 +1509,6 @@ export function registerRoutes(app: Express) {
     return res.json({ received: true });
   });
 
-  // --------- Donations (archived) ----------
-  const donationArchived = (_req: Request, res: Response) =>
-    res.status(410).json({
-      message: "Donation routes are archived and no longer available.",
-    });
-
-  app.post("/api/donations", donationArchived);
-  app.get("/api/donations", donationArchived);
-  app.post("/api/donations/checkout", donationArchived);
-
   // --------- Stripe Checkout for subscriptions ----------
   app.post("/api/subscriptions/checkout", authenticate, async (req, res) => {
     try {
@@ -3318,9 +3308,6 @@ app.get("/api/profile", (_req, res) => {
         );
         await runCleanup("lab collaborations", async () =>
           supabase.from("lab_collaborations").delete().ilike("contact_email", userEmail),
-        );
-        await runCleanup("donations", async () =>
-          supabase.from("donations").delete().ilike("donor_email", userEmail),
         );
       }
       await runCleanup("profile", async () =>

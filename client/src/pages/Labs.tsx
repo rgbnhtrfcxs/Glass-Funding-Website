@@ -315,6 +315,7 @@ export default function Labs() {
   // Potential future premium search: include labManager, focusAreas, equipment, offers.
   const hasActiveFilters = selectedOrgRoles.length > 0 || selectedErcCodes.length > 0;
   const activeFilterCount = selectedOrgRoles.length + selectedErcCodes.length;
+  const isRentComingSoon = directoryMode === "rent" && rentReadyLabs.length === 0;
 
   useEffect(() => {
     if (!showMap) return;
@@ -861,6 +862,10 @@ export default function Labs() {
               {error
                 ? "We couldn't load the lab directory. Please retry."
                 : "No partner labs are available yet. Check back soon."}
+            </div>
+          ) : isRentComingSoon ? (
+            <div className="rounded-3xl border border-dashed border-border bg-card/70 p-10 text-center text-muted-foreground">
+              Rent listings are coming soon.
             </div>
           ) : filteredLabs.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-border bg-card/70 p-10 text-center text-muted-foreground">
