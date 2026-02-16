@@ -46,7 +46,7 @@ const PHOTO_THUMB_CLASS = "h-24 w-full rounded object-cover transition duration-
 const BASICS_INPUT_CLASS =
   "w-full rounded-none border-0 border-b border-border bg-transparent px-0 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-0 focus-visible:border-primary";
 const BASICS_LABEL_CLASS = "text-xs font-semibold tracking-[0.02em] text-foreground/90";
-const BASICS_HELP_CLASS = "text-xs text-muted-foreground leading-relaxed";
+const BASICS_FIELD_CLASS = "rounded-xl border border-border/70 bg-background/40 px-4 py-3";
 
 const ROLE_RANK_HELP_ITEMS = [
   "1 = Lab Director",
@@ -215,6 +215,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
   const [draggingPhotoIndex, setDraggingPhotoIndex] = useState<number | null>(null);
   const [photoDeleteConfirmOpen, setPhotoDeleteConfirmOpen] = useState(false);
   const [pendingPhotoDelete, setPendingPhotoDelete] = useState<MediaAsset | null>(null);
+  const [teamMembersExpanded, setTeamMembersExpanded] = useState(true);
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [showRoleHelp, setShowRoleHelp] = useState(false);
   const [pinRoleHelp, setPinRoleHelp] = useState(false);
@@ -1097,27 +1098,23 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   This section is what collaborators read first. Clear, specific details increase trust and help you
                   receive better-matched requests.
                 </p>
-                <Field label="Lab name" labelClassName={BASICS_LABEL_CLASS}>
+                <Field label="Lab name" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                   <input
                     className={BASICS_INPUT_CLASS}
                     value={form.name}
                     onChange={e => setForm({ ...form, name: e.target.value })}
-                    placeholder="e.g., UAR 3286 CNRS/Unistra"
+                    placeholder="Official public name, e.g., UAR 3286 CNRS/Unistra"
                   />
-                  <p className={BASICS_HELP_CLASS}>Use the official public lab name so others can verify you quickly.</p>
                 </Field>
-                <Field label="Lab manager / Director" labelClassName={BASICS_LABEL_CLASS}>
+                <Field label="Lab manager / Director" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                   <input
                     className={BASICS_INPUT_CLASS}
                     value={form.labManager}
                     onChange={e => setForm({ ...form, labManager: e.target.value })}
-                    placeholder="Full name of lead contact"
+                    placeholder="Decision-maker or scientific lead (full name)"
                   />
-                  <p className={BASICS_HELP_CLASS}>
-                    Add the decision-maker or scientific lead most relevant for collaborations.
-                  </p>
                 </Field>
-                <Field label="Contact email" labelClassName={BASICS_LABEL_CLASS}>
+                <Field label="Contact email" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                   <div className="flex items-center gap-2">
                     <input className={BASICS_INPUT_CLASS} value={form.contactEmail} disabled />
                     <span className="text-muted-foreground" aria-hidden="true">
@@ -1127,57 +1124,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
                       </svg>
                     </span>
                   </div>
-                  <p className={BASICS_HELP_CLASS}>This email is used for trusted routing and cannot be edited here.</p>
                 </Field>
-                <Field label="Short description" labelClassName={BASICS_LABEL_CLASS}>
-                  <div className="relative">
-                    <textarea
-                      className={`${BASICS_INPUT_CLASS} pr-16`}
-                      rows={4}
-                      value={form.descriptionShort}
-                      onChange={e => setForm({ ...form, descriptionShort: e.target.value })}
-                      placeholder="Short intro under your lab name."
-                    />
-                    <span
-                      className={`pointer-events-none absolute bottom-1 right-0 text-[11px] ${
-                        form.descriptionShort.length >= 120 && form.descriptionShort.length <= 180
-                          ? "text-emerald-600"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      {form.descriptionShort.length} / 350
-                    </span>
-                  </div>
-                  <p className={BASICS_HELP_CLASS}>
-                    Aim for 1-2 lines: who you are, what you do best, and who you typically support.
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">Recommended: 120-180 characters</p>
-                </Field>
-                <Field label="Long description (optional)" labelClassName={BASICS_LABEL_CLASS}>
-                  <div className="relative">
-                    <textarea
-                      className={`${BASICS_INPUT_CLASS} pr-16`}
-                      rows={6}
-                      value={form.descriptionLong}
-                      onChange={e => setForm({ ...form, descriptionLong: e.target.value })}
-                      placeholder="Longer overview shown later on the page."
-                    />
-                    <span
-                      className={`pointer-events-none absolute bottom-1 right-0 text-[11px] ${
-                        form.descriptionLong.length >= 400 && form.descriptionLong.length <= 900
-                          ? "text-emerald-600"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      {form.descriptionLong.length} / 8000
-                    </span>
-                  </div>
-                  <p className={BASICS_HELP_CLASS}>
-                    Useful details: capabilities, sample types, turnaround expectations, compliance context, and collaboration style.
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">Recommended: 400-900 characters</p>
-                </Field>
-                <Field label="Organization role (optional)" labelClassName={BASICS_LABEL_CLASS}>
+                <Field label="Organization role (optional)" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                   <select
                     className={BASICS_INPUT_CLASS}
                     value={form.orgRole}
@@ -1190,9 +1138,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
                       </option>
                     ))}
                   </select>
-                  <p className={BASICS_HELP_CLASS}>This helps visitors understand your operating model at a glance.</p>
                 </Field>
-                <Field label="Primary ERC discipline (optional)" labelClassName={BASICS_LABEL_CLASS}>
+                <Field label="Primary ERC discipline (optional)" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                   <div className="space-y-3">
                     <div className="grid gap-2 sm:grid-cols-2">
                       <select
@@ -1222,7 +1169,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
                     </p>
                   </div>
                 </Field>
-                <Field label="Secondary ERC disciplines (optional)" labelClassName={BASICS_LABEL_CLASS}>
+                <Field label="Secondary ERC disciplines (optional)" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                   <div className="space-y-3">
                     <select
                       className={BASICS_INPUT_CLASS}
@@ -1302,16 +1249,56 @@ export default function MyLab({ params }: { params: { id: string } }) {
                     </span>
                   }
                   labelClassName={BASICS_LABEL_CLASS}
+                  containerClassName={BASICS_FIELD_CLASS}
                 >
                   <input
                     className={BASICS_INPUT_CLASS}
                     value={form.halStructureId}
                     onChange={e => setForm({ ...form, halStructureId: e.target.value })}
-                    placeholder="e.g., struct-123456"
+                    placeholder="If indexed in HAL, enter structure ID (e.g., struct-123456)"
                   />
-                  <p className={BASICS_HELP_CLASS}>
-                    Add this if your organization is indexed in HAL, so profile metadata can be mapped consistently.
-                  </p>
+                </Field>
+                <Field label="Short description" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                  <textarea
+                    className={BASICS_INPUT_CLASS}
+                    rows={4}
+                    value={form.descriptionShort}
+                    onChange={e => setForm({ ...form, descriptionShort: e.target.value })}
+                    placeholder="1-2 lines: who you are, what you do best, and who you typically support."
+                  />
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground">Recommended: 120-180 characters</span>
+                    <span
+                      className={
+                        form.descriptionShort.length >= 120 && form.descriptionShort.length <= 180
+                          ? "text-emerald-600"
+                          : "text-muted-foreground"
+                      }
+                    >
+                      {form.descriptionShort.length} / 350
+                    </span>
+                  </div>
+                </Field>
+                <Field label="Long description (optional)" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                  <textarea
+                    className={BASICS_INPUT_CLASS}
+                    rows={6}
+                    value={form.descriptionLong}
+                    onChange={e => setForm({ ...form, descriptionLong: e.target.value })}
+                    placeholder="Capabilities, sample types, turnaround expectations, compliance context, and collaboration style."
+                  />
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground">Recommended: 400-900 characters</span>
+                    <span
+                      className={
+                        form.descriptionLong.length >= 400 && form.descriptionLong.length <= 900
+                          ? "text-emerald-600"
+                          : "text-muted-foreground"
+                      }
+                    >
+                      {form.descriptionLong.length} / 8000
+                    </span>
+                  </div>
                 </Field>
               </Section>
             )}
@@ -1319,20 +1306,20 @@ export default function MyLab({ params }: { params: { id: string } }) {
             {activeTab === "Branding" && (
             <Section title="Branding & Links">
 
-              <Field label="Website (optional)">
+              <Field label="Website (optional)" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                 <input
-                  className={INPUT_CLASS}
+                  className={BASICS_INPUT_CLASS}
                   value={form.website}
                   onChange={e => setForm({ ...form, website: e.target.value })}
-                  placeholder="https://labs.example.com"
+                  placeholder="Official website URL, e.g., https://labs.example.com"
                 />
               </Field>
-              <Field label="LinkedIn (optional)">
+              <Field label="LinkedIn (optional)" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                 <input
-                  className={INPUT_CLASS}
+                  className={BASICS_INPUT_CLASS}
                   value={form.linkedin}
                   onChange={e => setForm({ ...form, linkedin: e.target.value })}
-                  placeholder="https://www.linkedin.com/company/example"
+                  placeholder="LinkedIn page URL, e.g., https://www.linkedin.com/company/example"
                 />
               </Field>
             </Section>
@@ -1340,27 +1327,68 @@ export default function MyLab({ params }: { params: { id: string } }) {
 
             {activeTab === "Location" && (
             <Section title="Location">
-              <Field label="Address line 1">
-                <input className={INPUT_CLASS} value={form.addressLine1} onChange={e => setForm({ ...form, addressLine1: e.target.value })} />
-              </Field>
-              <Field label="Address line 2">
-                <input className={INPUT_CLASS} value={form.addressLine2} onChange={e => setForm({ ...form, addressLine2: e.target.value })} />
-              </Field>
-              <Field label="SIRET">
-                <input className={INPUT_CLASS} value={form.siretNumber} onChange={e => setForm({ ...form, siretNumber: e.target.value })} />
-              </Field>
-              <Field label="City">
-                <input className={INPUT_CLASS} value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} />
-              </Field>
-              <Field label="State/Region">
-                <input className={INPUT_CLASS} value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} />
-              </Field>
-              <Field label="Postal code">
-                <input className={INPUT_CLASS} value={form.postalCode} onChange={e => setForm({ ...form, postalCode: e.target.value })} />
-              </Field>
-              <Field label="Country">
-                <input className={INPUT_CLASS} value={form.country} onChange={e => setForm({ ...form, country: e.target.value })} />
-              </Field>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field
+                  label="Address line 1"
+                  labelClassName={BASICS_LABEL_CLASS}
+                  containerClassName={`${BASICS_FIELD_CLASS} md:col-span-2`}
+                >
+                  <input
+                    className={BASICS_INPUT_CLASS}
+                    value={form.addressLine1}
+                    onChange={e => setForm({ ...form, addressLine1: e.target.value })}
+                    placeholder="Street + number"
+                  />
+                </Field>
+                <Field label="Address line 2" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                  <input
+                    className={BASICS_INPUT_CLASS}
+                    value={form.addressLine2}
+                    onChange={e => setForm({ ...form, addressLine2: e.target.value })}
+                    placeholder="Building, floor, unit (optional)"
+                  />
+                </Field>
+                <Field label="SIRET" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                  <input
+                    className={BASICS_INPUT_CLASS}
+                    value={form.siretNumber}
+                    onChange={e => setForm({ ...form, siretNumber: e.target.value })}
+                    placeholder="French company SIRET number (if applicable)"
+                  />
+                </Field>
+                <Field label="City" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                  <input
+                    className={BASICS_INPUT_CLASS}
+                    value={form.city}
+                    onChange={e => setForm({ ...form, city: e.target.value })}
+                    placeholder="City"
+                  />
+                </Field>
+                <Field label="State/Region" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                  <input
+                    className={BASICS_INPUT_CLASS}
+                    value={form.state}
+                    onChange={e => setForm({ ...form, state: e.target.value })}
+                    placeholder="State or region"
+                  />
+                </Field>
+                <Field label="Postal code" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                  <input
+                    className={BASICS_INPUT_CLASS}
+                    value={form.postalCode}
+                    onChange={e => setForm({ ...form, postalCode: e.target.value })}
+                    placeholder="Postal / ZIP code"
+                  />
+                </Field>
+                <Field label="Country" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                  <input
+                    className={BASICS_INPUT_CLASS}
+                    value={form.country}
+                    onChange={e => setForm({ ...form, country: e.target.value })}
+                    placeholder="Country"
+                  />
+                </Field>
+              </div>
             </Section>
             )}
 
@@ -1486,49 +1514,61 @@ export default function MyLab({ params }: { params: { id: string } }) {
                 >
                   Save team member
                 </button>
-                <div className="space-y-2">
-                  {form.teamMembers.map(member => (
-                    <div
-                      key={`${member.name}-${member.title}`}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-foreground">
-                          {member.name}
-                          {member.isLead && <span className="ml-2 text-xs text-primary">Lead</span>}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {member.title}
-                          {member.roleRank ? ` • Rank ${member.roleRank}` : ""}
-                        </p>
-                        {member.teamName && (
-                          <p className="text-xs text-muted-foreground">Team: {member.teamName}</p>
-                        )}
-                        {(member.linkedin || member.website) && (
-                          <p className="text-xs text-muted-foreground">
-                            {member.linkedin || member.website}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setLeadMember(member.name, member.title)}
-                          className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
-                        >
-                          Set lead
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeTeamMember(member.name, member.title)}
-                          className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-destructive hover:text-destructive"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                <div className="flex items-center justify-between pt-1">
+                  <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Saved members</p>
+                  <button
+                    type="button"
+                    onClick={() => setTeamMembersExpanded(prev => !prev)}
+                    className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-primary hover:text-primary"
+                  >
+                    {teamMembersExpanded ? "Hide list" : "Show list"}
+                  </button>
                 </div>
+                {teamMembersExpanded && (
+                  <div className="space-y-2">
+                    {form.teamMembers.map(member => (
+                      <div
+                        key={`${member.name}-${member.title}`}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground">
+                            {member.name}
+                            {member.isLead && <span className="ml-2 text-xs text-primary">Lead</span>}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {member.title}
+                            {member.roleRank ? ` • Rank ${member.roleRank}` : ""}
+                          </p>
+                          {member.teamName && (
+                            <p className="text-xs text-muted-foreground">Team: {member.teamName}</p>
+                          )}
+                          {(member.linkedin || member.website) && (
+                            <p className="text-xs text-muted-foreground">
+                              {member.linkedin || member.website}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setLeadMember(member.name, member.title)}
+                            className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+                          >
+                            Set lead
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeTeamMember(member.name, member.title)}
+                            className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-destructive hover:text-destructive"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </Section>
             </>
@@ -1536,11 +1576,11 @@ export default function MyLab({ params }: { params: { id: string } }) {
 
             {activeTab === "Compliance" && (
             <Section title="Compliance & capabilities">
-              <Field label="Compliance">
+              <Field label="Compliance" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                 <div className="space-y-2">
                   <input
-                    className={INPUT_CLASS}
-                    placeholder="Add compliance and press Enter"
+                    className={BASICS_INPUT_CLASS}
+                    placeholder="Add standards or certifications, then press Enter"
                     value={tagInput.field === "complianceTags" ? tagInput.value : ""}
                     onChange={e => setTagInput({ field: "complianceTags", value: e.target.value })}
                     onKeyDown={handleTagKey("complianceTags")}
@@ -1564,7 +1604,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   </div>
                 </div>
               </Field>
-              <Field label="Compliance documents (PDF)">
+              <Field label="Compliance documents (PDF)" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                 <div className="space-y-3">
                   <div className="flex flex-wrap gap-2">
                     {complianceDocs.map(asset => (
@@ -1597,62 +1637,68 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   <p className="text-xs text-muted-foreground">Upload PDF compliance certificates.</p>
                 </div>
               </Field>
-              <Field label="Equipment">
+              <Field label="Equipment" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                 <div className="space-y-2">
                   <input
-                    className={INPUT_CLASS}
-                    placeholder="Add equipment and press Enter"
+                    className={BASICS_INPUT_CLASS}
+                    placeholder="Add key instruments, then press Enter"
                     value={tagInput.field === "equipmentTags" ? tagInput.value : ""}
                     onChange={e => setTagInput({ field: "equipmentTags", value: e.target.value })}
                     onKeyDown={handleTagKey("equipmentTags")}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Click a chip to mark it as priority (up to 3). Click × to remove it.
+                  </p>
                   <div className="flex flex-wrap gap-2">
-                    {form.equipmentTags.map(tag => (
-                      <span
-                        key={tag}
-                        className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground"
-                      >
-                        {tag}
-                        <button
-                          type="button"
-                          onClick={() => removeTag("equipmentTags", tag)}
-                          className="text-muted-foreground hover:text-destructive"
+                    {form.equipmentTags.map(tag => {
+                      const isPriority = form.priorityEquipmentTags.includes(tag);
+                      return (
+                        <div
+                          key={tag}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => togglePriorityEquipment(tag)}
+                          onKeyDown={event => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              togglePriorityEquipment(tag);
+                            }
+                          }}
+                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition ${
+                            isPriority
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border text-muted-foreground hover:border-primary/60 hover:bg-primary/5 hover:text-foreground"
+                          }`}
+                          title={isPriority ? "Priority equipment" : "Click to mark as priority"}
                         >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                  <div className="pt-2">
-                    <p className="text-xs text-muted-foreground">Select up to three priority items.</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {form.equipmentTags.map(tag => {
-                        const isPriority = form.priorityEquipmentTags.includes(tag);
-                        return (
+                          <span>{tag}</span>
                           <button
-                            key={`priority-${tag}`}
                             type="button"
-                            onClick={() => togglePriorityEquipment(tag)}
-                            className={`rounded-full border px-3 py-1 text-xs ${
-                              isPriority
-                                ? "border-primary bg-primary/10 font-semibold text-primary"
-                                : "border-border text-muted-foreground hover:border-primary hover:text-primary"
-                            }`}
+                            onClick={event => {
+                              event.stopPropagation();
+                              removeTag("equipmentTags", tag);
+                            }}
+                            className="text-current/80 hover:text-destructive"
+                            aria-label={`Remove ${tag}`}
+                            title={`Remove ${tag}`}
                           >
-                            {tag}
+                            ×
                           </button>
-                        );
-                      })}
-                      {form.equipmentTags.length === 0 && (
-                        <span className="text-xs text-muted-foreground">
-                          Add equipment to enable prioritization.
-                        </span>
-                      )}
-                    </div>
+                        </div>
+                      );
+                    })}
+                    {form.equipmentTags.length === 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        Add equipment to start building your featured list.
+                      </span>
+                    )}
                   </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Priority selected: {form.priorityEquipmentTags.length}/3
+                  </p>
                 </div>
               </Field>
-              <Field label="Techniques">
+              <Field label="Techniques" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                 <div className="space-y-3">
                   <div className="grid gap-2 md:grid-cols-2">
                     {form.techniques.map((technique, index) => (
@@ -1677,13 +1723,13 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   </div>
                   <div className="grid gap-2 md:grid-cols-2">
                     <input
-                      className={INPUT_CLASS}
+                      className={BASICS_INPUT_CLASS}
                       placeholder="Technique name"
                       value={techniqueInput.name}
                       onChange={e => setTechniqueInput(prev => ({ ...prev, name: e.target.value }))}
                     />
                     <input
-                      className={INPUT_CLASS}
+                      className={BASICS_INPUT_CLASS}
                       placeholder="Short description"
                       value={techniqueInput.description ?? ""}
                       onChange={e => setTechniqueInput(prev => ({ ...prev, description: e.target.value }))}
@@ -1698,11 +1744,11 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   </div>
                 </div>
               </Field>
-              <Field label="Focus areas">
+              <Field label="Focus areas" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                 <div className="space-y-2">
                   <input
-                    className={INPUT_CLASS}
-                    placeholder="Add focus area and press Enter"
+                    className={BASICS_INPUT_CLASS}
+                    placeholder="Add thematic focus areas, then press Enter"
                     value={tagInput.field === "focusTags" ? tagInput.value : ""}
                     onChange={e => setTagInput({ field: "focusTags", value: e.target.value })}
                     onKeyDown={handleTagKey("focusTags")}
@@ -2084,13 +2130,15 @@ function Field({
   label,
   children,
   labelClassName,
+  containerClassName,
 }: {
   label: React.ReactNode;
   children: React.ReactNode;
   labelClassName?: string;
+  containerClassName?: string;
 }) {
   return (
-    <div className="grid gap-2">
+    <div className={`grid gap-2 ${containerClassName ?? ""}`.trim()}>
       <label className={labelClassName ?? "text-sm font-medium text-foreground"}>{label}</label>
       {children}
     </div>
