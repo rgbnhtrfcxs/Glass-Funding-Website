@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   ClipboardList,
+  ChevronDown,
   Edit2,
   FileCheck2,
   FileDown,
@@ -216,9 +217,13 @@ export default function MyLab({ params }: { params: { id: string } }) {
   const [photoDeleteConfirmOpen, setPhotoDeleteConfirmOpen] = useState(false);
   const [pendingPhotoDelete, setPendingPhotoDelete] = useState<MediaAsset | null>(null);
   const [teamMembersExpanded, setTeamMembersExpanded] = useState(true);
+  const [draggingPriorityEquipmentIndex, setDraggingPriorityEquipmentIndex] = useState<number | null>(null);
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [showRoleHelp, setShowRoleHelp] = useState(false);
   const [pinRoleHelp, setPinRoleHelp] = useState(false);
+  const [requiredProgressOpen, setRequiredProgressOpen] = useState(false);
+  const [flashingRequiredKey, setFlashingRequiredKey] = useState<string | null>(null);
+  const requiredFlashTimerRef = useRef<number | null>(null);
   const [teamLinkRequests, setTeamLinkRequests] = useState<Array<{
     id: number;
     team_id: number;
@@ -228,6 +233,15 @@ export default function MyLab({ params }: { params: { id: string } }) {
   }>>([]);
   const [teamLinkLoading, setTeamLinkLoading] = useState(false);
   const [teamLinkError, setTeamLinkError] = useState<string | null>(null);
+  const [logoPreviewOpen, setLogoPreviewOpen] = useState(false);
+  const [logoPreviewScale, setLogoPreviewScale] = useState(1);
+  const [logoPreviewOffsetX, setLogoPreviewOffsetX] = useState(0);
+  const [logoPreviewOffsetY, setLogoPreviewOffsetY] = useState(0);
+  const [logoFramePadding, setLogoFramePadding] = useState(6);
+  const [logoFrameColor, setLogoFrameColor] = useState<"white" | "black" | "custom">("white");
+  const [logoFrameCustomColor, setLogoFrameCustomColor] = useState("#dbeafe");
+  const logoDragRef = useRef<{ x: number; y: number; originX: number; originY: number; width: number; height: number } | null>(null);
+  const logoEditorFrameRef = useRef<HTMLDivElement | null>(null);
   const [offerProfileDraft, setOfferProfileDraft] = useState<LabOfferProfileDraft>(defaultLabOfferProfileDraft);
   const [offerTaxonomy, setOfferTaxonomy] = useState<LabOfferTaxonomyOption[]>([]);
   const [offerTaxonomyLoading, setOfferTaxonomyLoading] = useState(false);
@@ -256,18 +270,78 @@ export default function MyLab({ params }: { params: { id: string } }) {
       ),
     [ercOptions, secondaryErcDomain, form.primaryErcDisciplineCode],
   );
-  const basicsRequiredProgress = useMemo(() => {
-    const checks = [
-      form.name.trim().length > 0,
-      form.labManager.trim().length > 0,
-      form.contactEmail.trim().length > 0,
-      form.descriptionShort.trim().length > 0,
-    ];
-    const completed = checks.filter(Boolean).length;
-    const total = checks.length;
+  const requiredChecklist = useMemo(
+    () => [
+      { key: "name", label: "Lab name", tab: "Basics", done: form.name.trim().length > 0 },
+      { key: "manager", label: "Lab manager / Director", tab: "Basics", done: form.labManager.trim().length > 0 },
+      { key: "email", label: "Contact email", tab: "Basics", done: form.contactEmail.trim().length > 0 },
+      { key: "shortDescription", label: "Short description", tab: "Basics", done: form.descriptionShort.trim().length > 0 },
+      { key: "longDescription", label: "Long description", tab: "Basics", done: form.descriptionLong.trim().length > 0 },
+      { key: "website", label: "Website", tab: "Branding", done: form.website.trim().length > 0 },
+      { key: "addressLine1", label: "Address line 1", tab: "Location", done: form.addressLine1.trim().length > 0 },
+      { key: "city", label: "City", tab: "Location", done: form.city.trim().length > 0 },
+      { key: "state", label: "State / region", tab: "Location", done: form.state.trim().length > 0 },
+      { key: "postalCode", label: "Postal / ZIP code", tab: "Location", done: form.postalCode.trim().length > 0 },
+      { key: "country", label: "Country", tab: "Location", done: form.country.trim().length > 0 },
+    ],
+    [
+      form.name,
+      form.labManager,
+      form.contactEmail,
+      form.descriptionShort,
+      form.descriptionLong,
+      form.website,
+      form.addressLine1,
+      form.city,
+      form.state,
+      form.postalCode,
+      form.country,
+    ],
+  );
+  const requiredProgress = useMemo(() => {
+    const completed = requiredChecklist.filter(item => item.done).length;
+    const total = requiredChecklist.length;
     const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
     return { completed, total, percent };
-  }, [form.name, form.labManager, form.contactEmail, form.descriptionShort]);
+  }, [requiredChecklist]);
+  const missingRequiredItems = useMemo(
+    () =>
+      requiredChecklist
+        .filter(item => !item.done)
+        .sort((a, b) => {
+          const tabOrderDiff = TAB_ORDER.indexOf(a.tab as (typeof TAB_ORDER)[number]) - TAB_ORDER.indexOf(b.tab as (typeof TAB_ORDER)[number]);
+          if (tabOrderDiff !== 0) return tabOrderDiff;
+          return requiredChecklist.findIndex(item => item.key === a.key) - requiredChecklist.findIndex(item => item.key === b.key);
+        }),
+    [requiredChecklist],
+  );
+  const flashRequiredField = (key: string, tab: (typeof TAB_ORDER)[number]) => {
+    setActiveTab(tab);
+    setRequiredProgressOpen(false);
+    setFlashingRequiredKey(key);
+    if (requiredFlashTimerRef.current) {
+      window.clearTimeout(requiredFlashTimerRef.current);
+      requiredFlashTimerRef.current = null;
+    }
+    window.setTimeout(() => {
+      const target = document.getElementById(`required-${key}`);
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+    requiredFlashTimerRef.current = window.setTimeout(() => {
+      setFlashingRequiredKey(null);
+      requiredFlashTimerRef.current = null;
+    }, 2200);
+  };
+  const teamCoverByName = useMemo(() => {
+    const map = new Map<string, string>();
+    teamLinkRequests.forEach(request => {
+      const teamName = request.teams?.name?.trim();
+      const cover = request.teams?.logo_url?.trim();
+      if (!teamName || !cover) return;
+      map.set(teamName.toLowerCase(), cover);
+    });
+    return map;
+  }, [teamLinkRequests]);
 
   useEffect(() => {
     let active = true;
@@ -288,6 +362,14 @@ export default function MyLab({ params }: { params: { id: string } }) {
       });
     return () => {
       active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (requiredFlashTimerRef.current) {
+        window.clearTimeout(requiredFlashTimerRef.current);
+      }
     };
   }, []);
 
@@ -424,6 +506,16 @@ export default function MyLab({ params }: { params: { id: string } }) {
       if (Array.isArray(parsed?.photos) && parsed.photos.length > 0) setPhotos(parsed.photos);
       if (Array.isArray(parsed?.partnerLogos) && parsed.partnerLogos.length > 0) setPartnerLogos(parsed.partnerLogos);
       if (Array.isArray(parsed?.complianceDocs) && parsed.complianceDocs.length > 0) setComplianceDocs(parsed.complianceDocs);
+      if (typeof parsed?.logoPreviewScale === "number") setLogoPreviewScale(parsed.logoPreviewScale);
+      if (typeof parsed?.logoPreviewOffsetX === "number") setLogoPreviewOffsetX(parsed.logoPreviewOffsetX);
+      if (typeof parsed?.logoPreviewOffsetY === "number") setLogoPreviewOffsetY(parsed.logoPreviewOffsetY);
+      if (typeof parsed?.logoFramePadding === "number") setLogoFramePadding(parsed.logoFramePadding);
+      if (parsed?.logoFrameColor === "white" || parsed?.logoFrameColor === "black" || parsed?.logoFrameColor === "custom") {
+        setLogoFrameColor(parsed.logoFrameColor);
+      }
+      if (typeof parsed?.logoFrameCustomColor === "string" && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(parsed.logoFrameCustomColor)) {
+        setLogoFrameCustomColor(parsed.logoFrameCustomColor);
+      }
       const normalizedActiveTab = parsed?.activeTab === "Company details" ? "Location" : parsed?.activeTab;
       if (typeof normalizedActiveTab === "string" && (TAB_ORDER as readonly string[]).includes(normalizedActiveTab)) {
         setActiveTab(normalizedActiveTab as (typeof TAB_ORDER)[number]);
@@ -444,17 +536,168 @@ export default function MyLab({ params }: { params: { id: string } }) {
         partnerLogos,
         complianceDocs,
         activeTab,
+        logoPreviewScale,
+        logoPreviewOffsetX,
+        logoPreviewOffsetY,
+        logoFramePadding,
+        logoFrameColor,
+        logoFrameCustomColor,
       };
       localStorage.setItem(draftKey, JSON.stringify(payload));
     }, 250);
     return () => window.clearTimeout(handle);
-  }, [draftKey, draftLoaded, form, photos, partnerLogos, complianceDocs, activeTab, labId, hasFunctionalConsent]);
+  }, [
+    draftKey,
+    draftLoaded,
+    form,
+    photos,
+    partnerLogos,
+    complianceDocs,
+    activeTab,
+    labId,
+    hasFunctionalConsent,
+    logoPreviewScale,
+    logoPreviewOffsetX,
+    logoPreviewOffsetY,
+    logoFramePadding,
+    logoFrameColor,
+    logoFrameCustomColor,
+  ]);
 
   function parseList(value: string) {
     return value
       .split(/[\n,]/)
       .map(entry => entry.trim())
       .filter(Boolean);
+  }
+
+  const logoPreviewTransform = `translate(${logoPreviewOffsetX}%, ${logoPreviewOffsetY}%) scale(${logoPreviewScale})`;
+  const validatedCustomLogoFrameColor =
+    /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(logoFrameCustomColor) ? logoFrameCustomColor : "#dbeafe";
+  const logoFrameBackgroundColor =
+    logoFrameColor === "black"
+      ? "#000000"
+      : logoFrameColor === "custom"
+        ? validatedCustomLogoFrameColor
+        : "#ffffff";
+  const logoFramePaddingRatio = Math.max(0, Math.min(0.45, logoFramePadding / 224));
+  const logoFramePaddingPercent = `${(logoFramePaddingRatio * 100).toFixed(2)}%`;
+
+  function resetLogoPreviewAdjustments() {
+    setLogoPreviewScale(1);
+    setLogoPreviewOffsetX(0);
+    setLogoPreviewOffsetY(0);
+    setLogoFramePadding(6);
+    setLogoFrameColor("white");
+    setLogoFrameCustomColor("#dbeafe");
+  }
+
+  function handleLogoPreviewMouseDown(event: React.MouseEvent<HTMLDivElement>) {
+    const rect = logoEditorFrameRef.current?.getBoundingClientRect();
+    logoDragRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      originX: logoPreviewOffsetX,
+      originY: logoPreviewOffsetY,
+      width: rect?.width || 1,
+      height: rect?.height || 1,
+    };
+  }
+
+  function handleLogoPreviewMouseMove(event: React.MouseEvent<HTMLDivElement>) {
+    if (!logoDragRef.current) return;
+    const dx = event.clientX - logoDragRef.current.x;
+    const dy = event.clientY - logoDragRef.current.y;
+    const nextX = logoDragRef.current.originX + (dx / logoDragRef.current.width) * 100;
+    const nextY = logoDragRef.current.originY + (dy / logoDragRef.current.height) * 100;
+    setLogoPreviewOffsetX(Math.max(-50, Math.min(50, Number(nextX.toFixed(1)))));
+    setLogoPreviewOffsetY(Math.max(-50, Math.min(50, Number(nextY.toFixed(1)))));
+  }
+
+  function handleLogoPreviewMouseUp() {
+    logoDragRef.current = null;
+  }
+
+  async function renderAndUploadFramedLogo(labIdValue: number) {
+    if (!form.logoUrl) return form.logoUrl;
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.src = form.logoUrl;
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("Unable to load logo for processing."));
+    });
+
+    const size = 1024;
+    const editorBaseSize = 224; // Matches h-56 w-56 preview frame.
+    const paddingRatio = Math.max(0, Math.min(0.45, logoFramePadding / editorBaseSize));
+    const paddingPx = Math.round(size * paddingRatio);
+    const innerSize = Math.max(1, size - paddingPx * 2);
+
+    const mainCanvas = document.createElement("canvas");
+    mainCanvas.width = size;
+    mainCanvas.height = size;
+    const mainCtx = mainCanvas.getContext("2d");
+    if (!mainCtx) throw new Error("Unable to prepare logo output canvas.");
+
+    const frameColor =
+      logoFrameColor === "black"
+        ? "#000000"
+        : logoFrameColor === "custom"
+          ? validatedCustomLogoFrameColor
+          : "#ffffff";
+    mainCtx.fillStyle = frameColor;
+    mainCtx.fillRect(0, 0, size, size);
+
+    mainCtx.save();
+    const dx = (logoPreviewOffsetX / 100) * innerSize;
+    const dy = (logoPreviewOffsetY / 100) * innerSize;
+    mainCtx.translate(size / 2 + dx, size / 2 + dy);
+    mainCtx.scale(logoPreviewScale, logoPreviewScale);
+    const imageRatio = image.width / image.height;
+    const targetRatio = 1;
+    let sx = 0;
+    let sy = 0;
+    let sWidth = image.width;
+    let sHeight = image.height;
+    if (imageRatio > targetRatio) {
+      sWidth = image.height * targetRatio;
+      sx = (image.width - sWidth) / 2;
+    } else if (imageRatio < targetRatio) {
+      sHeight = image.width / targetRatio;
+      sy = (image.height - sHeight) / 2;
+    }
+    mainCtx.drawImage(
+      image,
+      sx,
+      sy,
+      sWidth,
+      sHeight,
+      -innerSize / 2,
+      -innerSize / 2,
+      innerSize,
+      innerSize,
+    );
+    mainCtx.restore();
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      mainCanvas.toBlob(result => {
+        if (!result) {
+          reject(new Error("Unable to encode processed logo."));
+          return;
+        }
+        resolve(result);
+      }, "image/png");
+    });
+
+    const filename = `${labIdValue}-logo-v2-${Date.now()}.png`;
+    const filePath = `logos/${filename}`;
+    const { error: uploadError } = await supabase.storage
+      .from("lab-logos")
+      .upload(filePath, blob, { upsert: true, contentType: "image/png" });
+    if (uploadError) throw uploadError;
+    const { data } = supabase.storage.from("lab-logos").getPublicUrl(filePath);
+    return data.publicUrl;
   }
 
   async function handleLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -474,6 +717,11 @@ export default function MyLab({ params }: { params: { id: string } }) {
       const { data } = supabase.storage.from("lab-logos").getPublicUrl(filePath);
       const publicUrl = data.publicUrl;
       setForm(prev => ({ ...prev, logoUrl: publicUrl }));
+      setLogoPreviewScale(1);
+      setLogoPreviewOffsetX(0);
+      setLogoPreviewOffsetY(0);
+      setLogoFramePadding(6);
+      setLogoFrameColor("white");
       setMessage("Logo uploaded");
     } catch (err: any) {
       setLogoError(err?.message || "Unable to upload logo");
@@ -656,14 +904,59 @@ export default function MyLab({ params }: { params: { id: string } }) {
 
   const togglePriorityEquipment = (item: string) => {
     setForm(prev => {
-      const selected = new Set(prev.priorityEquipmentTags);
-      if (selected.has(item)) {
-        selected.delete(item);
-      } else {
-        if (selected.size >= 3) return prev;
-        selected.add(item);
+      const currentTags = [...prev.equipmentTags];
+      const currentPriority = [...prev.priorityEquipmentTags];
+      const isPriority = currentPriority.includes(item);
+      const tagsWithoutItem = currentTags.filter(tag => tag !== item);
+
+      if (isPriority) {
+        const nextPriority = currentPriority.filter(tag => tag !== item);
+        const prioritySet = new Set(nextPriority);
+        const priorityOrdered = tagsWithoutItem.filter(tag => prioritySet.has(tag));
+        const nonPriorityOrdered = tagsWithoutItem.filter(tag => !prioritySet.has(tag));
+        return {
+          ...prev,
+          priorityEquipmentTags: nextPriority,
+          equipmentTags: [...priorityOrdered, item, ...nonPriorityOrdered],
+        };
       }
-      return { ...prev, priorityEquipmentTags: Array.from(selected) };
+
+      if (currentPriority.length >= 3) return prev;
+      const nextPriority = [...currentPriority, item];
+      const prioritySet = new Set(nextPriority);
+      const priorityOrdered = nextPriority.filter(tag => tagsWithoutItem.includes(tag) || tag === item);
+      const nonPriorityOrdered = tagsWithoutItem.filter(tag => !prioritySet.has(tag));
+
+      return {
+        ...prev,
+        priorityEquipmentTags: nextPriority,
+        equipmentTags: [...priorityOrdered, ...nonPriorityOrdered],
+      };
+    });
+  };
+
+  const reorderPriorityEquipment = (fromIndex: number, toIndex: number) => {
+    setForm(prev => {
+      const priority = [...prev.priorityEquipmentTags];
+      if (
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= priority.length ||
+        toIndex >= priority.length ||
+        fromIndex === toIndex
+      ) {
+        return prev;
+      }
+      const [moved] = priority.splice(fromIndex, 1);
+      priority.splice(toIndex, 0, moved);
+
+      const prioritySet = new Set(priority);
+      const nonPriorityOrdered = prev.equipmentTags.filter(tag => !prioritySet.has(tag));
+      return {
+        ...prev,
+        priorityEquipmentTags: priority,
+        equipmentTags: [...priority, ...nonPriorityOrdered],
+      };
     });
   };
 
@@ -875,6 +1168,18 @@ export default function MyLab({ params }: { params: { id: string } }) {
       const { data: session } = await supabase.auth.getSession();
       const token = session.session?.access_token;
       if (!labId) throw new Error("Select a lab first");
+      let logoUrlForSave = form.logoUrl || null;
+      const hasLogoProcessingAdjustments =
+        Boolean(form.logoUrl) &&
+        (logoPreviewScale !== 1 ||
+          logoPreviewOffsetX !== 0 ||
+          logoPreviewOffsetY !== 0 ||
+          logoFramePadding !== 6 ||
+          logoFrameColor !== "white" ||
+          logoFrameCustomColor.toLowerCase() !== "#dbeafe");
+      if (hasLogoProcessingAdjustments) {
+        logoUrlForSave = await renderAndUploadFramedLogo(labId);
+      }
       const legacyOffers = draftToLegacyOffers(offerProfileDraft);
       const res = await fetch(`/api/my-lab/${labId}`, {
         method: "PUT",
@@ -886,7 +1191,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
           name: form.name,
           labManager: form.labManager,
           contactEmail: form.contactEmail,
-          logoUrl: form.logoUrl || null,
+          logoUrl: logoUrlForSave,
           siretNumber: form.siretNumber || null,
           offersLabSpace: form.offersLabSpace,
           descriptionShort: form.descriptionShort || null,
@@ -929,14 +1234,22 @@ export default function MyLab({ params }: { params: { id: string } }) {
         }
         throw new Error(msg);
       }
-      await upsertLabOfferProfile(
-        labId,
-        draftToProfilePayload(offerProfileDraft, {
-          forceSupportsBenchRental: form.offersLabSpace ? offerProfileDraft.supportsBenchRental : false,
-          forceSupportsEquipmentAccess: form.offersLabSpace ? offerProfileDraft.supportsEquipmentAccess : false,
-        }),
-        token,
-      );
+      if (logoUrlForSave && logoUrlForSave !== form.logoUrl) {
+        setForm(prev => ({ ...prev, logoUrl: logoUrlForSave ?? "" }));
+      }
+      try {
+        await upsertLabOfferProfile(
+          labId,
+          draftToProfilePayload(offerProfileDraft, {
+            forceSupportsBenchRental: form.offersLabSpace ? offerProfileDraft.supportsBenchRental : false,
+            forceSupportsEquipmentAccess: form.offersLabSpace ? offerProfileDraft.supportsEquipmentAccess : false,
+          }),
+          token,
+        );
+      } catch (offerErr: any) {
+        // Do not block the main lab save if offers profile update fails.
+        setMessage(`Lab saved, but offers profile failed: ${offerErr?.message || "Server error"}`);
+      }
       if (hasFunctionalConsent) {
         localStorage.removeItem(draftKey);
       }
@@ -989,8 +1302,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
   }
 
   return (
-    <section className="bg-background min-h-screen">
-      <div className="container mx-auto px-4 py-20 lg:py-24 max-w-6xl">
+    <section className="min-h-screen bg-[radial-gradient(1200px_420px_at_10%_-10%,rgba(56,189,248,0.18),transparent_60%),radial-gradient(900px_360px_at_90%_-5%,rgba(59,130,246,0.14),transparent_60%),linear-gradient(to_bottom,rgba(248,250,252,0.96),rgba(241,245,249,0.92))]">
+      <div className="container relative mx-auto max-w-6xl px-4 py-20 lg:py-24">
         <Link href="/account?tab=manageLab" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1 mb-4 rounded-full border border-border px-3 py-1">
           ← Back to manage labs
         </Link>
@@ -1059,7 +1372,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
           >
             <div className="grid gap-6 md:grid-cols-[220px_minmax(0,1fr)] md:items-start">
               <aside className="space-y-4 md:sticky md:top-24">
-                <div className="rounded-2xl border border-border bg-card/70 p-3">
+                <div className="rounded-2xl border border-border/70 bg-background/80 p-3 shadow-[0_10px_26px_-14px_rgba(30,64,175,0.45)] backdrop-blur-sm">
                   <div className="flex flex-wrap gap-2 md:flex-col">
                     {TAB_ORDER.map(tab => {
                       const TabIcon = TAB_ICONS[tab];
@@ -1070,8 +1383,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
                           onClick={() => setActiveTab(tab)}
                           className={`rounded-full border px-4 py-1.5 text-sm font-medium text-left transition md:w-full ${
                             activeTab === tab
-                              ? "border-primary bg-primary/10 text-primary"
-                              : "border-border text-muted-foreground hover:border-primary/50 hover:text-primary"
+                              ? "border-primary/70 bg-gradient-to-r from-primary/20 to-sky-500/20 text-primary shadow-[0_6px_16px_-10px_rgba(59,130,246,0.65)]"
+                              : "border-border/80 bg-background/75 text-muted-foreground hover:border-primary/50 hover:bg-background hover:text-primary"
                           }`}
                         >
                           <span className="inline-flex items-center gap-2">
@@ -1082,26 +1395,60 @@ export default function MyLab({ params }: { params: { id: string } }) {
                       );
                     })}
                   </div>
-                  <div className="mt-3 rounded-xl border border-border/70 bg-background/40 px-3 py-2">
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                      <span>Basics progress</span>
-                      <span>
-                        {basicsRequiredProgress.completed}/{basicsRequiredProgress.total}
-                      </span>
-                    </div>
-                    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full rounded-full bg-primary transition-all duration-300"
-                        style={{ width: `${basicsRequiredProgress.percent}%` }}
-                      />
-                    </div>
+                  <div className="mt-3 rounded-xl border border-border/70 bg-background/70 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                    <button
+                      type="button"
+                      onClick={() => setRequiredProgressOpen(prev => !prev)}
+                      className="w-full text-left"
+                    >
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                        <span>Required progress</span>
+                        <span className="inline-flex items-center gap-1.5">
+                          <span>{requiredProgress.percent}%</span>
+                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border/70 bg-background/80">
+                            <ChevronDown
+                              className={`h-3 w-3 transition-transform duration-200 ${
+                                requiredProgressOpen ? "rotate-180" : ""
+                              }`}
+                            />
+                          </span>
+                        </span>
+                      </div>
+                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-primary transition-all duration-300"
+                          style={{ width: `${requiredProgress.percent}%` }}
+                        />
+                      </div>
+                    </button>
+                    {requiredProgressOpen && (
+                      <div className="mt-2 border-t border-border/60 pt-2">
+                        {missingRequiredItems.length === 0 ? (
+                          <p className="text-[11px] text-emerald-600">All required fields are complete.</p>
+                        ) : (
+                          <div className="space-y-1">
+                            {missingRequiredItems.map((item, index) => (
+                              <button
+                                key={item.key}
+                                type="button"
+                                onClick={() => flashRequiredField(item.key, item.tab as (typeof TAB_ORDER)[number])}
+                                className="flex w-full items-start gap-1.5 text-left text-[11px] text-muted-foreground hover:text-primary"
+                              >
+                                <span className="min-w-[14px] text-foreground/80">{index + 1}.</span>
+                                <span>{item.label} ({item.tab})</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 md:flex-col">
                   <button
                     type="button"
                     onClick={() => setSaveConfirmOpen(true)}
-                    className="rounded-full bg-primary px-4 py-2 text-sm text-primary-foreground md:w-full"
+                    className="rounded-full bg-primary px-4 py-2 text-sm text-primary-foreground shadow-[0_10px_20px_-12px_rgba(59,130,246,0.85)] md:w-full"
                     disabled={saving}
                   >
                     {saving ? "Saving…" : "Save"}
@@ -1132,6 +1479,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   }
                   labelClassName={BASICS_LABEL_CLASS}
                   containerClassName={BASICS_FIELD_CLASS}
+                  fieldId="required-name"
+                  highlighted={flashingRequiredKey === "name"}
                 >
                   <input
                     className={BASICS_INPUT_CLASS}
@@ -1149,6 +1498,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   }
                   labelClassName={BASICS_LABEL_CLASS}
                   containerClassName={BASICS_FIELD_CLASS}
+                  fieldId="required-manager"
+                  highlighted={flashingRequiredKey === "manager"}
                 >
                   <input
                     className={BASICS_INPUT_CLASS}
@@ -1166,6 +1517,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   }
                   labelClassName={BASICS_LABEL_CLASS}
                   containerClassName={BASICS_FIELD_CLASS}
+                  fieldId="required-email"
+                  highlighted={flashingRequiredKey === "email"}
                 >
                   <div className="flex items-center gap-2">
                     <input className={BASICS_INPUT_CLASS} value={form.contactEmail} disabled />
@@ -1318,6 +1671,8 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   }
                   labelClassName={BASICS_LABEL_CLASS}
                   containerClassName={BASICS_FIELD_CLASS}
+                  fieldId="required-shortDescription"
+                  highlighted={flashingRequiredKey === "shortDescription"}
                 >
                   <textarea
                     className={BASICS_INPUT_CLASS}
@@ -1340,13 +1695,24 @@ export default function MyLab({ params }: { params: { id: string } }) {
                     </span>
                   </div>
                 </Field>
-                <Field label="Long description" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                <Field
+                  label={
+                    <span>
+                      Long description <span className="text-destructive">*</span>
+                    </span>
+                  }
+                  labelClassName={BASICS_LABEL_CLASS}
+                  containerClassName={BASICS_FIELD_CLASS}
+                  fieldId="required-longDescription"
+                  highlighted={flashingRequiredKey === "longDescription"}
+                >
                   <textarea
                     className={BASICS_INPUT_CLASS}
                     rows={6}
                     value={form.descriptionLong}
                     onChange={e => setForm({ ...form, descriptionLong: e.target.value })}
                     placeholder="Capabilities, sample types, turnaround expectations, compliance context, and collaboration style."
+                    required
                   />
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-muted-foreground">Recommended: 400-900 characters</span>
@@ -1367,15 +1733,26 @@ export default function MyLab({ params }: { params: { id: string } }) {
             {activeTab === "Branding" && (
             <Section title="Branding & Links">
 
-              <Field label="Website (optional)" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+              <Field
+                label={
+                  <span>
+                    Website <span className="text-destructive">*</span>
+                  </span>
+                }
+                labelClassName={BASICS_LABEL_CLASS}
+                containerClassName={BASICS_FIELD_CLASS}
+                fieldId="required-website"
+                highlighted={flashingRequiredKey === "website"}
+              >
                 <input
                   className={BASICS_INPUT_CLASS}
                   value={form.website}
                   onChange={e => setForm({ ...form, website: e.target.value })}
                   placeholder="Official website URL, e.g., https://labs.example.com"
+                  required
                 />
               </Field>
-              <Field label="LinkedIn (optional)" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+              <Field label="LinkedIn" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                 <input
                   className={BASICS_INPUT_CLASS}
                   value={form.linkedin}
@@ -1390,15 +1767,22 @@ export default function MyLab({ params }: { params: { id: string } }) {
             <Section title="Location">
               <div className="grid gap-3 md:grid-cols-2">
                 <Field
-                  label="Address line 1"
+                  label={
+                    <span>
+                      Address line 1 <span className="text-destructive">*</span>
+                    </span>
+                  }
                   labelClassName={BASICS_LABEL_CLASS}
                   containerClassName={`${BASICS_FIELD_CLASS} md:col-span-2`}
+                  fieldId="required-addressLine1"
+                  highlighted={flashingRequiredKey === "addressLine1"}
                 >
                   <input
                     className={BASICS_INPUT_CLASS}
                     value={form.addressLine1}
                     onChange={e => setForm({ ...form, addressLine1: e.target.value })}
                     placeholder="Street + number"
+                    required
                   />
                 </Field>
                 <Field label="Address line 2" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
@@ -1409,44 +1793,88 @@ export default function MyLab({ params }: { params: { id: string } }) {
                     placeholder="Building, floor, unit (optional)"
                   />
                 </Field>
+                <Field
+                  label={
+                    <span>
+                      City <span className="text-destructive">*</span>
+                    </span>
+                  }
+                  labelClassName={BASICS_LABEL_CLASS}
+                  containerClassName={BASICS_FIELD_CLASS}
+                  fieldId="required-city"
+                  highlighted={flashingRequiredKey === "city"}
+                >
+                  <input
+                    className={BASICS_INPUT_CLASS}
+                    value={form.city}
+                    onChange={e => setForm({ ...form, city: e.target.value })}
+                    placeholder="City"
+                    required
+                  />
+                </Field>
+                <Field
+                  label={
+                    <span>
+                      State/Region <span className="text-destructive">*</span>
+                    </span>
+                  }
+                  labelClassName={BASICS_LABEL_CLASS}
+                  containerClassName={BASICS_FIELD_CLASS}
+                  fieldId="required-state"
+                  highlighted={flashingRequiredKey === "state"}
+                >
+                  <input
+                    className={BASICS_INPUT_CLASS}
+                    value={form.state}
+                    onChange={e => setForm({ ...form, state: e.target.value })}
+                    placeholder="State or region"
+                    required
+                  />
+                </Field>
+                <Field
+                  label={
+                    <span>
+                      Postal code <span className="text-destructive">*</span>
+                    </span>
+                  }
+                  labelClassName={BASICS_LABEL_CLASS}
+                  containerClassName={BASICS_FIELD_CLASS}
+                  fieldId="required-postalCode"
+                  highlighted={flashingRequiredKey === "postalCode"}
+                >
+                  <input
+                    className={BASICS_INPUT_CLASS}
+                    value={form.postalCode}
+                    onChange={e => setForm({ ...form, postalCode: e.target.value })}
+                    placeholder="Postal / ZIP code"
+                    required
+                  />
+                </Field>
+                <Field
+                  label={
+                    <span>
+                      Country <span className="text-destructive">*</span>
+                    </span>
+                  }
+                  labelClassName={BASICS_LABEL_CLASS}
+                  containerClassName={BASICS_FIELD_CLASS}
+                  fieldId="required-country"
+                  highlighted={flashingRequiredKey === "country"}
+                >
+                  <input
+                    className={BASICS_INPUT_CLASS}
+                    value={form.country}
+                    onChange={e => setForm({ ...form, country: e.target.value })}
+                    placeholder="Country"
+                    required
+                  />
+                </Field>
                 <Field label="SIRET" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
                   <input
                     className={BASICS_INPUT_CLASS}
                     value={form.siretNumber}
                     onChange={e => setForm({ ...form, siretNumber: e.target.value })}
                     placeholder="French company SIRET number (if applicable)"
-                  />
-                </Field>
-                <Field label="City" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
-                  <input
-                    className={BASICS_INPUT_CLASS}
-                    value={form.city}
-                    onChange={e => setForm({ ...form, city: e.target.value })}
-                    placeholder="City"
-                  />
-                </Field>
-                <Field label="State/Region" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
-                  <input
-                    className={BASICS_INPUT_CLASS}
-                    value={form.state}
-                    onChange={e => setForm({ ...form, state: e.target.value })}
-                    placeholder="State or region"
-                  />
-                </Field>
-                <Field label="Postal code" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
-                  <input
-                    className={BASICS_INPUT_CLASS}
-                    value={form.postalCode}
-                    onChange={e => setForm({ ...form, postalCode: e.target.value })}
-                    placeholder="Postal / ZIP code"
-                  />
-                </Field>
-                <Field label="Country" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
-                  <input
-                    className={BASICS_INPUT_CLASS}
-                    value={form.country}
-                    onChange={e => setForm({ ...form, country: e.target.value })}
-                    placeholder="Country"
                   />
                 </Field>
               </div>
@@ -1586,42 +2014,76 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   </button>
                 </div>
                 {teamMembersExpanded && (
-                  <div className="space-y-2">
+                  <div className="grid gap-2 md:grid-cols-2">
                     {form.teamMembers.map(member => (
                       <div
                         key={`${member.name}-${member.title}`}
-                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2"
+                        className="relative flex w-full flex-wrap items-start justify-between gap-3 overflow-hidden rounded-xl border border-border bg-transparent px-3 py-2 md:h-[150px]"
                       >
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-foreground">
-                            {member.name}
-                            {member.isLead && <span className="ml-2 text-xs text-primary">Lead</span>}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {member.title}
-                            {member.roleRank ? ` • Rank ${member.roleRank}` : ""}
-                          </p>
-                          {member.teamName && (
-                            <p className="text-xs text-muted-foreground">Team: {member.teamName}</p>
-                          )}
-                          {(member.linkedin || member.website) && (
-                            <p className="text-xs text-muted-foreground">
-                              {member.linkedin || member.website}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
+                        {(() => {
+                          const cover =
+                            member.teamName?.trim() && teamCoverByName.get(member.teamName.trim().toLowerCase());
+                          return cover ? (
+                            <>
+                              <img
+                                src={cover}
+                                alt={`${member.teamName} cover`}
+                                className="absolute inset-0 h-full w-full object-cover"
+                              />
+                              <div className="absolute inset-0 bg-background/70 backdrop-blur-[1px]" />
+                            </>
+                          ) : null;
+                        })()}
+                        {(() => {
+                          const teamIcon =
+                            member.teamName?.trim() && teamCoverByName.get(member.teamName.trim().toLowerCase());
+                          const iconUrl = teamIcon || form.logoUrl?.trim() || "";
+                          return (
+                            <div className="relative z-10 flex min-w-0 items-start gap-2 pr-24">
+                              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-blue-400/80 bg-background/85 shadow-sm">
+                                {iconUrl ? (
+                                  <img
+                                    src={iconUrl}
+                                    alt={`${member.teamName || form.name || "Lab"} logo`}
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <Users className="h-4 w-4 text-muted-foreground/80" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-foreground">
+                                  {member.name}
+                                  {member.isLead && <span className="ml-2 text-xs text-primary">Lead</span>}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {member.title}
+                                  {member.roleRank ? ` • Rank ${member.roleRank}` : ""}
+                                </p>
+                                {member.teamName && (
+                                  <p className="text-xs text-muted-foreground">Team: {member.teamName}</p>
+                                )}
+                                {(member.linkedin || member.website) && (
+                                  <p className="text-xs text-muted-foreground">
+                                    {member.linkedin || member.website}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                        <div className="absolute bottom-2 right-3 z-10 flex items-center gap-2">
                           <button
                             type="button"
                             onClick={() => setLeadMember(member.name, member.title)}
-                            className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+                            className="rounded-full bg-primary px-3 py-1.5 text-xs text-primary-foreground transition hover:bg-primary/90"
                           >
                             Set lead
                           </button>
                           <button
                             type="button"
                             onClick={() => removeTeamMember(member.name, member.title)}
-                            className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-destructive hover:text-destructive"
+                            className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-foreground/30 hover:text-foreground"
                           >
                             Remove
                           </button>
@@ -1713,11 +2175,13 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   <div className="flex flex-wrap gap-2">
                     {form.equipmentTags.map(tag => {
                       const isPriority = form.priorityEquipmentTags.includes(tag);
+                      const priorityIndex = form.priorityEquipmentTags.indexOf(tag);
                       return (
                         <div
                           key={tag}
                           role="button"
                           tabIndex={0}
+                          draggable={isPriority}
                           onClick={() => togglePriorityEquipment(tag)}
                           onKeyDown={event => {
                             if (event.key === "Enter" || event.key === " ") {
@@ -1725,11 +2189,31 @@ export default function MyLab({ params }: { params: { id: string } }) {
                               togglePriorityEquipment(tag);
                             }
                           }}
+                          onDragStart={event => {
+                            if (!isPriority || priorityIndex < 0) return;
+                            event.dataTransfer.setData("text/plain", String(priorityIndex));
+                            event.dataTransfer.effectAllowed = "move";
+                            setDraggingPriorityEquipmentIndex(priorityIndex);
+                          }}
+                          onDragEnd={() => setDraggingPriorityEquipmentIndex(null)}
+                          onDragOver={event => {
+                            if (!isPriority || draggingPriorityEquipmentIndex === null) return;
+                            event.preventDefault();
+                            event.dataTransfer.dropEffect = "move";
+                          }}
+                          onDrop={event => {
+                            if (!isPriority || priorityIndex < 0) return;
+                            event.preventDefault();
+                            const fromIndex = Number(event.dataTransfer.getData("text/plain"));
+                            if (Number.isNaN(fromIndex)) return;
+                            reorderPriorityEquipment(fromIndex, priorityIndex);
+                            setDraggingPriorityEquipmentIndex(null);
+                          }}
                           className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition ${
                             isPriority
                               ? "border-primary bg-primary/10 text-primary"
                               : "border-border text-muted-foreground hover:border-primary/60 hover:bg-primary/5 hover:text-foreground"
-                          }`}
+                          } ${isPriority ? "cursor-grab active:cursor-grabbing" : ""}`}
                           title={isPriority ? "Priority equipment" : "Click to mark as priority"}
                         >
                           <span>{tag}</span>
@@ -1818,7 +2302,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
                     {form.focusTags.map(tag => (
                       <span
                         key={tag}
-                        className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground"
+                        className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-primary hover:bg-primary/10 hover:text-foreground"
                       >
                         {tag}
                         <button
@@ -1849,17 +2333,28 @@ export default function MyLab({ params }: { params: { id: string } }) {
                           verified labs
                         </span>
                       </p>
-                      <label className="inline-flex items-center">
-                        <span className="rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
-                          Upload file
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleLogoUpload}
-                            className="hidden"
-                          />
-                        </span>
-                      </label>
+                      <div className="flex items-center gap-2">
+                        {form.logoUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setLogoPreviewOpen(true)}
+                            className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                          >
+                            Preview
+                          </button>
+                        )}
+                        <label className="inline-flex items-center">
+                          <span className="rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
+                            Upload file
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleLogoUpload}
+                              className="hidden"
+                            />
+                          </span>
+                        </label>
+                      </div>
                     </div>
                     {logoUploading && <p className="text-xs text-muted-foreground">Uploading logo…</p>}
                     {logoError && <p className="text-xs text-destructive">{logoError}</p>}
@@ -1868,7 +2363,10 @@ export default function MyLab({ params }: { params: { id: string } }) {
                         <div className="group relative flex w-[170px] max-w-[170px] flex-shrink-0 flex-col gap-2 rounded-xl border border-border bg-muted/40 p-2 transition hover:border-primary/60 hover:bg-background/80 hover:shadow-md">
                           <button
                             type="button"
-                            onClick={() => setForm({ ...form, logoUrl: "" })}
+                            onClick={() => {
+                              setForm({ ...form, logoUrl: "" });
+                              resetLogoPreviewAdjustments();
+                            }}
                             className="absolute -right-1.5 -top-1.5 z-10 inline-flex h-5 w-5 items-center justify-center rounded-full border border-destructive/70 bg-destructive/70 text-destructive-foreground ring-2 ring-background shadow-sm backdrop-blur-md transition hover:bg-destructive/85"
                             aria-label="Remove logo"
                             title="Remove logo"
@@ -1876,12 +2374,18 @@ export default function MyLab({ params }: { params: { id: string } }) {
                             <X className="h-3 w-3" />
                           </button>
                           <div className="relative">
-                            <img
-                              src={form.logoUrl}
-                              alt={`${form.name || "Lab"} logo`}
-                              draggable={false}
-                              className={PHOTO_THUMB_CLASS}
-                            />
+                            <div
+                              className="h-24 w-full overflow-hidden rounded"
+                              style={{ padding: logoFramePaddingPercent, backgroundColor: logoFrameBackgroundColor }}
+                            >
+                              <img
+                                src={form.logoUrl}
+                                alt={`${form.name || "Lab"} logo`}
+                                draggable={false}
+                                className="h-full w-full object-cover transition duration-200 group-hover:brightness-110"
+                                style={{ transform: logoPreviewTransform, transformOrigin: "center center" }}
+                              />
+                            </div>
                             <span className="absolute bottom-2 left-2 rounded-full border border-white/40 bg-white/25 px-1.5 py-0.5 text-[9px] font-medium text-white shadow-sm backdrop-blur-md">
                               Logo
                             </span>
@@ -2112,6 +2616,250 @@ export default function MyLab({ params }: { params: { id: string } }) {
           </div>
         </div>
       )}
+      {logoPreviewOpen && form.logoUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/52 px-4 py-8">
+          <div className="w-full max-w-3xl rounded-3xl border border-white/45 bg-white/62 p-6 shadow-2xl backdrop-blur-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Logo preview</h2>
+                <p className="mt-1 text-sm text-slate-700">
+                  Preview how the logo avatar appears on Labs cards, then drag/zoom to adjust.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLogoPreviewOpen(false)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/60 bg-white/70 text-slate-700 transition hover:border-primary hover:text-primary"
+                aria-label="Close logo preview"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="rounded-2xl border border-white/50 bg-white/56 p-4 backdrop-blur-lg">
+                <p className="text-xs font-medium text-slate-700">Labs card avatar preview</p>
+                <div className="mt-3 rounded-2xl border border-white/55 bg-white/72 p-4 backdrop-blur-md">
+                  <div className="flex items-center gap-3">
+                    <div className="size-14 min-h-14 min-w-14 max-h-14 max-w-14 shrink-0 overflow-hidden rounded-full border-2 border-blue-400/80 bg-muted">
+                      <div
+                        className="h-full w-full overflow-hidden rounded-full"
+                        style={{
+                          padding: logoFramePaddingPercent,
+                          backgroundColor: logoFrameBackgroundColor,
+                          clipPath: "circle(50% at 50% 50%)",
+                        }}
+                      >
+                        <img
+                          src={form.logoUrl}
+                          alt={`${form.name || "Lab"} logo preview`}
+                          draggable={false}
+                          className="h-full w-full rounded-full object-cover"
+                          style={{
+                            transform: logoPreviewTransform,
+                            transformOrigin: "center center",
+                            clipPath: "circle(50% at 50% 50%)",
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900">{form.name || "Your lab name"}</p>
+                      <p className="truncate text-xs text-slate-700">
+                        {form.city || "City"}, {form.country || "Country"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="relative mx-auto mt-4 h-56 w-56 rounded-2xl border border-white/55 bg-white/50 p-2 backdrop-blur-md">
+                  <div
+                    ref={logoEditorFrameRef}
+                    className="relative h-full w-full overflow-hidden rounded-full border-2 border-primary/80 cursor-grab active:cursor-grabbing"
+                    onMouseDown={handleLogoPreviewMouseDown}
+                    onMouseMove={handleLogoPreviewMouseMove}
+                    onMouseUp={handleLogoPreviewMouseUp}
+                    onMouseLeave={handleLogoPreviewMouseUp}
+                  >
+                    <div
+                      className="h-full w-full overflow-hidden rounded-full"
+                      style={{
+                        padding: logoFramePaddingPercent,
+                        backgroundColor: logoFrameBackgroundColor,
+                        clipPath: "circle(50% at 50% 50%)",
+                      }}
+                    >
+                      <img
+                        src={form.logoUrl}
+                        alt={`${form.name || "Lab"} logo editor`}
+                        draggable={false}
+                        className="h-full w-full rounded-full object-cover"
+                        style={{
+                          transform: logoPreviewTransform,
+                          transformOrigin: "center center",
+                          clipPath: "circle(50% at 50% 50%)",
+                        }}
+                      />
+                    </div>
+                    <div
+                      className="pointer-events-none absolute inset-0 opacity-45"
+                      style={{
+                        backgroundImage:
+                          "linear-gradient(to right, rgba(15,23,42,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(15,23,42,0.12) 1px, transparent 1px)",
+                        backgroundSize: "20px 20px",
+                      }}
+                    />
+                  </div>
+                  <span className="pointer-events-none absolute left-1/2 top-1.5 -translate-x-1/2 rounded-full border border-white/70 bg-white/75 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+                    Exact avatar crop area
+                  </span>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-white/50 bg-white/56 p-4 backdrop-blur-lg">
+                <p className="text-xs font-medium text-slate-700">Adjust image</p>
+                <div className="mt-3 space-y-4">
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-xs text-slate-700">
+                      <span>Zoom</span>
+                      <span>{logoPreviewScale.toFixed(2)}x</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={2.5}
+                      step={0.01}
+                      value={logoPreviewScale}
+                      onChange={event => setLogoPreviewScale(Number(event.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-xs text-slate-700">
+                      <span>Horizontal</span>
+                      <span>{logoPreviewOffsetX}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={-50}
+                      max={50}
+                      step={0.1}
+                      value={logoPreviewOffsetX}
+                      onChange={event => setLogoPreviewOffsetX(Number(event.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-xs text-slate-700">
+                      <span>Vertical</span>
+                      <span>{logoPreviewOffsetY}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={-50}
+                      max={50}
+                      step={0.1}
+                      value={logoPreviewOffsetY}
+                      onChange={event => setLogoPreviewOffsetY(Number(event.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-xs text-slate-700">
+                      <span>Frame thickness</span>
+                      <span>{logoFramePadding}px ({Math.round(logoFramePaddingRatio * 100)}%)</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={24}
+                      step={1}
+                      value={logoFramePadding}
+                      onChange={event => setLogoFramePadding(Number(event.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs text-slate-700">Frame color</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setLogoFrameColor("white")}
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition ${
+                          logoFrameColor === "white"
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-slate-300 bg-white/80 text-slate-700 hover:border-primary/60"
+                        }`}
+                      >
+                        <span className="h-2.5 w-2.5 rounded-full border border-slate-300 bg-white" />
+                        White
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLogoFrameColor("black")}
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition ${
+                          logoFrameColor === "black"
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-slate-300 bg-white/80 text-slate-700 hover:border-primary/60"
+                        }`}
+                      >
+                        <span className="h-2.5 w-2.5 rounded-full border border-slate-500 bg-black" />
+                        Black
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLogoFrameColor("custom")}
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition ${
+                          logoFrameColor === "custom"
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-slate-300 bg-white/80 text-slate-700 hover:border-primary/60"
+                        }`}
+                      >
+                        <span
+                          className="h-2.5 w-2.5 rounded-full border border-slate-400"
+                          style={{ backgroundColor: logoFrameCustomColor }}
+                        />
+                        Custom
+                      </button>
+                    </div>
+                    {logoFrameColor === "custom" && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={logoFrameCustomColor}
+                          onChange={event => setLogoFrameCustomColor(event.target.value)}
+                          className="h-8 w-10 cursor-pointer rounded border border-slate-300 bg-white p-0.5"
+                          aria-label="Choose custom frame color"
+                        />
+                        <input
+                          type="text"
+                          value={logoFrameCustomColor}
+                          onChange={event => setLogoFrameCustomColor(event.target.value)}
+                          className="h-8 w-28 rounded border border-slate-300 bg-white/90 px-2 text-xs text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          placeholder="#RRGGBB"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={resetLogoPreviewAdjustments}
+                      className="rounded-full border border-slate-300 bg-white/80 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-primary hover:text-primary"
+                    >
+                      Reset
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLogoPreviewOpen(false)}
+                      className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {saveConfirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8">
           <div className="w-full max-w-md rounded-3xl border border-border bg-background p-6 shadow-xl">
@@ -2180,7 +2928,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-3xl border border-border bg-card/70 p-5 space-y-4">
+    <div className="space-y-4 rounded-3xl border border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(248,250,252,0.78))] p-5 shadow-[0_18px_34px_-22px_rgba(15,23,42,0.45)] backdrop-blur-sm">
       <h2 className="text-lg font-semibold text-foreground">{title}</h2>
       <div className="grid gap-4">{children}</div>
     </div>
@@ -2192,14 +2940,23 @@ function Field({
   children,
   labelClassName,
   containerClassName,
+  fieldId,
+  highlighted = false,
 }: {
   label: React.ReactNode;
   children: React.ReactNode;
   labelClassName?: string;
   containerClassName?: string;
+  fieldId?: string;
+  highlighted?: boolean;
 }) {
   return (
-    <div className={`grid gap-2 ${containerClassName ?? ""}`.trim()}>
+    <div
+      id={fieldId}
+      className={`grid gap-2 transition ${
+        highlighted ? "ring-2 ring-primary/60 animate-[pulse_0.45s_ease-in-out_4]" : ""
+      } ${containerClassName ?? ""} shadow-[0_8px_18px_-16px_rgba(30,64,175,0.45)]`.trim()}
+    >
       <label className={labelClassName ?? "text-sm font-medium text-foreground"}>{label}</label>
       {children}
     </div>

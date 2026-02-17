@@ -1677,23 +1677,28 @@ export default function Account() {
                                     return (
                                       <div
                                         key={lab.id}
-                                        className="rounded-2xl border border-border bg-background/60 px-4 py-3 text-sm flex flex-col gap-2"
+                                        className="rounded-2xl border border-border bg-background/60 px-4 py-4 text-sm flex flex-col gap-2 min-h-[152px]"
                                       >
-                                        <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-start justify-between gap-2">
                                           <div>
                                             <p className="font-semibold text-foreground">{lab.name}</p>
                                             <p className="text-xs text-muted-foreground">
                                               {premium ? "Premier" : labStatusLabel(lab as any)} • {lab.isVisible === false ? "Hidden" : "Visible"}
                                             </p>
                                           </div>
-                                          <Link href={`/lab/manage/${lab.id}`} className="text-xs font-medium text-primary hover:underline">
+                                        </div>
+                                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                          <span className="rounded-full border border-border px-2.5 py-1">7d views: {lab.views7d}</span>
+                                          <span className="rounded-full border border-border px-2.5 py-1">30d views: {lab.views30d}</span>
+                                          <span className="rounded-full border border-border px-2.5 py-1">Favorites: {lab.favorites}</span>
+                                        </div>
+                                        <div className="mt-auto flex justify-end pt-2">
+                                          <Link
+                                            href={`/lab/manage/${lab.id}`}
+                                            className="inline-flex items-center rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/15"
+                                          >
                                             Manage
                                           </Link>
-                                        </div>
-                                        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                                          <span className="rounded-full border border-border px-2 py-1">7d views: {lab.views7d}</span>
-                                          <span className="rounded-full border border-border px-2 py-1">30d views: {lab.views30d}</span>
-                                          <span className="rounded-full border border-border px-2 py-1">Favorites: {lab.favorites}</span>
                                         </div>
                                       </div>
                                     );
