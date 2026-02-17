@@ -56,8 +56,6 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const lab = labs.find(item => item.id === Number(params.id));
   const labId = lab?.id;
   const halConfigured = Boolean(lab?.halStructureId || lab?.halPersonId);
-  const frenchBusinessIdDigits = (lab?.siretNumber ?? "").replace(/\D/g, "");
-  const hasSiretOrSiren = frenchBusinessIdDigits.length === 14 || frenchBusinessIdDigits.length === 9;
   const primaryErcDiscipline = lab?.primaryErcDisciplineCode
     ? (lab.ercDisciplines ?? []).find(item => item.code === lab.primaryErcDisciplineCode)
     : null;
@@ -367,12 +365,6 @@ export default function LabDetails({ params }: LabDetailsProps) {
   useEffect(() => {
     if (!showHalModal || !labId) return;
     let active = true;
-    if (halModalType === "patents" && !hasSiretOrSiren) {
-      setHalItems([]);
-      setHalError(null);
-      setHalLoading(false);
-      return;
-    }
     if (halModalType === "publications" && !halConfigured) {
       setHalItems([]);
       setHalError(null);
@@ -410,7 +402,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
     return () => {
       active = false;
     };
-  }, [showHalModal, halModalType, labId, halConfigured, hasSiretOrSiren]);
+  }, [showHalModal, halModalType, labId, halConfigured]);
 
   useEffect(() => {
     if (!hasAnalyticsConsent || viewRecorded || !labId) return;
@@ -1147,48 +1139,27 @@ export default function LabDetails({ params }: LabDetailsProps) {
             <p className="text-sm text-destructive">{teamsError}</p>
           )}
 
-          {(halConfigured || hasSiretOrSiren) && (
+          {halConfigured && (
             <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-semibold text-foreground">
-                    {halConfigured && hasSiretOrSiren ? "Publications & patents" : halConfigured ? "Publications" : "Patents"}
-                  </h2>
+                  <h2 className="text-lg font-semibold text-foreground">Publications</h2>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    {halConfigured && hasSiretOrSiren
-                      ? "View the lab&apos;s publications and patents."
-                      : halConfigured
-                        ? "View the lab&apos;s publications from HAL."
-                        : "View patents linked to this lab."}
+                    View the lab&apos;s publications from HAL.
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  {halConfigured && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setHalModalType("publications");
-                        setShowHalModal(true);
-                      }}
-                      className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                    >
-                      View publications
-                      <ArrowUpRight className="h-4 w-4" />
-                    </button>
-                  )}
-                  {hasSiretOrSiren && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setHalModalType("patents");
-                        setShowHalModal(true);
-                      }}
-                      className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                    >
-                      View patents
-                      <ArrowUpRight className="h-4 w-4" />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHalModalType("publications");
+                      setShowHalModal(true);
+                    }}
+                    className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                  >
+                    View publications
+                    <ArrowUpRight className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
             </section>

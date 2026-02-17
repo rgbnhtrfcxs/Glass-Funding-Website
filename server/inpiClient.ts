@@ -82,6 +82,30 @@ const normalizeInpiUrl = () => {
   return `${base.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
 };
 
+const buildCandidateInpiUrls = () => {
+  const primary = normalizeInpiUrl();
+  const candidates = [primary];
+  const enablePathFallback = (process.env.INPI_ENABLE_PATH_FALLBACK || "").toLowerCase() === "true";
+  if (!enablePathFallback) {
+    return candidates;
+  }
+
+  // Some INPI environments expose PI endpoints without the /services/apidiffusion prefix.
+  const withoutServicePrefix = primary.replace("/services/apidiffusion/", "/");
+  if (withoutServicePrefix !== primary) {
+    candidates.push(withoutServicePrefix);
+  }
+
+  // Some deployments require a trailing slash for GET search routing.
+  const withTrailingSlash = candidates
+    .filter(candidate => !candidate.endsWith("/"))
+    .map(candidate => `${candidate}/`);
+  candidates.push(...withTrailingSlash);
+
+  // Keep unique URLs only.
+  return Array.from(new Set(candidates));
+};
+
 const getCollections = () => {
   const raw = process.env.INPI_COLLECTIONS || "FR,EP,CCP";
   const parsed = raw
@@ -91,8 +115,18 @@ const getCollections = () => {
   return parsed.length > 0 ? parsed : ["FR", "EP", "CCP"];
 };
 
-const isCookieAuthConfigured = () =>
-  Boolean(process.env.INPI_XSRF_TOKEN && process.env.INPI_ACCESS_TOKEN && process.env.INPI_SESSION_TOKEN);
+const getCookieAuthTokens = () => {
+  const xsrfToken = process.env.INPI_XSRF_TOKEN?.trim() || "";
+  const accessToken = process.env.INPI_ACCESS_TOKEN?.trim() || "";
+  const sessionToken = process.env.INPI_SESSION_TOKEN?.trim() || "";
+  const refreshToken = process.env.INPI_REFRESH_TOKEN?.trim() || "";
+  return { xsrfToken, accessToken, sessionToken, refreshToken };
+};
+
+const isCookieAuthConfigured = () => {
+  const { xsrfToken, accessToken, sessionToken, refreshToken } = getCookieAuthTokens();
+  return Boolean(xsrfToken && accessToken && (sessionToken || refreshToken));
+};
 
 const isBearerAuthConfigured = () => Boolean(process.env.INPI_BEARER_TOKEN || process.env.INPI_API_KEY);
 
@@ -105,11 +139,12 @@ const buildAuthHeaders = (): HeadersInit => {
   };
 
   if (isCookieAuthConfigured()) {
-    const xsrf = String(process.env.INPI_XSRF_TOKEN);
-    const accessToken = String(process.env.INPI_ACCESS_TOKEN);
-    const sessionToken = String(process.env.INPI_SESSION_TOKEN);
-    headers["X-XSRF-TOKEN"] = xsrf;
-    headers.Cookie = `XSRF-TOKEN=${xsrf}; access_token=${accessToken}; session_token=${sessionToken}`;
+    const { xsrfToken, accessToken, sessionToken, refreshToken } = getCookieAuthTokens();
+    const cookieParts = [`XSRF-TOKEN=${xsrfToken}`, `access_token=${accessToken}`];
+    if (sessionToken) cookieParts.push(`session_token=${sessionToken}`);
+    if (refreshToken) cookieParts.push(`refresh_token=${refreshToken}`);
+    headers["X-XSRF-TOKEN"] = xsrfToken;
+    headers.Cookie = cookieParts.join("; ");
     return headers;
   }
 
@@ -210,35 +245,72 @@ export async function fetchInpiPatentsBySiren(siren: string): Promise<PatentList
     size: Number.isFinite(size) && size > 0 ? Math.min(size, 200) : 50,
     position: 0,
   };
-
+  const headers = buildAuthHeaders();
   const timeoutMs = Number.parseInt(process.env.INPI_TIMEOUT_MS || "15000", 10);
-  const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(),
-    Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 15000,
-  );
+  const resolvedTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 15000;
 
-  let response: Response;
-  try {
-    response = await fetch(normalizeInpiUrl(), {
-      method: "POST",
-      headers: buildAuthHeaders(),
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
+  const getSearchUrl = (baseUrl: string) => {
+    const url = new URL(baseUrl);
+    url.searchParams.set("query", body.query);
+    url.searchParams.set("collections", body.collections.join(","));
+    url.searchParams.set("size", String(body.size));
+    url.searchParams.set("position", String(body.position));
+    url.searchParams.set("sortList", body.sort);
+    return url.toString();
+  };
+
+  const sendRequest = async (method: "POST" | "GET", url: string) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), resolvedTimeoutMs);
+    try {
+      const response = await fetch(method === "GET" ? getSearchUrl(url) : url, {
+        method,
+        headers,
+        body: method === "POST" ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      });
+      const raw = await response.text();
+      return { response, raw, method, url };
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  const candidates = buildCandidateInpiUrls();
+  const failures: string[] = [];
+  let successfulRaw: string | null = null;
+
+  for (const url of candidates) {
+    const postAttempt = await sendRequest("POST", url);
+    if (postAttempt.response.ok) {
+      successfulRaw = postAttempt.raw;
+      break;
+    }
+
+    failures.push(`${postAttempt.method} ${url} -> ${postAttempt.response.status}`);
+    const shouldTryGetFallback =
+      postAttempt.response.status === 405 ||
+      postAttempt.response.headers.get("Allow")?.includes("GET");
+
+    if (!shouldTryGetFallback) {
+      continue;
+    }
+
+    const getAttempt = await sendRequest("GET", url);
+    if (getAttempt.response.ok) {
+      successfulRaw = getAttempt.raw;
+      break;
+    }
+    failures.push(`${getAttempt.method} ${url} -> ${getAttempt.response.status}`);
   }
 
-  const raw = await response.text();
-  if (!response.ok) {
-    const detail = raw.slice(0, 280);
-    throw new Error(`INPI API request failed (${response.status})${detail ? `: ${detail}` : ""}`);
+  if (successfulRaw === null) {
+    throw new Error(`INPI search failed after fallback attempts (${failures.join(", ")})`);
   }
 
   let payload: unknown = null;
   try {
-    payload = raw ? JSON.parse(raw) : null;
+    payload = successfulRaw ? JSON.parse(successfulRaw) : null;
   } catch {
     payload = null;
   }

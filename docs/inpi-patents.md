@@ -21,6 +21,7 @@ Set one authentication mode.
 - `INPI_XSRF_TOKEN`
 - `INPI_ACCESS_TOKEN`
 - `INPI_SESSION_TOKEN`
+- `INPI_REFRESH_TOKEN` (alternative to `INPI_SESSION_TOKEN`, depending on INPI account/session setup)
 
 Optional:
 
@@ -29,6 +30,12 @@ Optional:
 - `INPI_COLLECTIONS` (default: `FR,EP,CCP`)
 - `INPI_PAGE_SIZE` (default: `50`)
 - `INPI_TIMEOUT_MS` (default: `15000`)
+
+Note:
+
+- The backend now retries with method/path fallbacks when INPI responds unexpectedly (for example `POST` 405).
+- By default it uses the configured endpoint only, then a single GET fallback when `POST` is not allowed.
+- Set `INPI_ENABLE_PATH_FALLBACK=true` only if you need extra path fallbacks (`/services/apidiffusion/...` and `/api/...`).
 
 ## Frontend behavior
 

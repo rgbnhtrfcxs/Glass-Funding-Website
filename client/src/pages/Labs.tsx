@@ -12,7 +12,7 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, type ReactNode } from "react";
 import { useLabs } from "@/context/LabsContext";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
@@ -30,6 +30,28 @@ import {
 import { orgRoleOptions, type OrgRoleOption } from "@shared/labs";
 
 type DirectoryMode = "discover" | "rent";
+type SearchMatchReason = {
+  field: string;
+  value: string;
+};
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const highlightSearchMatch = (value: string, tokens: string[]): ReactNode => {
+  if (!value || tokens.length === 0) return value;
+  const escaped = tokens.map(escapeRegExp).filter(Boolean);
+  if (escaped.length === 0) return value;
+  const regex = new RegExp(`(${escaped.join("|")})`, "gi");
+  return value.split(regex).map((part, index) => {
+    const isToken = tokens.includes(part.toLowerCase());
+    if (!isToken) return <span key={`${part}-${index}`}>{part}</span>;
+    return (
+      <mark key={`${part}-${index}`} className="rounded-sm bg-pink-200/80 px-0.5 text-pink-900">
+        {part}
+      </mark>
+    );
+  });
+};
 
 export default function Labs() {
   const { labs, isLoading, error, refresh } = useLabs();
@@ -79,7 +101,6 @@ export default function Labs() {
       .join("")
       .toUpperCase();
   const offersLabSpaceFlag = (value: unknown) => ["true", "1", true, 1].includes(value as any);
-
   const visibleLabs = useMemo(() => labs.filter(lab => lab.isVisible !== false), [labs]);
   const rentReadyLabs = useMemo(
     () =>
@@ -121,6 +142,18 @@ export default function Labs() {
       .replace(/[()/,-]/g, " ")
       .replace(/\s+/g, " ")
       .trim();
+  const searchHighlightTokens = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          normalizeSearchText(searchTerm)
+            .split(" ")
+            .map(token => token.trim())
+            .filter(Boolean),
+        ),
+      ).sort((a, b) => b.length - a.length),
+    [searchTerm],
+  );
   const uniqueEquipmentCount = useMemo(() => {
     const equipment = new Set<string>();
     modeLabs.forEach(lab => {
@@ -267,26 +300,40 @@ export default function Labs() {
     }
   };
 
-  const filteredLabs = useMemo(() => {
+  const { filteredLabs, searchMatchReasonsByLabId } = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     const normalizedTerm = normalizeSearchText(term);
+    const matchesSearch = (value: string) => {
+      const lower = value.toLowerCase();
+      const normalized = normalizeSearchText(value);
+      return lower.includes(term) || normalized.includes(normalizedTerm);
+    };
+    const reasonsByLabId = new Map<number, SearchMatchReason[]>();
     let subset = term
       ? modeLabs.filter(lab => {
-          const rawHaystack = [
-            lab.name,
-            ...(lab.alternateNames ?? []),
-            formatLocation(lab),
-            lab.equipment.join(" "),
-            lab.focusAreas.join(" "),
-            (lab.ercDisciplines ?? []).map(item => `${item.code} ${item.title}`).join(" "),
-            (lab.ercDisciplineCodes ?? []).join(" "),
-            (lab.tags ?? []).join(" "),
-          ]
-            .filter(Boolean)
-            .join(" ");
-          const haystack = rawHaystack.toLowerCase();
-          const normalizedHaystack = normalizeSearchText(rawHaystack);
-          return haystack.includes(term) || normalizedHaystack.includes(normalizedTerm);
+          const reasons: SearchMatchReason[] = [];
+          const seen = new Set<string>();
+          const pushReason = (field: string, value: string | null | undefined) => {
+            const cleaned = value?.trim();
+            if (!cleaned) return;
+            if (!matchesSearch(cleaned)) return;
+            const key = `${field}:${cleaned.toLowerCase()}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            reasons.push({ field, value: cleaned });
+          };
+
+          pushReason("Name", lab.name);
+          pushReason("Location", formatLocation(lab));
+          (lab.alternateNames ?? []).forEach(item => pushReason("Alt name", item));
+          (lab.focusAreas ?? []).forEach(item => pushReason("Focus", item));
+          (lab.equipment ?? []).forEach(item => pushReason("Equipment", item));
+          (lab.ercDisciplines ?? []).forEach(item => pushReason("ERC", `${item.code} ${item.title}`));
+          (lab.ercDisciplineCodes ?? []).forEach(item => pushReason("ERC code", item));
+          (lab.tags ?? []).forEach(item => pushReason("Tag", item));
+
+          if (reasons.length > 0) reasonsByLabId.set(lab.id, reasons);
+          return reasons.length > 0;
         })
       : modeLabs;
     if (selectedOrgRoles.length > 0) {
@@ -306,12 +353,13 @@ export default function Labs() {
     if (favoritesOnly) {
       subset = subset.filter(lab => favorites.has(lab.id));
     }
-    return [...subset].sort((a, b) => {
+    const sortedLabs = [...subset].sort((a, b) => {
       const aPremium = statusValue(a) === "premier";
       const bPremium = statusValue(b) === "premier";
       if (aPremium === bPremium) return 0;
       return aPremium ? -1 : 1;
     });
+    return { filteredLabs: sortedLabs, searchMatchReasonsByLabId: reasonsByLabId };
   }, [modeLabs, searchTerm, selectedOrgRoles, selectedErcCodes, favoritesOnly, favorites, verifiedOnly, directoryMode]);
   // Potential future premium search: include labManager, focusAreas, equipment, offers.
   const hasActiveFilters = selectedOrgRoles.length > 0 || selectedErcCodes.length > 0;
@@ -884,6 +932,13 @@ export default function Labs() {
                 const auditPassed = ["true", true, 1, "1"].includes(lab.auditPassed as any);
                 const isAuditPending = isVerified && hasAuditFlag && !auditPassed;
                 const offersLabSpace = offersLabSpaceFlag(lab.offersLabSpace);
+                const searchReasons = searchMatchReasonsByLabId.get(lab.id) ?? [];
+                const highlightNameInCard = searchReasons.some(reason => reason.field === "Name");
+                const highlightLocationInCard = searchReasons.some(reason => reason.field === "Location");
+                const extraSearchReasons = searchReasons.filter(
+                  reason => reason.field !== "Name" && reason.field !== "Location",
+                );
+                const locationLabel = formatLocation(lab);
                 const badgeClass =
                   isAuditPending
                     ? "bg-amber-50 text-amber-700"
@@ -969,10 +1024,20 @@ export default function Labs() {
 
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
-                        <h3 className="text-xl font-semibold text-foreground">{lab.name}</h3>
+                        <h3 className="text-xl font-semibold text-foreground">
+                          {highlightNameInCard && searchHighlightTokens.length > 0
+                            ? highlightSearchMatch(lab.name, searchHighlightTokens)
+                            : lab.name}
+                        </h3>
                         <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
                           <MapPin className="h-4 w-4 text-primary" />
-                          <span>{formatLocation(lab) || "Location not set"}</span>
+                          <span>
+                            {locationLabel
+                              ? highlightLocationInCard && searchHighlightTokens.length > 0
+                                ? highlightSearchMatch(locationLabel, searchHighlightTokens)
+                                : locationLabel
+                              : "Location not set"}
+                          </span>
                         </div>
                         {lab.orgRole && (
                           <span className="mt-2 inline-flex items-center rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground">
@@ -1015,71 +1080,93 @@ export default function Labs() {
                       </div>
                     </div>
 
-                  <div className="mt-5 grid gap-4">
-                    {lab.focusAreas.length > 0 && (
-                      <div>
-                        <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">Focus</h4>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {lab.focusAreas.slice(0, 3).map(area => (
+                    {searchHighlightTokens.length > 0 && extraSearchReasons.length > 0 && (
+                      <div className="mt-4 rounded-2xl border border-pink-200 bg-pink-50/70 px-3 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-pink-700">Search match</p>
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {extraSearchReasons.slice(0, 3).map((reason, reasonIndex) => (
                             <span
-                              key={area}
-                              className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
+                              key={`${lab.id}-${reason.field}-${reason.value}-${reasonIndex}`}
+                              className="inline-flex max-w-full items-center gap-1 rounded-full border border-pink-200 bg-white/80 px-2.5 py-1 text-[11px] text-pink-800"
                             >
-                              {area}
+                              <span className="font-semibold">{reason.field}:</span>
+                              <span>{highlightSearchMatch(reason.value, searchHighlightTokens)}</span>
                             </span>
                           ))}
-                        </div>
-                      </div>
-                    )}
-                    {((lab.ercDisciplines ?? []).length > 0 || (lab.ercDisciplineCodes ?? []).length > 0) && (
-                      <div>
-                        <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">ERC Panels</h4>
-                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                          {(lab.ercDisciplines ?? []).length > 0
-                            ? (lab.ercDisciplines ?? []).slice(0, 3).map(item => (
-                                <span
-                                  key={item.code}
-                                  className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
-                                  title={item.title}
-                                >
-                                  {item.code} - {item.title}
-                                </span>
-                              ))
-                            : (lab.ercDisciplineCodes ?? []).slice(0, 4).map(code => (
-                                <span
-                                  key={code}
-                                  className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
-                                >
-                                  {code}
-                                </span>
-                              ))}
-                        </div>
-                      </div>
-                    )}
-                    {lab.equipment.length > 0 && (
-                      <div>
-                        <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">Equipment</h4>
-                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                          {lab.equipment.slice(0, 3).map(item => (
-                            <span
-                              key={item}
-                              className="rounded-full bg-muted/60 px-3 py-1"
-                            >
-                              {item}
+                          {extraSearchReasons.length > 3 && (
+                            <span className="inline-flex items-center rounded-full border border-pink-200 bg-white/80 px-2.5 py-1 text-[11px] text-pink-700">
+                              +{extraSearchReasons.length - 3} more
                             </span>
-                          ))}
+                          )}
                         </div>
                       </div>
                     )}
-                    {lab.photos.length > 1 && (
-                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1">
-                          <Images className="h-3.5 w-3.5 text-primary" />
-                          {lab.photos.length} photos provided
-                        </span>
-                      </div>
-                    )}
-                  </div>
+
+                    <div className="mt-5 grid gap-4">
+                      {lab.focusAreas.length > 0 && (
+                        <div>
+                          <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">Focus</h4>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {lab.focusAreas.slice(0, 3).map(area => (
+                              <span
+                                key={area}
+                                className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
+                              >
+                                {area}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {((lab.ercDisciplines ?? []).length > 0 || (lab.ercDisciplineCodes ?? []).length > 0) && (
+                        <div>
+                          <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">ERC Panels</h4>
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            {(lab.ercDisciplines ?? []).length > 0
+                              ? (lab.ercDisciplines ?? []).slice(0, 3).map(item => (
+                                  <span
+                                    key={item.code}
+                                    className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
+                                    title={item.title}
+                                  >
+                                    {item.code} - {item.title}
+                                  </span>
+                                ))
+                              : (lab.ercDisciplineCodes ?? []).slice(0, 4).map(code => (
+                                  <span
+                                    key={code}
+                                    className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
+                                  >
+                                    {code}
+                                  </span>
+                                ))}
+                          </div>
+                        </div>
+                      )}
+                      {lab.equipment.length > 0 && (
+                        <div>
+                          <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">Equipment</h4>
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            {lab.equipment.slice(0, 3).map(item => (
+                              <span
+                                key={item}
+                                className="rounded-full bg-muted/60 px-3 py-1"
+                              >
+                                {item}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {lab.photos.length > 1 && (
+                        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1">
+                            <Images className="h-3.5 w-3.5 text-primary" />
+                            {lab.photos.length} photos provided
+                          </span>
+                        </div>
+                      )}
+                    </div>
 
                     </div>
                   </motion.div>

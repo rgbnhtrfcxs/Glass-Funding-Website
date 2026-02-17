@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import {
+  ClipboardList,
+  ChevronDown,
   CheckCircle2,
   Edit2,
   FileCheck2,
@@ -14,14 +16,17 @@ import {
   ShieldAlert,
   ShieldCheck,
   Trash2,
-  Upload,
   Users,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { useLabs } from "@/context/LabsContext";
 import { supabase } from "@/lib/supabaseClient";
 import {
   orgRoleOptions,
+  type ErcDisciplineOption,
+  type ErcDomainOption,
+  type LabTechnique,
   type LabPartner,
   type MediaAsset,
   type OrgRoleOption,
@@ -39,9 +44,25 @@ import {
   fetchLabOfferTaxonomy,
   type LabOfferProfileDraft,
 } from "@/lib/labOfferProfile";
+import { fetchErcDisciplineOptions } from "@/lib/ercDisciplines";
 
 type VerificationOption = "yes" | "no";
 type LabStatusOption = "listed" | "confirmed" | "verified_passive" | "verified_active" | "premier";
+const PHOTO_THUMB_CLASS = "h-24 w-full rounded object-cover transition duration-200 group-hover:brightness-110";
+const BASICS_INPUT_CLASS =
+  "w-full rounded-none border-0 border-b border-border bg-transparent px-0 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-0 focus-visible:border-primary";
+const BASICS_LABEL_CLASS = "text-xs font-semibold tracking-[0.02em] text-foreground/90";
+const BASICS_FIELD_CLASS = "rounded-xl border border-border/70 bg-background/40 px-4 py-3";
+const ADMIN_EDIT_TAB_ORDER = ["Basics", "Branding", "Location", "Compliance", "Photos", "Offers"] as const;
+const ADMIN_EDIT_TAB_ICONS: Record<(typeof ADMIN_EDIT_TAB_ORDER)[number], LucideIcon> = {
+  Basics: Edit2,
+  Branding: ClipboardList,
+  Location: MapPin,
+  Compliance: ShieldCheck,
+  Photos: ImageIcon,
+  Offers: FileCheck2,
+};
+type AdminEditTab = (typeof ADMIN_EDIT_TAB_ORDER)[number];
 
 interface LabFormState {
   name: string;
@@ -61,19 +82,18 @@ interface LabFormState {
   website: string;
   linkedin: string;
   partnerLogos: PartnerLogo[];
-  compliance: string;
+  complianceTags: string[];
   verification: VerificationOption;
   labStatus: LabStatusOption;
   orgRole: "" | OrgRoleOption;
-  equipment: string;
-  focusAreas: string;
+  equipmentTags: string[];
+  priorityEquipmentTags: string[];
+  techniques: LabTechnique[];
+  focusTags: string[];
   ercDisciplineCodes: string;
   primaryErcDisciplineCode: string;
   halStructureId: string;
-  halPersonId: string;
   offers: OfferOption[];
-  photoUrlInput: string;
-  complianceDocUrlInput: string;
   isVisible: "yes" | "no";
 }
 
@@ -95,19 +115,18 @@ const emptyForm: LabFormState = {
   website: "",
   linkedin: "",
   partnerLogos: [],
-  compliance: "",
+  complianceTags: [],
   verification: "no",
   labStatus: "listed",
   orgRole: "",
-  equipment: "",
-  focusAreas: "",
+  equipmentTags: [],
+  priorityEquipmentTags: [],
+  techniques: [],
+  focusTags: [],
   ercDisciplineCodes: "",
   primaryErcDisciplineCode: "",
   halStructureId: "",
-  halPersonId: "",
   offers: [],
-  photoUrlInput: "",
-  complianceDocUrlInput: "",
   isVisible: "yes",
 };
 
@@ -130,28 +149,20 @@ function labToForm(lab: LabPartner): LabFormState {
     website: lab.website || "",
     linkedin: lab.linkedin || "",
     partnerLogos: lab.partnerLogos || [],
-    compliance: lab.compliance.join(", "),
+    complianceTags: lab.compliance || [],
     verification: lab.auditPassed ? "yes" : "no",
     labStatus: (lab.labStatus || "listed") as LabStatusOption,
     orgRole: lab.orgRole || "",
-    equipment: lab.equipment.join(", "),
-    focusAreas: lab.focusAreas.join(", "),
+    equipmentTags: lab.equipment || [],
+    priorityEquipmentTags: lab.priorityEquipment || [],
+    techniques: lab.techniques || [],
+    focusTags: lab.focusAreas || [],
     ercDisciplineCodes: (lab.ercDisciplineCodes ?? []).join(", "),
     primaryErcDisciplineCode: lab.primaryErcDisciplineCode || "",
     halStructureId: lab.halStructureId || "",
-    halPersonId: lab.halPersonId || "",
     offers: [...lab.offers],
-    photoUrlInput: "",
-    complianceDocUrlInput: "",
     isVisible: lab.isVisible === false ? "no" : "yes",
   };
-}
-
-function parseList(value: string) {
-  return value
-    .split(",")
-    .map(entry => entry.trim())
-    .filter(Boolean);
 }
 
 function normalizeErcCode(value: string) {
@@ -166,32 +177,6 @@ function parseErcCodes(value: string) {
         .split(",")
         .map(entry => normalizeErcCode(entry))
         .filter((code): code is string => Boolean(code)),
-    ),
-  );
-}
-
-function readFilesAsAssets(files: FileList): Promise<MediaAsset[]> {
-  const fileArray = Array.from(files);
-  return Promise.all(
-    fileArray.map(
-      file =>
-        new Promise<MediaAsset>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            if (typeof reader.result !== "string") {
-              reject(new Error("Unsupported file format"));
-              return;
-            }
-            resolve({
-              name: file.name,
-              url: reader.result,
-            });
-          };
-          reader.onerror = () => {
-            reject(reader.error ?? new Error("Failed to read file"));
-          };
-          reader.readAsDataURL(file);
-        }),
     ),
   );
 }
@@ -220,12 +205,11 @@ function formToPayload(
     website: form.website.trim() || null,
     linkedin: form.linkedin.trim() || null,
     partnerLogos,
-    compliance: parseList(form.compliance),
+    compliance: form.complianceTags,
     auditPassed: form.verification === "yes",
     labStatus: form.labStatus,
     orgRole: form.orgRole || null,
-    equipment: parseList(form.equipment),
-    focusAreas: parseList(form.focusAreas),
+    equipment: form.equipmentTags,
     ercDisciplineCodes: parseErcCodes(form.ercDisciplineCodes),
     primaryErcDisciplineCode: normalizeErcCode(form.primaryErcDisciplineCode) || null,
     ercDisciplines: [],
@@ -234,10 +218,12 @@ function formToPayload(
     complianceDocs,
     isVisible: form.isVisible === "yes",
     halStructureId: form.halStructureId.trim() || null,
-    halPersonId: form.halPersonId.trim() || null,
     teamMembers: [],
-    priorityEquipment: [],
-    techniques: [],
+    priorityEquipment: form.priorityEquipmentTags
+      .filter(item => form.equipmentTags.includes(item))
+      .slice(0, 3),
+    techniques: form.techniques,
+    focusAreas: form.focusTags,
     field: null,
     public: null,
     alternateNames: [],
@@ -247,6 +233,8 @@ function formToPayload(
 
 type StatusMessage = { type: "success" | "error"; text: string } | null;
 type EditingState = number | "new" | null;
+type VisibilityFilter = "all" | "visible" | "hidden";
+type VerificationFilter = "all" | "verified" | "unverified" | "pending";
 type LabVerificationCertificate = {
   id: number;
   lab_id: number;
@@ -288,20 +276,51 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
     refresh,
   } = useLabs();
   const [editing, setEditing] = useState<EditingState>(null);
+  const [editTab, setEditTab] = useState<(typeof ADMIN_EDIT_TAB_ORDER)[number]>("Basics");
   const [formState, setFormState] = useState<LabFormState>(emptyForm);
   const [statusMessage, setStatusMessage] = useState<StatusMessage>(null);
+  const [requiredProgressOpen, setRequiredProgressOpen] = useState(false);
+  const [flashingRequiredKey, setFlashingRequiredKey] = useState<string | null>(null);
+  const requiredFlashTimerRef = useRef<number | null>(null);
   const [offerProfileDraft, setOfferProfileDraft] = useState<LabOfferProfileDraft>(defaultLabOfferProfileDraft);
   const [offerTaxonomy, setOfferTaxonomy] = useState<LabOfferTaxonomyOption[]>([]);
   const [offerTaxonomyLoading, setOfferTaxonomyLoading] = useState(false);
   const [offerProfileError, setOfferProfileError] = useState<string | null>(null);
+  const [ercOptions, setErcOptions] = useState<ErcDisciplineOption[]>([]);
+  const [ercLoading, setErcLoading] = useState(false);
+  const [ercError, setErcError] = useState<string | null>(null);
+  const [primaryErcDomain, setPrimaryErcDomain] = useState<ErcDomainOption>("LS");
+  const [secondaryErcDomain, setSecondaryErcDomain] = useState<ErcDomainOption>("LS");
   const [photoAssets, setPhotoAssets] = useState<MediaAsset[]>([]);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [complianceAssets, setComplianceAssets] = useState<MediaAsset[]>([]);
+  const [complianceUploading, setComplianceUploading] = useState(false);
+  const [complianceError, setComplianceError] = useState<string | null>(null);
   const [partnerLogos, setPartnerLogos] = useState<PartnerLogo[]>([]);
+  const [tagInput, setTagInput] = useState<{ field: "complianceTags" | "equipmentTags" | "focusTags"; value: string }>({
+    field: "complianceTags",
+    value: "",
+  });
+  const [techniqueInput, setTechniqueInput] = useState<LabTechnique>({ name: "", description: "" });
+  const [draggingPriorityEquipmentIndex, setDraggingPriorityEquipmentIndex] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
+  const [logoPreviewOpen, setLogoPreviewOpen] = useState(false);
+  const [logoPreviewScale, setLogoPreviewScale] = useState(1);
+  const [logoPreviewOffsetX, setLogoPreviewOffsetX] = useState(0);
+  const [logoPreviewOffsetY, setLogoPreviewOffsetY] = useState(0);
+  const [logoFramePadding, setLogoFramePadding] = useState(6);
+  const [logoFrameColor, setLogoFrameColor] = useState<"white" | "black" | "custom">("white");
+  const [logoFrameCustomColor, setLogoFrameCustomColor] = useState("#dbeafe");
+  const logoDragRef = useRef<{ x: number; y: number; originX: number; originY: number; width: number; height: number } | null>(null);
+  const logoEditorFrameRef = useRef<HTMLDivElement | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [draggingPhotoIndex, setDraggingPhotoIndex] = useState<number | null>(null);
+  const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>("all");
+  const [verificationFilter, setVerificationFilter] = useState<VerificationFilter>("all");
   const [certificateLabId, setCertificateLabId] = useState<number | null>(null);
   const [certificateForm, setCertificateForm] = useState<CertificateFormState>(defaultCertificateFormState);
   const [certificateExisting, setCertificateExisting] = useState<LabVerificationCertificate | null>(null);
@@ -313,6 +332,67 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
   const selectedCertificateLab = useMemo(
     () => (certificateLabId ? labs.find(lab => lab.id === certificateLabId) ?? null : null),
     [certificateLabId, labs],
+  );
+  const requiredChecklist = useMemo(
+    () => [
+      { key: "name", label: "Lab name", tab: "Basics" as AdminEditTab, done: formState.name.trim().length > 0 },
+      { key: "manager", label: "Lab manager / Director", tab: "Basics" as AdminEditTab, done: formState.labManager.trim().length > 0 },
+      { key: "email", label: "Contact email", tab: "Basics" as AdminEditTab, done: formState.contactEmail.trim().length > 0 },
+      { key: "shortDescription", label: "Short description", tab: "Basics" as AdminEditTab, done: formState.descriptionShort.trim().length > 0 },
+      { key: "longDescription", label: "Long description", tab: "Basics" as AdminEditTab, done: formState.descriptionLong.trim().length > 0 },
+      { key: "website", label: "Website", tab: "Branding" as AdminEditTab, done: formState.website.trim().length > 0 },
+      { key: "addressLine1", label: "Address line 1", tab: "Location" as AdminEditTab, done: formState.addressLine1.trim().length > 0 },
+      { key: "city", label: "City", tab: "Location" as AdminEditTab, done: formState.city.trim().length > 0 },
+      { key: "state", label: "State / region", tab: "Location" as AdminEditTab, done: formState.state.trim().length > 0 },
+      { key: "postalCode", label: "Postal / ZIP code", tab: "Location" as AdminEditTab, done: formState.postalCode.trim().length > 0 },
+      { key: "country", label: "Country", tab: "Location" as AdminEditTab, done: formState.country.trim().length > 0 },
+    ],
+    [
+      formState.name,
+      formState.labManager,
+      formState.contactEmail,
+      formState.descriptionShort,
+      formState.descriptionLong,
+      formState.website,
+      formState.addressLine1,
+      formState.city,
+      formState.state,
+      formState.postalCode,
+      formState.country,
+    ],
+  );
+  const requiredProgress = useMemo(() => {
+    const completed = requiredChecklist.filter(item => item.done).length;
+    const total = requiredChecklist.length;
+    const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+    return { completed, total, percent };
+  }, [requiredChecklist]);
+  const missingRequiredItems = useMemo(
+    () =>
+      requiredChecklist
+        .filter(item => !item.done)
+        .sort((a, b) => {
+          const tabOrderDiff = ADMIN_EDIT_TAB_ORDER.indexOf(a.tab) - ADMIN_EDIT_TAB_ORDER.indexOf(b.tab);
+          if (tabOrderDiff !== 0) return tabOrderDiff;
+          return requiredChecklist.findIndex(item => item.key === a.key) - requiredChecklist.findIndex(item => item.key === b.key);
+        }),
+    [requiredChecklist],
+  );
+  const selectedErcCodes = useMemo(() => parseErcCodes(formState.ercDisciplineCodes), [formState.ercDisciplineCodes]);
+  const ercLabelByCode = useMemo(
+    () => new Map(ercOptions.map(option => [option.code, `${option.code} - ${option.title}`])),
+    [ercOptions],
+  );
+  const primaryDomainOptions = useMemo(
+    () => ercOptions.filter(option => option.domain === primaryErcDomain),
+    [ercOptions, primaryErcDomain],
+  );
+  const secondaryDomainOptions = useMemo(
+    () =>
+      ercOptions.filter(
+        option => option.domain === secondaryErcDomain && option.code !== formState.primaryErcDisciplineCode,
+      ),
+    [ercOptions, secondaryErcDomain, formState.primaryErcDisciplineCode],
   );
 
   const getAccessToken = async () => {
@@ -486,10 +566,79 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    setErcLoading(true);
+    setErcError(null);
+    fetchErcDisciplineOptions()
+      .then(options => {
+        if (!active) return;
+        setErcOptions(options);
+      })
+      .catch((error: any) => {
+        if (!active) return;
+        setErcError(error?.message || "Unable to load ERC disciplines.");
+      })
+      .finally(() => {
+        if (!active) return;
+        setErcLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const primaryCode = formState.primaryErcDisciplineCode;
+    if (!primaryCode) return;
+    const option = ercOptions.find(item => item.code === primaryCode);
+    if (!option) return;
+    setPrimaryErcDomain(option.domain);
+    setSecondaryErcDomain(option.domain);
+  }, [formState.primaryErcDisciplineCode, ercOptions]);
+
+  useEffect(() => {
+    return () => {
+      if (requiredFlashTimerRef.current) {
+        window.clearTimeout(requiredFlashTimerRef.current);
+      }
+    };
+  }, []);
+
+  const flashRequiredField = (key: string, tab: AdminEditTab) => {
+    setEditTab(tab);
+    setRequiredProgressOpen(false);
+    setFlashingRequiredKey(key);
+    if (requiredFlashTimerRef.current) {
+      window.clearTimeout(requiredFlashTimerRef.current);
+      requiredFlashTimerRef.current = null;
+    }
+    window.setTimeout(() => {
+      const target = document.getElementById(`required-${key}`);
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+    requiredFlashTimerRef.current = window.setTimeout(() => {
+      setFlashingRequiredKey(null);
+      requiredFlashTimerRef.current = null;
+    }, 2200);
+  };
+
   const filteredLabs = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    if (!term) return labs;
     return labs.filter(lab => {
+      const status = (lab.labStatus || "listed").toLowerCase();
+      const isVerified = ["verified_passive", "verified_active", "premier"].includes(status);
+      const hasAuditFlag = lab.auditPassed !== undefined && lab.auditPassed !== null;
+      const auditPassed = ["true", true, 1, "1"].includes(lab.auditPassed as any);
+      const isAuditPending = isVerified && hasAuditFlag && !auditPassed;
+
+      if (visibilityFilter === "visible" && lab.isVisible === false) return false;
+      if (visibilityFilter === "hidden" && lab.isVisible !== false) return false;
+      if (verificationFilter === "verified" && (!isVerified || isAuditPending)) return false;
+      if (verificationFilter === "pending" && status !== "confirmed" && !isAuditPending) return false;
+      if (verificationFilter === "unverified" && (isVerified || status === "confirmed")) return false;
+
+      if (!term) return true;
       const location = [lab.city, lab.country].filter(Boolean).join(", ");
       const haystack = [
         lab.name,
@@ -507,10 +656,148 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
         .toLowerCase();
       return haystack.includes(term);
     });
-  }, [labs, searchTerm]);
+  }, [labs, searchTerm, verificationFilter, visibilityFilter]);
+  const totalLabs = labs.length;
+  const visibleLabsCount = labs.filter(lab => lab.isVisible !== false).length;
+  const hiddenLabsCount = labs.filter(lab => lab.isVisible === false).length;
+  const verifiedLabsCount = labs.filter(lab => {
+    const status = (lab.labStatus || "listed").toLowerCase();
+    const isVerified = ["verified_passive", "verified_active", "premier"].includes(status);
+    const hasAuditFlag = lab.auditPassed !== undefined && lab.auditPassed !== null;
+    const auditPassed = ["true", true, 1, "1"].includes(lab.auditPassed as any);
+    const isAuditPending = isVerified && hasAuditFlag && !auditPassed;
+    return isVerified && !isAuditPending;
+  }).length;
+  const premierLabsCount = labs.filter(lab => (lab.labStatus || "listed").toLowerCase() === "premier").length;
+  const canUseLogo = ["verified_passive", "verified_active", "premier"].includes(
+    (formState.labStatus || "listed").toLowerCase(),
+  );
+  const canUsePartnerLogos = (formState.labStatus || "").toLowerCase() === "premier";
+  const logoPreviewTransform = `translate(${logoPreviewOffsetX}%, ${logoPreviewOffsetY}%) scale(${logoPreviewScale})`;
+  const validatedCustomLogoFrameColor =
+    /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(logoFrameCustomColor) ? logoFrameCustomColor : "#dbeafe";
+  const logoFrameBackgroundColor =
+    logoFrameColor === "black"
+      ? "#000000"
+      : logoFrameColor === "custom"
+        ? validatedCustomLogoFrameColor
+        : "#ffffff";
+  const logoFramePaddingRatio = Math.max(0, Math.min(0.45, logoFramePadding / 224));
+  const logoFramePaddingPercent = `${(logoFramePaddingRatio * 100).toFixed(2)}%`;
+
+  const resetLogoPreviewAdjustments = () => {
+    setLogoPreviewScale(1);
+    setLogoPreviewOffsetX(0);
+    setLogoPreviewOffsetY(0);
+    setLogoFramePadding(6);
+    setLogoFrameColor("white");
+    setLogoFrameCustomColor("#dbeafe");
+  };
+
+  const handleLogoPreviewMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    const rect = logoEditorFrameRef.current?.getBoundingClientRect();
+    logoDragRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      originX: logoPreviewOffsetX,
+      originY: logoPreviewOffsetY,
+      width: rect?.width || 1,
+      height: rect?.height || 1,
+    };
+  };
+
+  const handleLogoPreviewMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!logoDragRef.current) return;
+    const dx = event.clientX - logoDragRef.current.x;
+    const dy = event.clientY - logoDragRef.current.y;
+    const nextX = logoDragRef.current.originX + (dx / logoDragRef.current.width) * 100;
+    const nextY = logoDragRef.current.originY + (dy / logoDragRef.current.height) * 100;
+    setLogoPreviewOffsetX(Math.max(-50, Math.min(50, Number(nextX.toFixed(1)))));
+    setLogoPreviewOffsetY(Math.max(-50, Math.min(50, Number(nextY.toFixed(1)))));
+  };
+
+  const handleLogoPreviewMouseUp = () => {
+    logoDragRef.current = null;
+  };
+
+  const renderAndUploadFramedLogo = async (labIdValue?: number | null) => {
+    if (!formState.logoUrl) return formState.logoUrl;
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.src = formState.logoUrl;
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("Unable to load logo for processing."));
+    });
+
+    const size = 1024;
+    const editorBaseSize = 224;
+    const paddingRatio = Math.max(0, Math.min(0.45, logoFramePadding / editorBaseSize));
+    const paddingPx = Math.round(size * paddingRatio);
+    const innerSize = Math.max(1, size - paddingPx * 2);
+
+    const mainCanvas = document.createElement("canvas");
+    mainCanvas.width = size;
+    mainCanvas.height = size;
+    const mainCtx = mainCanvas.getContext("2d");
+    if (!mainCtx) throw new Error("Unable to prepare logo output canvas.");
+
+    const frameColor =
+      logoFrameColor === "black"
+        ? "#000000"
+        : logoFrameColor === "custom"
+          ? validatedCustomLogoFrameColor
+          : "#ffffff";
+    mainCtx.fillStyle = frameColor;
+    mainCtx.fillRect(0, 0, size, size);
+
+    mainCtx.save();
+    const dx = (logoPreviewOffsetX / 100) * innerSize;
+    const dy = (logoPreviewOffsetY / 100) * innerSize;
+    mainCtx.translate(size / 2 + dx, size / 2 + dy);
+    mainCtx.scale(logoPreviewScale, logoPreviewScale);
+    const imageRatio = image.width / image.height;
+    const targetRatio = 1;
+    let sx = 0;
+    let sy = 0;
+    let sWidth = image.width;
+    let sHeight = image.height;
+    if (imageRatio > targetRatio) {
+      sWidth = image.height * targetRatio;
+      sx = (image.width - sWidth) / 2;
+    } else if (imageRatio < targetRatio) {
+      sHeight = image.width / targetRatio;
+      sy = (image.height - sHeight) / 2;
+    }
+    mainCtx.drawImage(image, sx, sy, sWidth, sHeight, -innerSize / 2, -innerSize / 2, innerSize, innerSize);
+    mainCtx.restore();
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      mainCanvas.toBlob(result => {
+        if (!result) {
+          reject(new Error("Unable to encode processed logo."));
+          return;
+        }
+        resolve(result);
+      }, "image/png");
+    });
+
+    const filePrefix = typeof labIdValue === "number" && Number.isFinite(labIdValue) ? `${labIdValue}` : "admin";
+    const filename = `${filePrefix}-logo-v2-${Date.now()}.png`;
+    const filePath = `logos/${filename}`;
+    const { error: uploadError } = await supabase.storage
+      .from("lab-logos")
+      .upload(filePath, blob, { upsert: true, contentType: "image/png" });
+    if (uploadError) throw uploadError;
+    const { data } = supabase.storage.from("lab-logos").getPublicUrl(filePath);
+    return data.publicUrl;
+  };
 
   const startCreate = () => {
     setEditing("new");
+    setEditTab("Basics");
+    setRequiredProgressOpen(false);
+    setFlashingRequiredKey(null);
     setFormState(emptyForm);
     setOfferProfileDraft(defaultLabOfferProfileDraft);
     setOfferProfileError(null);
@@ -518,11 +805,23 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
     setPhotoAssets([]);
     setComplianceAssets([]);
     setPartnerLogos([]);
+    setTagInput({ field: "complianceTags", value: "" });
+    setTechniqueInput({ name: "", description: "" });
+    setDraggingPriorityEquipmentIndex(null);
+    setComplianceUploading(false);
+    setComplianceError(null);
     setLogoError(null);
+    setPhotoError(null);
+    setLogoPreviewOpen(false);
+    resetLogoPreviewAdjustments();
+    setDraggingPhotoIndex(null);
   };
 
   const startEdit = async (lab: LabPartner) => {
     setEditing(lab.id);
+    setEditTab("Basics");
+    setRequiredProgressOpen(false);
+    setFlashingRequiredKey(null);
     setFormState(labToForm(lab));
     setOfferProfileError(null);
     try {
@@ -546,20 +845,166 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
     setPhotoAssets(lab.photos);
     setComplianceAssets(lab.complianceDocs);
     setPartnerLogos(lab.partnerLogos || []);
+    setTagInput({ field: "complianceTags", value: "" });
+    setTechniqueInput({ name: "", description: "" });
+    setDraggingPriorityEquipmentIndex(null);
+    setComplianceUploading(false);
+    setComplianceError(null);
     setLogoError(null);
+    setPhotoError(null);
+    setLogoPreviewOpen(false);
+    resetLogoPreviewAdjustments();
+    setDraggingPhotoIndex(null);
   };
 
   const cancelEdit = () => {
     setEditing(null);
+    setEditTab("Basics");
+    setRequiredProgressOpen(false);
+    setFlashingRequiredKey(null);
     setFormState(emptyForm);
     setOfferProfileDraft(defaultLabOfferProfileDraft);
     setPhotoAssets([]);
     setComplianceAssets([]);
     setPartnerLogos([]);
+    setTagInput({ field: "complianceTags", value: "" });
+    setTechniqueInput({ name: "", description: "" });
+    setDraggingPriorityEquipmentIndex(null);
+    setComplianceUploading(false);
+    setComplianceError(null);
+    setPhotoError(null);
+    setLogoPreviewOpen(false);
+    resetLogoPreviewAdjustments();
+    setDraggingPhotoIndex(null);
   };
 
   const handleChange = (field: keyof LabFormState, value: string) => {
     setFormState(prev => ({ ...prev, [field]: value }));
+  };
+
+  const setPrimaryErcDiscipline = (code: string) => {
+    const selected = new Set(parseErcCodes(formState.ercDisciplineCodes));
+    if (code) selected.add(code);
+    setFormState(prev => ({
+      ...prev,
+      primaryErcDisciplineCode: code || "",
+      ercDisciplineCodes: Array.from(selected).join(", "),
+    }));
+  };
+
+  const toggleSecondaryErcDiscipline = (code: string, checked: boolean) => {
+    const selected = new Set(parseErcCodes(formState.ercDisciplineCodes));
+    if (checked) selected.add(code);
+    else selected.delete(code);
+    if (formState.primaryErcDisciplineCode) selected.add(formState.primaryErcDisciplineCode);
+    setFormState(prev => ({ ...prev, ercDisciplineCodes: Array.from(selected).join(", ") }));
+  };
+
+  const addTag = (field: "complianceTags" | "equipmentTags" | "focusTags", raw: string) => {
+    const value = raw.trim();
+    if (!value) return;
+    setFormState(prev => {
+      if (prev[field].includes(value)) return prev;
+      return { ...prev, [field]: [...prev[field], value] };
+    });
+  };
+
+  const removeTag = (field: "complianceTags" | "equipmentTags" | "focusTags", value: string) => {
+    setFormState(prev => {
+      const next = prev[field].filter(item => item !== value);
+      if (field === "equipmentTags") {
+        return {
+          ...prev,
+          equipmentTags: next,
+          priorityEquipmentTags: prev.priorityEquipmentTags.filter(item => item !== value),
+        };
+      }
+      return { ...prev, [field]: next };
+    });
+  };
+
+  const handleTagKey = (field: "complianceTags" | "equipmentTags" | "focusTags") => (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addTag(field, tagInput.value || (event.target as HTMLInputElement).value);
+      setTagInput({ field, value: "" });
+    }
+  };
+
+  const togglePriorityEquipment = (item: string) => {
+    setFormState(prev => {
+      const currentTags = [...prev.equipmentTags];
+      const currentPriority = [...prev.priorityEquipmentTags];
+      const isPriority = currentPriority.includes(item);
+      const tagsWithoutItem = currentTags.filter(tag => tag !== item);
+
+      if (isPriority) {
+        const nextPriority = currentPriority.filter(tag => tag !== item);
+        const prioritySet = new Set(nextPriority);
+        const priorityOrdered = tagsWithoutItem.filter(tag => prioritySet.has(tag));
+        const nonPriorityOrdered = tagsWithoutItem.filter(tag => !prioritySet.has(tag));
+        return {
+          ...prev,
+          priorityEquipmentTags: nextPriority,
+          equipmentTags: [...priorityOrdered, item, ...nonPriorityOrdered],
+        };
+      }
+
+      if (currentPriority.length >= 3) return prev;
+      const nextPriority = [...currentPriority, item];
+      const prioritySet = new Set(nextPriority);
+      const priorityOrdered = nextPriority.filter(tag => tagsWithoutItem.includes(tag) || tag === item);
+      const nonPriorityOrdered = tagsWithoutItem.filter(tag => !prioritySet.has(tag));
+
+      return {
+        ...prev,
+        priorityEquipmentTags: nextPriority,
+        equipmentTags: [...priorityOrdered, ...nonPriorityOrdered],
+      };
+    });
+  };
+
+  const reorderPriorityEquipment = (fromIndex: number, toIndex: number) => {
+    setFormState(prev => {
+      const priority = [...prev.priorityEquipmentTags];
+      if (
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= priority.length ||
+        toIndex >= priority.length ||
+        fromIndex === toIndex
+      ) {
+        return prev;
+      }
+      const [moved] = priority.splice(fromIndex, 1);
+      priority.splice(toIndex, 0, moved);
+
+      const prioritySet = new Set(priority);
+      const nonPriorityOrdered = prev.equipmentTags.filter(tag => !prioritySet.has(tag));
+      return {
+        ...prev,
+        priorityEquipmentTags: priority,
+        equipmentTags: [...priority, ...nonPriorityOrdered],
+      };
+    });
+  };
+
+  const addTechnique = () => {
+    const name = techniqueInput.name.trim();
+    if (!name) return;
+    const description = techniqueInput.description?.toString().trim() || null;
+    setFormState(prev => ({
+      ...prev,
+      techniques: [...prev.techniques, { name, description }],
+    }));
+    setTechniqueInput({ name: "", description: "" });
+  };
+
+  const removeTechnique = (index: number) => {
+    setFormState(prev => ({
+      ...prev,
+      techniques: prev.techniques.filter((_, idx) => idx !== index),
+    }));
   };
 
   const toggleVisibilityQuick = async (lab: LabPartner) => {
@@ -596,11 +1041,13 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
       const { data } = supabase.storage.from("lab-logos").getPublicUrl(filePath);
       const publicUrl = data.publicUrl;
       setFormState(prev => ({ ...prev, logoUrl: publicUrl }));
+      resetLogoPreviewAdjustments();
       setStatusMessage({ type: "success", text: "Logo uploaded" });
     } catch (err: any) {
       setLogoError(err?.message || "Unable to upload logo");
     } finally {
       setLogoUploading(false);
+      event.target.value = "";
     }
   };
 
@@ -627,45 +1074,46 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
     }
   };
 
-  const addPhotoFromUrl = () => {
-    const url = formState.photoUrlInput.trim();
-    if (!url) return;
-    setPhotoAssets(prev => [
-      ...prev,
-      {
-        name: url.split("/").pop() ?? `Photo ${prev.length + 1}`,
-        url,
-      },
-    ]);
-    setFormState(prev => ({ ...prev, photoUrlInput: "" }));
-  };
-
-  const addComplianceDocFromUrl = () => {
-    const url = formState.complianceDocUrlInput.trim();
-    if (!url) return;
-    setComplianceAssets(prev => [
-      ...prev,
-      {
-        name: url.split("/").pop() ?? `Document ${prev.length + 1}`,
-        url,
-      },
-    ]);
-    setFormState(prev => ({ ...prev, complianceDocUrlInput: "" }));
-  };
-
   const handlePhotoUpload: React.ChangeEventHandler<HTMLInputElement> = async event => {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setPhotoError(null);
+    setPhotoUploading(true);
     try {
-      const uploaded = await readFilesAsAssets(files);
-      setPhotoAssets(prev => [...prev, ...uploaded]);
-      setStatusMessage(null);
+      if (typeof editing === "number") {
+        const ext = file.name.split(".").pop() || "jpg";
+        const filename =
+          (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`) + `.${ext}`;
+        const path = `labs/${editing}/photos/${filename}`;
+        const { error: uploadError } = await supabase.storage
+          .from("lab-photos")
+          .upload(path, file, { upsert: true, contentType: file.type });
+        if (uploadError) throw uploadError;
+        const { data } = supabase.storage.from("lab-photos").getPublicUrl(path);
+        const publicUrl = data.publicUrl;
+        const asset = { name: file.name, url: publicUrl };
+        setPhotoAssets(prev => [...prev, asset]);
+      } else {
+        const uploaded = await new Promise<MediaAsset>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result !== "string") {
+              reject(new Error("Unsupported file format"));
+              return;
+            }
+            resolve({ name: file.name, url: reader.result });
+          };
+          reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
+          reader.readAsDataURL(file);
+        });
+        setPhotoAssets(prev => [...prev, uploaded]);
+      }
+      setPhotoError(null);
+      setStatusMessage({ type: "success", text: "Photo uploaded" });
     } catch (error) {
-      setStatusMessage({
-        type: "error",
-        text: error instanceof Error ? error.message : "Unable to process photo uploads",
-      });
+      setPhotoError(error instanceof Error ? error.message : "Unable to upload photo");
     } finally {
+      setPhotoUploading(false);
       event.target.value = "";
     }
   };
@@ -673,6 +1121,8 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
   const handleComplianceUpload: React.ChangeEventHandler<HTMLInputElement> = async event => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
+    setComplianceError(null);
+    setComplianceUploading(true);
     const labFolder = typeof editing === "number" ? `labs/${editing}/docs` : "docs";
     const uploaded: MediaAsset[] = [];
     try {
@@ -693,11 +1143,9 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
         setStatusMessage({ type: "success", text: "Documents uploaded" });
       }
     } catch (error) {
-      setStatusMessage({
-        type: "error",
-        text: error instanceof Error ? error.message : "Unable to upload documents",
-      });
+      setComplianceError(error instanceof Error ? error.message : "Unable to upload compliance documents");
     } finally {
+      setComplianceUploading(false);
       event.target.value = "";
     }
   };
@@ -706,12 +1154,34 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
     setPhotoAssets(prev => prev.filter(item => item.url !== asset.url));
   };
 
+  const movePhoto = (fromIndex: number, toIndex: number) => {
+    setPhotoAssets(prev => {
+      if (
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= prev.length ||
+        toIndex >= prev.length ||
+        fromIndex === toIndex
+      ) {
+        return prev;
+      }
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  };
+
   const removeComplianceDoc = (asset: MediaAsset) => {
     setComplianceAssets(prev => prev.filter(item => item.url !== asset.url));
   };
 
-  const removePartnerLogo = (asset: MediaAsset) => {
-    setPartnerLogos(prev => prev.filter(item => item.url !== asset.url));
+  const removePartnerLogo = (url: string) => {
+    setPartnerLogos(prev => prev.filter(item => item.url !== url));
+  };
+
+  const updatePartnerLogo = (url: string, updates: Partial<PartnerLogo>) => {
+    setPartnerLogos(prev => prev.map(item => (item.url === url ? { ...item, ...updates } : item)));
   };
 
   const validateRequiredFields = () => {
@@ -722,7 +1192,7 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
       throw new Error("Contact email is required");
     }
     if (photoAssets.length === 0) {
-      throw new Error("Please upload or link at least one lab photo.");
+      throw new Error("Please upload at least one lab photo.");
     }
   };
 
@@ -732,6 +1202,21 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
       setIsSaving(true);
       validateRequiredFields();
       const payload = formToPayload(formState, photoAssets, complianceAssets, partnerLogos);
+      const hasLogoProcessingAdjustments =
+        Boolean(formState.logoUrl) &&
+        (logoPreviewScale !== 1 ||
+          logoPreviewOffsetX !== 0 ||
+          logoPreviewOffsetY !== 0 ||
+          logoFramePadding !== 6 ||
+          logoFrameColor !== "white" ||
+          logoFrameCustomColor.toLowerCase() !== "#dbeafe");
+      if (hasLogoProcessingAdjustments) {
+        const processedLogoUrl = await renderAndUploadFramedLogo(typeof editing === "number" ? editing : null);
+        payload.logoUrl = processedLogoUrl || null;
+        if (processedLogoUrl) {
+          setFormState(prev => ({ ...prev, logoUrl: processedLogoUrl }));
+        }
+      }
       payload.offers = draftToLegacyOffers(offerProfileDraft);
 
       if (editing === "new") {
@@ -800,62 +1285,163 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
     }
   };
 
-  const sectionClass = embedded ? "bg-transparent" : "bg-background min-h-screen";
+  const sectionClass = embedded
+    ? "bg-transparent"
+    : editing
+      ? "min-h-screen bg-[radial-gradient(1200px_420px_at_10%_-10%,rgba(56,189,248,0.18),transparent_60%),radial-gradient(900px_360px_at_90%_-5%,rgba(59,130,246,0.14),transparent_60%),linear-gradient(to_bottom,rgba(248,250,252,0.96),rgba(241,245,249,0.92))]"
+      : "bg-background min-h-screen";
   const containerClass = embedded
     ? "w-full px-0 py-0"
-    : "container mx-auto px-4 py-20 lg:py-24";
+    : editing
+      ? "container relative mx-auto max-w-6xl px-4 py-20 lg:py-24"
+      : "container mx-auto px-4 py-20 lg:py-24";
 
   return (
     <section className={sectionClass}>
       <div className={containerClass}>
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <span className="text-sm uppercase tracking-[0.35em] text-muted-foreground">
-              Lab directory
-            </span>
-            <h1 className="mt-3 flex items-center gap-2 text-4xl font-semibold text-foreground">
-              <ShieldCheck className="h-6 w-6 text-primary" />
-              Admin: manage partner labs
-            </h1>
-            <p className="mt-2 max-w-2xl text-muted-foreground">
-              Keep the lab rental directory current by updating contacts, compliance, and equipment
-              details. Edits go live instantly for the lab browsing experience.
-            </p>
+            {editing ? (
+              <>
+                <span className="text-sm uppercase tracking-[0.3em] text-muted-foreground">Lab edit mode</span>
+                <h1 className="mt-2 text-3xl font-semibold text-foreground">Manage lab profile</h1>
+                <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                  Update basic details for this lab with the same structure as Manage Lab.
+                </p>
+              </>
+            ) : (
+              <>
+                <span className="text-sm uppercase tracking-[0.3em] text-muted-foreground">Lab admin workspace</span>
+                <h1 className="mt-2 flex items-center gap-2 text-3xl font-semibold text-foreground md:text-4xl">
+                  <ShieldCheck className="h-6 w-6 text-primary" />
+                  Admin: manage partner labs
+                </h1>
+                <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                  Keep listings consistent and actionable. Use quick filters to find labs that need updates,
+                  then open a lab to edit it in focused mode.
+                </p>
+              </>
+            )}
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative w-full sm:w-64">
-              <input
-                type="search"
-                value={searchTerm}
-                onChange={event => setSearchTerm(event.target.value)}
-                placeholder="Search by name, alternate name, contact, or role"
-                className="w-full rounded-full border border-border bg-card/80 px-4 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              />
-              <MapPin className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            </div>
-            <Link href="/lab-profile">
-              <a className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary">
-                Lab profile guide
-              </a>
-            </Link>
-            <a
-              href="/certificate-template.html"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
-            >
-              Certificate template
-            </a>
-            <button
-              type="button"
-              onClick={startCreate}
-              className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
-            >
-              <Plus className="h-4 w-4" />
-              Add lab
-            </button>
+          <div className="flex w-full flex-wrap items-center gap-3 lg:w-auto">
+            {editing ? (
+              <button
+                type="button"
+                onClick={() => {
+                  cancelEdit();
+                  setStatusMessage(null);
+                }}
+                className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+              >
+                <X className="h-4 w-4" />
+                Back to labs
+              </button>
+            ) : (
+              <>
+                <div className="relative w-full sm:w-72">
+                  <input
+                    type="search"
+                    value={searchTerm}
+                    onChange={event => setSearchTerm(event.target.value)}
+                    placeholder="Search name, location, manager, email, role..."
+                    className="w-full rounded-full border border-border bg-card/80 px-4 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  />
+                  <MapPin className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card/70 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setVisibilityFilter("all")}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                      visibilityFilter === "all" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-primary"
+                    }`}
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVisibilityFilter("visible")}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                      visibilityFilter === "visible" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-primary"
+                    }`}
+                  >
+                    Visible
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVisibilityFilter("hidden")}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                      visibilityFilter === "hidden" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-primary"
+                    }`}
+                  >
+                    Hidden
+                  </button>
+                </div>
+                <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card/70 p-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVerificationFilter(prev => (prev === "unverified" ? "all" : "unverified"))
+                    }
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                      verificationFilter === "unverified" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-primary"
+                    }`}
+                  >
+                    Unverified
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVerificationFilter(prev => (prev === "pending" ? "all" : "pending"))}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                      verificationFilter === "pending" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-primary"
+                    }`}
+                  >
+                    Pending
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVerificationFilter(prev => (prev === "verified" ? "all" : "verified"))}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                      verificationFilter === "verified" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-primary"
+                    }`}
+                  >
+                    Verified
+                  </button>
+                </div>
+                <Link href="/lab-profile">
+                  <a className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary">
+                    Lab profile guide
+                  </a>
+                </Link>
+                <a
+                  href="/certificate-template.html"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+                >
+                  Certificate template
+                </a>
+                <button
+                  type="button"
+                  onClick={startCreate}
+                  className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add lab
+                </button>
+              </>
+            )}
           </div>
         </div>
+        {!editing && (
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <AdminStat label="Total labs" value={String(totalLabs)} />
+            <AdminStat label="Visible" value={String(visibleLabsCount)} />
+            <AdminStat label="Hidden" value={String(hiddenLabsCount)} />
+            <AdminStat label="Verified" value={String(verifiedLabsCount)} />
+            <AdminStat label="Premier" value={String(premierLabsCount)} />
+          </div>
+        )}
 
         {statusMessage && (
           <motion.div
@@ -1041,7 +1627,8 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
           </div>
         )}
 
-        <div className="mt-10 grid gap-8 lg:grid-cols-[1.05fr_1fr]">
+        <div className="mt-10">
+          {!editing && (
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1064,23 +1651,28 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
               filteredLabs.map(lab => {
                 const status = (lab.labStatus || "listed").toLowerCase();
                 const isVerified = ["verified_passive", "verified_active", "premier"].includes(status);
+                const hasAuditFlag = lab.auditPassed !== undefined && lab.auditPassed !== null;
+                const auditPassed = ["true", true, 1, "1"].includes(lab.auditPassed as any);
+                const isAuditPending = isVerified && hasAuditFlag && !auditPassed;
                 const badgeLabel =
-                  status === "premier"
+                  isAuditPending
+                    ? "Pending"
+                    : status === "premier"
                     ? "Premier"
                     : isVerified
                       ? "Verified"
                       : status === "confirmed"
-                        ? "Confirmed"
+                        ? "Pending"
                         : "Listed";
                 return (
                 <div
                   key={lab.id}
-                  className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm"
+                  className="rounded-3xl border border-border bg-card/80 p-5 shadow-sm transition"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
-                      <h2 className="text-xl font-semibold text-foreground">{lab.name}</h2>
-                      <div className="mt-1 inline-flex items-center gap-2 text-sm text-muted-foreground">
+                      <h2 className="text-lg font-semibold text-foreground md:text-xl">{lab.name}</h2>
+                      <div className="mt-1 inline-flex items-center gap-2 text-xs text-muted-foreground">
                         <MapPin className="h-4 w-4 text-primary" />
                         {[lab.city, lab.country].filter(Boolean).join(", ") || "Location not set"}
                       </div>
@@ -1088,14 +1680,16 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                     <div className="flex flex-wrap justify-end gap-2">
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
-                          isVerified
+                          isAuditPending
+                            ? "bg-amber-50 text-amber-700"
+                            : isVerified
                             ? "bg-emerald-50 text-emerald-700"
                             : status === "confirmed"
                               ? "bg-amber-50 text-amber-700"
                               : "bg-slate-100 text-slate-700"
                         }`}
                       >
-                        {isVerified ? (
+                        {isVerified && !isAuditPending ? (
                           <>
                             <CheckCircle2 className="h-3.5 w-3.5" />
                             {badgeLabel}
@@ -1117,58 +1711,84 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                         }`}
                         title={lab.isVisible === false ? "Currently hidden. Click to show." : "Currently visible. Click to hide."}
                       >
-                        {lab.isVisible === false ? "Hidden — click to show" : "Visible — click to hide"}
+                        {lab.isVisible === false ? "Hidden" : "Visible"}
                       </button>
                     </div>
                   </div>
 
-                  <div className="mt-4 grid gap-3 text-sm text-muted-foreground">
+                  <div className="mt-4 grid gap-2 text-sm text-muted-foreground">
                     <div className="flex items-start gap-2">
                       <Users className="h-4 w-4 text-primary" />
-                      <span>{lab.labManager}</span>
+                      <span>{lab.labManager || "Manager not set"}</span>
                     </div>
                     <div className="flex items-start gap-2">
                       <Mail className="h-4 w-4 text-primary" />
-                      <span className="break-all">{lab.contactEmail}</span>
+                      <span className="break-all">{lab.contactEmail || "Email not set"}</span>
                     </div>
                   </div>
 
-                  <dl className="mt-4 grid gap-3 text-xs text-muted-foreground md:grid-cols-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium text-foreground">Compliance</span>
-                      <span>{lab.compliance.join(", ") || "—"}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium text-foreground">Focus areas</span>
-                      <span>{lab.focusAreas.join(", ") || "—"}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium text-foreground">Organization role</span>
-                      <span>{lab.orgRole || "—"}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium text-foreground">ERC disciplines</span>
-                      <span>
-                        {(lab.ercDisciplines ?? []).length > 0
-                          ? (lab.ercDisciplines ?? []).map(item => `${item.code} - ${item.title}`).join(", ")
-                          : (lab.ercDisciplineCodes ?? []).join(", ") || "—"}
+                  <div className="mt-4 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                    {lab.orgRole && (
+                      <span className="rounded-full border border-border px-2.5 py-1">
+                        Role: {lab.orgRole}
                       </span>
+                    )}
+                    <span className="rounded-full border border-border px-2.5 py-1">
+                      Equipment: {lab.equipment.length}
+                    </span>
+                    <span className="rounded-full border border-border px-2.5 py-1">
+                      Focus: {lab.focusAreas.length}
+                    </span>
+                    <span className="rounded-full border border-border px-2.5 py-1">
+                      Photos: {lab.photos.length}
+                    </span>
+                    <span className="rounded-full border border-border px-2.5 py-1">
+                      Docs: {lab.complianceDocs.length}
+                    </span>
+                    {lab.primaryErcDisciplineCode && (
+                      <span className="rounded-full border border-border px-2.5 py-1">
+                        ERC: {lab.primaryErcDisciplineCode}
+                      </span>
+                    )}
+                  </div>
+
+                  <details className="mt-4 rounded-2xl border border-border/70 bg-background/40 p-3 text-xs text-muted-foreground">
+                    <summary className="cursor-pointer select-none font-medium text-foreground">
+                      View full metadata
+                    </summary>
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      <div>
+                        <span className="font-medium text-foreground">Compliance</span>
+                        <p className="mt-1">{lab.compliance.join(", ") || "—"}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-foreground">Focus areas</span>
+                        <p className="mt-1">{lab.focusAreas.join(", ") || "—"}</p>
+                      </div>
+                      <div>
+                        <span className="font-medium text-foreground">ERC disciplines</span>
+                        <p className="mt-1">
+                          {(lab.ercDisciplines ?? []).length > 0
+                            ? (lab.ercDisciplines ?? []).map(item => `${item.code} - ${item.title}`).join(", ")
+                            : (lab.ercDisciplineCodes ?? []).join(", ") || "—"}
+                        </p>
+                      </div>
+                      <div className="md:col-span-2">
+                        <span className="font-medium text-foreground">Equipment list</span>
+                        <p className="mt-1">{lab.equipment.join(", ") || "—"}</p>
+                      </div>
                     </div>
-                    <div className="flex flex-col gap-1 md:col-span-2">
-                      <span className="font-medium text-foreground">Equipment</span>
-                      <span>{lab.equipment.join(", ") || "—"}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium text-foreground">Photos</span>
-                      <span>{lab.photos.length ? `${lab.photos.length} supplied` : "—"}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium text-foreground">Compliance docs</span>
-                      <span>{lab.complianceDocs.length ? `${lab.complianceDocs.length} uploaded` : "—"}</span>
-                    </div>
-                  </dl>
+                  </details>
 
                   <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(lab)}
+                      className="inline-flex items-center gap-2 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                      Edit
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -1178,14 +1798,6 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                     >
                       <FileCheck2 className="h-3.5 w-3.5" />
                       Verification certificate
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => startEdit(lab)}
-                      className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
-                    >
-                      <Edit2 className="h-3.5 w-3.5" />
-                      Edit
                     </button>
                     <button
                       type="button"
@@ -1202,663 +1814,1386 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
               })
             )}
           </motion.div>
+          )}
 
+          {editing && (
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm"
+            className="mx-auto max-w-6xl"
           >
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-foreground">
-                {editing === "new" ? "Add a lab partner" : editing ? "Edit lab details" : "Select a lab"}
-              </h2>
-              {editing && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    cancelEdit();
-                    setStatusMessage(null);
-                  }}
-                  className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:text-primary hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
-                >
-                  <X className="h-3.5 w-3.5" />
-                  Cancel
-                </button>
-              )}
-            </div>
-
-            {editing ? (
-              <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-name">
-                    Lab name
-                  </label>
-                  <input
-                    id="lab-name"
-                    type="text"
-                    value={formState.name}
-                    onChange={event => handleChange("name", event.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    placeholder="Atlas Applied Biology"
-                    required
-                  />
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground" htmlFor="lab-manager">
-                      Lab manager
-                    </label>
-                    <input
-                      id="lab-manager"
-                      type="text"
-                      value={formState.labManager}
-                      onChange={event => handleChange("labManager", event.target.value)}
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="Naomi Chen"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground" htmlFor="lab-email">
-                      Contact email
-                    </label>
-                    <input
-                      id="lab-email"
-                      type="email"
-                      value={formState.contactEmail}
-                      onChange={event => handleChange("contactEmail", event.target.value)}
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="labs+atlas@glass.demo"
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground" htmlFor="lab-logo">
-                      Logo (stored in Supabase)
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <input
-                        id="lab-logo"
-                        type="file"
-                        accept="image/*"
-                        onChange={handleLogoUpload}
-                        className="w-full rounded-xl border border-dashed border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      />
-                      {formState.logoUrl && (
+              <form className="mt-2" onSubmit={handleSubmit}>
+                <div className="grid gap-6 md:grid-cols-[220px_minmax(0,1fr)] md:items-start">
+                  <aside className="space-y-4 md:sticky md:top-24">
+                    <div className="rounded-2xl border border-border/70 bg-background/80 p-3 shadow-[0_10px_26px_-14px_rgba(30,64,175,0.45)] backdrop-blur-sm">
+                      <div className="flex flex-wrap gap-2 md:flex-col">
+                        {ADMIN_EDIT_TAB_ORDER.map(tab => {
+                          const TabIcon = ADMIN_EDIT_TAB_ICONS[tab];
+                          return (
+                            <button
+                              key={tab}
+                              type="button"
+                              onClick={() => setEditTab(tab)}
+                              className={`rounded-full border px-4 py-1.5 text-sm font-medium text-left transition md:w-full ${
+                                editTab === tab
+                                  ? "border-primary/70 bg-gradient-to-r from-primary/20 to-sky-500/20 text-primary shadow-[0_6px_16px_-10px_rgba(59,130,246,0.65)]"
+                                  : "border-border/80 bg-background/75 text-muted-foreground hover:border-primary/50 hover:bg-background hover:text-primary"
+                              }`}
+                            >
+                              <span className="inline-flex items-center gap-2">
+                                <TabIcon className="h-4 w-4 flex-shrink-0" />
+                                <span>{tab}</span>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-3 rounded-xl border border-border/70 bg-background/70 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
                         <button
                           type="button"
-                          onClick={() => setFormState(prev => ({ ...prev, logoUrl: "" }))}
-                          className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:border-destructive hover:text-destructive"
+                          onClick={() => setRequiredProgressOpen(prev => !prev)}
+                          className="w-full text-left"
                         >
-                          <X className="h-3 w-3" />
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                    {logoUploading && <p className="text-xs text-muted-foreground">Uploading logo…</p>}
-                    {logoError && <p className="text-xs text-destructive">{logoError}</p>}
-                    {formState.logoUrl && (
-                      <div className="mt-2 inline-flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
-                        <img
-                          src={formState.logoUrl}
-                          alt={`${formState.name || "Lab"} logo`}
-                          className="h-10 w-10 rounded-full object-cover"
-                        />
-                        <span className="text-xs text-muted-foreground break-all max-w-[200px] truncate">
-                          {formState.logoUrl}
-                        </span>
-                      </div>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      Upload saves to the `lab-logos` bucket. Keep files small (e.g., 300x300).
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">
-                    Partner logos (premier feature)
-                  </label>
-                  <div className="flex flex-col gap-2">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handlePartnerLogoUpload}
-                      className="w-full rounded-xl border border-dashed border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    />
-                    <p className="text-xs text-muted-foreground">Stored in `lab-logos` under partners/ folders.</p>
-                    {partnerLogos.length > 0 && (
-                      <div className="flex gap-3 overflow-x-auto pb-2">
-                        {partnerLogos.map(logo => (
-                          <div
-                            key={logo.url}
-                            className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 flex-shrink-0"
-                          >
-                            <img src={logo.url} alt={logo.name} className="h-10 w-10 rounded object-cover" />
-                            <input
-                              className="w-48 rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                              placeholder="Partner website"
-                              value={logo.website ?? ""}
-                              onChange={event => {
-                                const website = event.target.value;
-                                setPartnerLogos(prev =>
-                                  prev.map(item =>
-                                    item.url === logo.url ? { ...item, website } : item,
-                                  ),
-                                );
-                              }}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => removePartnerLogo(logo)}
-                              className="text-xs text-muted-foreground hover:text-destructive"
-                            >
-                              Remove
-                            </button>
+                          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                            <span>Required progress</span>
+                            <span className="inline-flex items-center gap-1.5">
+                              <span>{requiredProgress.percent}%</span>
+                              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border/70 bg-background/80">
+                                <ChevronDown
+                                  className={`h-3 w-3 transition-transform duration-200 ${
+                                    requiredProgressOpen ? "rotate-180" : ""
+                                  }`}
+                                />
+                              </span>
+                            </span>
                           </div>
-                        ))}
+                          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                            <div
+                              className="h-full rounded-full bg-primary transition-all duration-300"
+                              style={{ width: `${requiredProgress.percent}%` }}
+                            />
+                          </div>
+                        </button>
+                        {requiredProgressOpen && (
+                          <div className="mt-2 border-t border-border/60 pt-2">
+                            {missingRequiredItems.length === 0 ? (
+                              <p className="text-[11px] text-emerald-600">All required fields are complete.</p>
+                            ) : (
+                              <div className="space-y-1">
+                                {missingRequiredItems.map((item, index) => (
+                                  <button
+                                    key={item.key}
+                                    type="button"
+                                    onClick={() => flashRequiredField(item.key, item.tab)}
+                                    className="flex w-full items-start gap-1.5 text-left text-[11px] text-muted-foreground hover:text-primary"
+                                  >
+                                    <span className="min-w-[14px] text-foreground/80">{index + 1}.</span>
+                                    <span>{item.label} ({item.tab})</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 md:flex-col">
+                      <button
+                        type="submit"
+                        disabled={isSaving}
+                        className="rounded-full bg-primary px-4 py-2 text-sm text-primary-foreground shadow-[0_10px_20px_-12px_rgba(59,130,246,0.85)] md:w-full disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {isSaving ? "Saving…" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          cancelEdit();
+                          setStatusMessage(null);
+                        }}
+                        className="rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary md:w-full"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </aside>
+
+                  <div className="min-w-0 space-y-8">
+                    {editTab === "Basics" && (
+                      <Section title="Basics">
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          This section is what collaborators read first. Clear, specific details increase trust and help
+                          you receive better-matched requests.
+                        </p>
+                        <Field
+                          label={
+                            <span>
+                              Lab name <span className="text-destructive">*</span>
+                            </span>
+                          }
+                          labelClassName={BASICS_LABEL_CLASS}
+                          containerClassName={BASICS_FIELD_CLASS}
+                          fieldId="required-name"
+                          highlighted={flashingRequiredKey === "name"}
+                        >
+                          <input
+                            id="lab-name"
+                            type="text"
+                            value={formState.name}
+                            onChange={event => handleChange("name", event.target.value)}
+                            className={BASICS_INPUT_CLASS}
+                            placeholder="Official public name, e.g., UAR 3286 CNRS/Unistra"
+                            required
+                          />
+                        </Field>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <Field
+                            label={
+                              <span>
+                                Lab manager / Director <span className="text-destructive">*</span>
+                              </span>
+                            }
+                            labelClassName={BASICS_LABEL_CLASS}
+                            containerClassName={BASICS_FIELD_CLASS}
+                            fieldId="required-manager"
+                            highlighted={flashingRequiredKey === "manager"}
+                          >
+                            <input
+                              id="lab-manager"
+                              type="text"
+                              value={formState.labManager}
+                              onChange={event => handleChange("labManager", event.target.value)}
+                              className={BASICS_INPUT_CLASS}
+                              placeholder="Decision-maker or scientific lead (full name)"
+                              required
+                            />
+                          </Field>
+                          <Field
+                            label={
+                              <span>
+                                Contact email <span className="text-destructive">*</span>
+                              </span>
+                            }
+                            labelClassName={BASICS_LABEL_CLASS}
+                            containerClassName={BASICS_FIELD_CLASS}
+                            fieldId="required-email"
+                            highlighted={flashingRequiredKey === "email"}
+                          >
+                            <input
+                              id="lab-email"
+                              type="email"
+                              value={formState.contactEmail}
+                              onChange={event => handleChange("contactEmail", event.target.value)}
+                              className={BASICS_INPUT_CLASS}
+                              placeholder="Team contact email used for collaboration requests"
+                              required
+                            />
+                          </Field>
+                        </div>
+                        <Field label="Organization role" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                          <select
+                            id="lab-org-role"
+                            value={formState.orgRole}
+                            onChange={event => handleChange("orgRole", event.target.value as "" | OrgRoleOption)}
+                            className={BASICS_INPUT_CLASS}
+                          >
+                            <option value="">Select role type</option>
+                            {orgRoleOptions.map(role => (
+                              <option key={role} value={role}>
+                                {role}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                        <Field
+                          label={
+                            <span className="inline-flex items-center gap-2">
+                              <span>HAL structure ID</span>
+                              <span className="group relative inline-flex h-4 w-4 items-center justify-center rounded-full border border-border bg-background/85 text-[9px] font-semibold text-muted-foreground transition hover:border-primary hover:text-primary">
+                                ↗
+                                <span className="pointer-events-none absolute left-full top-1/2 ml-2 -translate-y-1/2 whitespace-nowrap rounded-full border border-border bg-background/95 px-2 py-1 text-[10px] font-medium normal-case tracking-normal text-muted-foreground opacity-0 shadow-sm transition-opacity duration-200 group-hover:opacity-100">
+                                  Used to link your lab profile to HAL organization records.
+                                </span>
+                              </span>
+                            </span>
+                          }
+                          labelClassName={BASICS_LABEL_CLASS}
+                          containerClassName={BASICS_FIELD_CLASS}
+                        >
+                          <input
+                            id="lab-hal-id"
+                            type="text"
+                            value={formState.halStructureId}
+                            onChange={event => handleChange("halStructureId", event.target.value)}
+                            className={BASICS_INPUT_CLASS}
+                            placeholder="If indexed in HAL, enter structure ID (e.g., struct-123456)"
+                          />
+                        </Field>
+                        <Field label="Primary ERC discipline" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                          <div className="space-y-3">
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <select
+                                className={BASICS_INPUT_CLASS}
+                                value={primaryErcDomain}
+                                onChange={event => setPrimaryErcDomain(event.target.value as ErcDomainOption)}
+                              >
+                                <option value="PE">PE - Physical Sciences & Engineering</option>
+                                <option value="LS">LS - Life Sciences</option>
+                                <option value="SH">SH - Social Sciences & Humanities</option>
+                              </select>
+                              <select
+                                className={BASICS_INPUT_CLASS}
+                                value={formState.primaryErcDisciplineCode}
+                                onChange={event => setPrimaryErcDiscipline(event.target.value)}
+                              >
+                                <option value="">No primary discipline</option>
+                                {primaryDomainOptions.map(option => (
+                                  <option key={option.code} value={option.code}>
+                                    {option.code} - {option.title}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Pick one primary ERC discipline first, then add any secondary disciplines below.
+                            </p>
+                          </div>
+                        </Field>
+                        <Field label="Secondary ERC disciplines" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                          <div className="space-y-3">
+                            <select
+                              className={BASICS_INPUT_CLASS}
+                              value={secondaryErcDomain}
+                              disabled={!formState.primaryErcDisciplineCode}
+                              onChange={event => setSecondaryErcDomain(event.target.value as ErcDomainOption)}
+                            >
+                              <option value="PE">PE - Physical Sciences & Engineering</option>
+                              <option value="LS">LS - Life Sciences</option>
+                              <option value="SH">SH - Social Sciences & Humanities</option>
+                            </select>
+                            <div className="max-h-56 overflow-auto rounded-xl border border-border bg-background px-3 py-2">
+                              {!formState.primaryErcDisciplineCode ? (
+                                <p className="text-xs text-muted-foreground">Select a primary ERC discipline first.</p>
+                              ) : ercLoading ? (
+                                <p className="text-xs text-muted-foreground">Loading ERC disciplines...</p>
+                              ) : ercOptions.length === 0 ? (
+                                <p className="text-xs text-muted-foreground">No ERC disciplines available.</p>
+                              ) : (
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                  {secondaryDomainOptions.map(option => {
+                                    const checked = selectedErcCodes.includes(option.code);
+                                    return (
+                                      <label
+                                        key={option.code}
+                                        className="flex items-start gap-2 rounded-lg border border-border/60 px-2 py-1.5 text-xs text-foreground"
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          className="mt-0.5"
+                                          checked={checked}
+                                          onChange={event =>
+                                            toggleSecondaryErcDiscipline(option.code, event.target.checked)
+                                          }
+                                        />
+                                        <span>
+                                          <span className="font-semibold">{option.code}</span>
+                                          <span className="text-muted-foreground"> {option.title}</span>
+                                        </span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                            {ercError && <p className="text-xs text-destructive">{ercError}</p>}
+                            {selectedErcCodes.length > 0 && (
+                              <div className="flex flex-wrap gap-2">
+                                {selectedErcCodes.map(code => {
+                                  const isPrimary = code === formState.primaryErcDisciplineCode;
+                                  return (
+                                    <span
+                                      key={code}
+                                      className={`rounded-full px-3 py-1 text-xs ${
+                                        isPrimary
+                                          ? "border border-primary/40 bg-primary/10 text-primary"
+                                          : "border border-border text-muted-foreground"
+                                      }`}
+                                    >
+                                      {ercLabelByCode.get(code) ?? code}
+                                      {isPrimary ? " (Primary)" : ""}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </Field>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <Field label="Audit status" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                            <select
+                              id="lab-verification"
+                              value={formState.verification}
+                              onChange={event => handleChange("verification", event.target.value as VerificationOption)}
+                              className={BASICS_INPUT_CLASS}
+                            >
+                              <option value="yes">Audit passed</option>
+                              <option value="no">Audit pending</option>
+                            </select>
+                          </Field>
+                          <Field label="Lab status" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                            <select
+                              id="lab-status"
+                              value={formState.labStatus}
+                              onChange={event => handleChange("labStatus", event.target.value as LabStatusOption)}
+                              className={BASICS_INPUT_CLASS}
+                            >
+                              <option value="listed">Listed (unverified)</option>
+                              <option value="confirmed">Confirmed</option>
+                              <option value="verified_passive">Verified — passive</option>
+                              <option value="verified_active">Verified — active</option>
+                              <option value="premier">Premier</option>
+                            </select>
+                          </Field>
+                        </div>
+                        <Field
+                          label={
+                            <span>
+                              Short description <span className="text-destructive">*</span>
+                            </span>
+                          }
+                          labelClassName={BASICS_LABEL_CLASS}
+                          containerClassName={BASICS_FIELD_CLASS}
+                          fieldId="required-shortDescription"
+                          highlighted={flashingRequiredKey === "shortDescription"}
+                        >
+                          <textarea
+                            id="lab-description-short"
+                            value={formState.descriptionShort}
+                            onChange={event => handleChange("descriptionShort", event.target.value)}
+                            className={BASICS_INPUT_CLASS}
+                            placeholder="1-2 lines: who you are, what you do best, and who you typically support."
+                            rows={4}
+                            required
+                          />
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-muted-foreground">Recommended: 120-180 characters</span>
+                            <span
+                              className={
+                                formState.descriptionShort.length >= 120 && formState.descriptionShort.length <= 180
+                                  ? "text-emerald-600"
+                                  : "text-muted-foreground"
+                              }
+                            >
+                              {formState.descriptionShort.length} / 350
+                            </span>
+                          </div>
+                        </Field>
+                        <Field
+                          label={
+                            <span>
+                              Long description <span className="text-destructive">*</span>
+                            </span>
+                          }
+                          labelClassName={BASICS_LABEL_CLASS}
+                          containerClassName={BASICS_FIELD_CLASS}
+                          fieldId="required-longDescription"
+                          highlighted={flashingRequiredKey === "longDescription"}
+                        >
+                          <textarea
+                            id="lab-description-long"
+                            value={formState.descriptionLong}
+                            onChange={event => handleChange("descriptionLong", event.target.value)}
+                            className={BASICS_INPUT_CLASS}
+                            placeholder="Capabilities, sample types, turnaround expectations, compliance context, and collaboration style."
+                            rows={6}
+                            required
+                          />
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-muted-foreground">Recommended: 400-900 characters</span>
+                            <span
+                              className={
+                                formState.descriptionLong.length >= 400 && formState.descriptionLong.length <= 900
+                                  ? "text-emerald-600"
+                                  : "text-muted-foreground"
+                              }
+                            >
+                              {formState.descriptionLong.length} / 8000
+                            </span>
+                          </div>
+                        </Field>
+                      </Section>
+                    )}
+
+                    {editTab === "Branding" && (
+                      <Section title="Branding & Links">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <Field
+                            label={
+                              <span>
+                                Website <span className="text-destructive">*</span>
+                              </span>
+                            }
+                            labelClassName={BASICS_LABEL_CLASS}
+                            containerClassName={BASICS_FIELD_CLASS}
+                            fieldId="required-website"
+                            highlighted={flashingRequiredKey === "website"}
+                          >
+                            <input
+                              id="lab-website"
+                              type="url"
+                              value={formState.website}
+                              onChange={event => handleChange("website", event.target.value)}
+                              className={BASICS_INPUT_CLASS}
+                              placeholder="Official website URL, e.g., https://labs.example.com"
+                              required
+                            />
+                          </Field>
+                          <Field label="LinkedIn" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                            <input
+                              id="lab-linkedin"
+                              type="url"
+                              value={formState.linkedin}
+                              onChange={event => handleChange("linkedin", event.target.value)}
+                              className={BASICS_INPUT_CLASS}
+                              placeholder="LinkedIn page URL, e.g., https://www.linkedin.com/company/example"
+                            />
+                          </Field>
+                        </div>
+                      </Section>
+                    )}
+
+                    {editTab === "Location" && (
+                      <Section title="Location">
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <Field
+                            label={
+                              <span>
+                                Address line 1 <span className="text-destructive">*</span>
+                              </span>
+                            }
+                            labelClassName={BASICS_LABEL_CLASS}
+                            containerClassName={`${BASICS_FIELD_CLASS} md:col-span-2`}
+                            fieldId="required-addressLine1"
+                            highlighted={flashingRequiredKey === "addressLine1"}
+                          >
+                            <input
+                              id="lab-address1"
+                              type="text"
+                              value={formState.addressLine1}
+                              onChange={event => handleChange("addressLine1", event.target.value)}
+                              className={BASICS_INPUT_CLASS}
+                              placeholder="Street + number"
+                              required
+                            />
+                          </Field>
+                          <Field label="Address line 2" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                            <input
+                              id="lab-address2"
+                              type="text"
+                              value={formState.addressLine2}
+                              onChange={event => handleChange("addressLine2", event.target.value)}
+                              className={BASICS_INPUT_CLASS}
+                              placeholder="Building, floor, unit (optional)"
+                            />
+                          </Field>
+                          <Field
+                            label={
+                              <span>
+                                City <span className="text-destructive">*</span>
+                              </span>
+                            }
+                            labelClassName={BASICS_LABEL_CLASS}
+                            containerClassName={BASICS_FIELD_CLASS}
+                            fieldId="required-city"
+                            highlighted={flashingRequiredKey === "city"}
+                          >
+                            <input
+                              id="lab-city"
+                              type="text"
+                              value={formState.city}
+                              onChange={event => handleChange("city", event.target.value)}
+                              className={BASICS_INPUT_CLASS}
+                              placeholder="City"
+                              required
+                            />
+                          </Field>
+                          <Field
+                            label={
+                              <span>
+                                State/Region <span className="text-destructive">*</span>
+                              </span>
+                            }
+                            labelClassName={BASICS_LABEL_CLASS}
+                            containerClassName={BASICS_FIELD_CLASS}
+                            fieldId="required-state"
+                            highlighted={flashingRequiredKey === "state"}
+                          >
+                            <input
+                              id="lab-state"
+                              type="text"
+                              value={formState.state}
+                              onChange={event => handleChange("state", event.target.value)}
+                              className={BASICS_INPUT_CLASS}
+                              placeholder="State or region"
+                              required
+                            />
+                          </Field>
+                          <Field
+                            label={
+                              <span>
+                                Postal code <span className="text-destructive">*</span>
+                              </span>
+                            }
+                            labelClassName={BASICS_LABEL_CLASS}
+                            containerClassName={BASICS_FIELD_CLASS}
+                            fieldId="required-postalCode"
+                            highlighted={flashingRequiredKey === "postalCode"}
+                          >
+                            <input
+                              id="lab-postal"
+                              type="text"
+                              value={formState.postalCode}
+                              onChange={event => handleChange("postalCode", event.target.value)}
+                              className={BASICS_INPUT_CLASS}
+                              placeholder="Postal / ZIP code"
+                              required
+                            />
+                          </Field>
+                          <Field
+                            label={
+                              <span>
+                                Country <span className="text-destructive">*</span>
+                              </span>
+                            }
+                            labelClassName={BASICS_LABEL_CLASS}
+                            containerClassName={BASICS_FIELD_CLASS}
+                            fieldId="required-country"
+                            highlighted={flashingRequiredKey === "country"}
+                          >
+                            <input
+                              id="lab-country"
+                              type="text"
+                              value={formState.country}
+                              onChange={event => handleChange("country", event.target.value)}
+                              className={BASICS_INPUT_CLASS}
+                              placeholder="Country"
+                              required
+                            />
+                          </Field>
+                          <Field
+                            label={
+                              <span className="inline-flex items-center gap-2">
+                                <span>SIRET</span>
+                                <span className="group relative inline-flex h-4 w-4 items-center justify-center rounded-full border border-border bg-background/85 text-[9px] font-semibold text-muted-foreground transition hover:border-primary hover:text-primary">
+                                  ↗
+                                  <span className="pointer-events-none absolute left-full top-1/2 ml-2 -translate-y-1/2 whitespace-nowrap rounded-full border border-border bg-background/95 px-2 py-1 text-[10px] font-medium normal-case tracking-normal text-muted-foreground opacity-0 shadow-sm transition-opacity duration-200 group-hover:opacity-100">
+                                    Used for patent search in your lab profile.
+                                  </span>
+                                </span>
+                              </span>
+                            }
+                            labelClassName={BASICS_LABEL_CLASS}
+                            containerClassName={BASICS_FIELD_CLASS}
+                          >
+                            <input
+                              id="lab-siret"
+                              type="text"
+                              value={formState.siretNumber}
+                              onChange={event => handleChange("siretNumber", event.target.value)}
+                              className={BASICS_INPUT_CLASS}
+                              placeholder="French company SIRET number (if applicable)"
+                            />
+                          </Field>
+                        </div>
+                      </Section>
+                    )}
+
+                    {editTab === "Compliance" && (
+                      <Section title="Compliance & capabilities">
+                        <Field label="Visibility" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                          <select
+                            id="lab-visibility"
+                            value={formState.isVisible}
+                            onChange={event => handleChange("isVisible", event.target.value as "yes" | "no")}
+                            className={BASICS_INPUT_CLASS}
+                          >
+                            <option value="yes">Visible in directory</option>
+                            <option value="no">Hidden (admin only)</option>
+                          </select>
+                        </Field>
+                        <Field label="Compliance" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                          <div className="space-y-2">
+                            <input
+                              className={BASICS_INPUT_CLASS}
+                              placeholder="Add standards or certifications, then press Enter"
+                              value={tagInput.field === "complianceTags" ? tagInput.value : ""}
+                              onChange={event => setTagInput({ field: "complianceTags", value: event.target.value })}
+                              onKeyDown={handleTagKey("complianceTags")}
+                            />
+                            <div className="flex flex-wrap gap-2">
+                              {formState.complianceTags.map(tag => (
+                                <span
+                                  key={tag}
+                                  className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground"
+                                >
+                                  {tag}
+                                  <button
+                                    type="button"
+                                    onClick={() => removeTag("complianceTags", tag)}
+                                    className="text-muted-foreground hover:text-destructive"
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </Field>
+                        <Field label="Compliance documents (PDF)" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                          <div className="space-y-3">
+                            <div className="flex flex-wrap gap-2">
+                              {complianceAssets.map(asset => (
+                                <button
+                                  key={asset.url}
+                                  type="button"
+                                  onClick={() => removeComplianceDoc(asset)}
+                                  className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-destructive hover:text-destructive"
+                                >
+                                  <FileDown className="h-3 w-3 text-primary" />
+                                  {asset.name}
+                                  <X className="h-3 w-3" />
+                                </button>
+                              ))}
+                            </div>
+                            <label className="inline-flex items-center gap-3">
+                              <span className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
+                                Choose file
+                                <input
+                                  id="lab-complianceDocs"
+                                  type="file"
+                                  accept="application/pdf"
+                                  multiple
+                                  onChange={handleComplianceUpload}
+                                  className="hidden"
+                                />
+                              </span>
+                            </label>
+                            {complianceUploading && <p className="text-xs text-muted-foreground">Uploading…</p>}
+                            {complianceError && <p className="text-xs text-destructive">{complianceError}</p>}
+                            <p className="text-xs text-muted-foreground">Upload PDF compliance certificates.</p>
+                          </div>
+                        </Field>
+                        <Field label="Equipment" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                          <div className="space-y-2">
+                            <input
+                              className={BASICS_INPUT_CLASS}
+                              placeholder="Add key instruments, then press Enter"
+                              value={tagInput.field === "equipmentTags" ? tagInput.value : ""}
+                              onChange={event => setTagInput({ field: "equipmentTags", value: event.target.value })}
+                              onKeyDown={handleTagKey("equipmentTags")}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Click a chip to mark it as priority (up to 3). Click × to remove it.
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {formState.equipmentTags.map(tag => {
+                                const isPriority = formState.priorityEquipmentTags.includes(tag);
+                                const priorityIndex = formState.priorityEquipmentTags.indexOf(tag);
+                                return (
+                                  <div
+                                    key={tag}
+                                    role="button"
+                                    tabIndex={0}
+                                    draggable={isPriority}
+                                    onClick={() => togglePriorityEquipment(tag)}
+                                    onKeyDown={event => {
+                                      if (event.key === "Enter" || event.key === " ") {
+                                        event.preventDefault();
+                                        togglePriorityEquipment(tag);
+                                      }
+                                    }}
+                                    onDragStart={event => {
+                                      if (!isPriority || priorityIndex < 0) return;
+                                      event.dataTransfer.setData("text/plain", String(priorityIndex));
+                                      event.dataTransfer.effectAllowed = "move";
+                                      setDraggingPriorityEquipmentIndex(priorityIndex);
+                                    }}
+                                    onDragEnd={() => setDraggingPriorityEquipmentIndex(null)}
+                                    onDragOver={event => {
+                                      if (!isPriority || draggingPriorityEquipmentIndex === null) return;
+                                      event.preventDefault();
+                                      event.dataTransfer.dropEffect = "move";
+                                    }}
+                                    onDrop={event => {
+                                      if (!isPriority || priorityIndex < 0) return;
+                                      event.preventDefault();
+                                      const fromIndex = Number(event.dataTransfer.getData("text/plain"));
+                                      if (Number.isNaN(fromIndex)) return;
+                                      reorderPriorityEquipment(fromIndex, priorityIndex);
+                                      setDraggingPriorityEquipmentIndex(null);
+                                    }}
+                                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition ${
+                                      isPriority
+                                        ? "border-primary bg-primary/10 text-primary"
+                                        : "border-border text-muted-foreground hover:border-primary/60 hover:bg-primary/5 hover:text-foreground"
+                                    } ${isPriority ? "cursor-grab active:cursor-grabbing" : ""}`}
+                                    title={isPriority ? "Priority equipment" : "Click to mark as priority"}
+                                  >
+                                    <span>{tag}</span>
+                                    <button
+                                      type="button"
+                                      onClick={event => {
+                                        event.stopPropagation();
+                                        removeTag("equipmentTags", tag);
+                                      }}
+                                      className="text-current/80 hover:text-destructive"
+                                      aria-label={`Remove ${tag}`}
+                                      title={`Remove ${tag}`}
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                              {formState.equipmentTags.length === 0 && (
+                                <span className="text-xs text-muted-foreground">
+                                  Add equipment to start building your featured list.
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                              Priority selected: {formState.priorityEquipmentTags.length}/3
+                            </p>
+                          </div>
+                        </Field>
+                        <Field label="Techniques" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                          <div className="space-y-3">
+                            <div className="grid gap-2 md:grid-cols-2">
+                              {formState.techniques.map((technique, index) => (
+                                <div key={`${technique.name}-${index}`} className="rounded-2xl border border-border px-4 py-3">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div>
+                                      <p className="text-sm font-semibold text-foreground">{technique.name}</p>
+                                      {technique.description && (
+                                        <p className="mt-1 text-xs text-muted-foreground">{technique.description}</p>
+                                      )}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeTechnique(index)}
+                                      className="text-muted-foreground hover:text-destructive"
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="grid gap-2 md:grid-cols-2">
+                              <input
+                                className={BASICS_INPUT_CLASS}
+                                placeholder="Technique name"
+                                value={techniqueInput.name}
+                                onChange={event => setTechniqueInput(prev => ({ ...prev, name: event.target.value }))}
+                              />
+                              <input
+                                className={BASICS_INPUT_CLASS}
+                                placeholder="Short description"
+                                value={techniqueInput.description ?? ""}
+                                onChange={event => setTechniqueInput(prev => ({ ...prev, description: event.target.value }))}
+                              />
+                              <button
+                                type="button"
+                                onClick={addTechnique}
+                                className="md:col-span-2 inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary"
+                              >
+                                Save technique
+                              </button>
+                            </div>
+                          </div>
+                        </Field>
+                        <Field label="Focus areas" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                          <div className="space-y-2">
+                            <input
+                              className={BASICS_INPUT_CLASS}
+                              placeholder="Add thematic focus areas, then press Enter"
+                              value={tagInput.field === "focusTags" ? tagInput.value : ""}
+                              onChange={event => setTagInput({ field: "focusTags", value: event.target.value })}
+                              onKeyDown={handleTagKey("focusTags")}
+                            />
+                            <div className="flex flex-wrap gap-2">
+                              {formState.focusTags.map(tag => (
+                                <span
+                                  key={tag}
+                                  className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-primary hover:bg-primary/10 hover:text-foreground"
+                                >
+                                  {tag}
+                                  <button
+                                    type="button"
+                                    onClick={() => removeTag("focusTags", tag)}
+                                    className="text-muted-foreground hover:text-destructive"
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </Field>
+                      </Section>
+                    )}
+
+                    {editTab === "Photos" && (
+                      <Section title="Photos">
+                        {canUseLogo && (
+                          <div className="grid gap-2">
+                            <div className="rounded-2xl border border-border bg-card/50 p-3 overflow-hidden">
+                              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                <p className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
+                                  <span>Logo</span>
+                                  <span className="rounded-full border border-emerald-300/60 bg-emerald-400/20 px-2 py-0.5 text-[10px] font-medium text-emerald-700 shadow-sm backdrop-blur-md">
+                                    verified labs
+                                  </span>
+                                </p>
+                                <div className="flex items-center gap-2">
+                                  {formState.logoUrl && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setLogoPreviewOpen(true)}
+                                      className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                                    >
+                                      Preview
+                                    </button>
+                                  )}
+                                  <label className="inline-flex items-center">
+                                    <span className="rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
+                                      Upload file
+                                      <input
+                                        id="lab-logo"
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={handleLogoUpload}
+                                        className="hidden"
+                                      />
+                                    </span>
+                                  </label>
+                                </div>
+                              </div>
+                              {logoUploading && <p className="text-xs text-muted-foreground">Uploading logo…</p>}
+                              {logoError && <p className="text-xs text-destructive">{logoError}</p>}
+                              {formState.logoUrl ? (
+                                <div className="flex w-full max-w-full gap-3 overflow-x-auto overflow-y-hidden pb-1 pr-3 pt-2">
+                                  <div className="group relative flex w-[170px] max-w-[170px] flex-shrink-0 flex-col gap-2 rounded-xl border border-border bg-muted/40 p-2 transition hover:border-primary/60 hover:bg-background/80 hover:shadow-md">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setFormState(prev => ({ ...prev, logoUrl: "" }));
+                                        resetLogoPreviewAdjustments();
+                                      }}
+                                      className="absolute -right-1.5 -top-1.5 z-10 inline-flex h-5 w-5 items-center justify-center rounded-full border border-destructive/70 bg-destructive/70 text-destructive-foreground ring-2 ring-background shadow-sm backdrop-blur-md transition hover:bg-destructive/85"
+                                      aria-label="Remove logo"
+                                      title="Remove logo"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                    <div className="relative">
+                                      <div
+                                        className="h-24 w-full overflow-hidden rounded"
+                                        style={{ padding: logoFramePaddingPercent, backgroundColor: logoFrameBackgroundColor }}
+                                      >
+                                        <img
+                                          src={formState.logoUrl}
+                                          alt={`${formState.name || "Lab"} logo`}
+                                          draggable={false}
+                                          className={PHOTO_THUMB_CLASS}
+                                          style={{ transform: logoPreviewTransform, transformOrigin: "center center" }}
+                                        />
+                                      </div>
+                                      <span className="absolute bottom-2 left-2 rounded-full border border-white/40 bg-white/25 px-1.5 py-0.5 text-[9px] font-medium text-white shadow-sm backdrop-blur-md">
+                                        Logo
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="mt-2 text-xs text-muted-foreground">No logo uploaded yet.</p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {canUsePartnerLogos ? (
+                          <div className="grid gap-2">
+                            <div className="rounded-2xl border border-border bg-card/50 p-3 overflow-hidden">
+                              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                <p className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
+                                  <span>Partner logos</span>
+                                  <span className="rounded-full border border-emerald-300/60 bg-emerald-400/20 px-2 py-0.5 text-[10px] font-medium text-emerald-700 shadow-sm backdrop-blur-md">
+                                    premier or multi-lab feature
+                                  </span>
+                                </p>
+                                <label className="inline-flex items-center">
+                                  <span className="rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
+                                    Upload file
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      onChange={handlePartnerLogoUpload}
+                                      className="hidden"
+                                    />
+                                  </span>
+                                </label>
+                              </div>
+                              {partnerLogos.length > 0 ? (
+                                <div className="flex w-full max-w-full gap-3 overflow-x-auto overflow-y-hidden pb-1 pr-3 pt-2">
+                                  {partnerLogos.map(logo => (
+                                    <div
+                                      key={logo.url}
+                                      className="group relative flex w-[210px] flex-shrink-0 flex-col gap-2 rounded-xl border border-border bg-muted/40 p-2 transition hover:border-primary/60 hover:bg-background/80 hover:shadow-md"
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={() => removePartnerLogo(logo.url)}
+                                        className="absolute -right-1.5 -top-1.5 z-10 inline-flex h-5 w-5 items-center justify-center rounded-full border border-destructive/70 bg-destructive/70 text-destructive-foreground ring-2 ring-background shadow-sm backdrop-blur-md transition hover:bg-destructive/85"
+                                        aria-label="Remove partner logo"
+                                        title="Remove partner logo"
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                      <div className="relative">
+                                        <img
+                                          src={logo.url}
+                                          alt={logo.name}
+                                          draggable={false}
+                                          className={PHOTO_THUMB_CLASS}
+                                        />
+                                        <span className="absolute bottom-2 left-2 rounded-full border border-white/40 bg-white/25 px-1.5 py-0.5 text-[9px] font-medium text-white shadow-sm backdrop-blur-md">
+                                          Partner logo
+                                        </span>
+                                      </div>
+                                      <input
+                                        className="w-full rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                                        placeholder="Partner website"
+                                        value={logo.website ?? ""}
+                                        onChange={event => updatePartnerLogo(logo.url, { website: event.target.value })}
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="mt-2 text-xs text-muted-foreground">No partner logos yet. Upload files to add partner logos.</p>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">Partner logos are available on the premier plan or multi-lab accounts.</p>
+                        )}
+
+                        <div className="rounded-2xl border border-border bg-card/50 p-3 overflow-hidden">
+                          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-semibold text-foreground">Lab photos</p>
+                            <label className="inline-flex items-center">
+                              <span className="rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground cursor-pointer transition hover:bg-primary/90">
+                                Upload file
+                                <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                              </span>
+                            </label>
+                          </div>
+                          {photoUploading && <p className="mt-2 text-xs text-muted-foreground">Uploading photo…</p>}
+                          {photoError && <p className="mt-2 text-xs text-destructive">{photoError}</p>}
+                          {photoAssets.length > 0 ? (
+                            <div className="flex w-full max-w-full gap-3 overflow-x-auto overflow-y-hidden pb-1 pr-3 pt-2">
+                              {photoAssets.map((photo, index) => (
+                                <div
+                                  key={photo.url}
+                                  draggable
+                                  onDragStart={event => {
+                                    event.dataTransfer.setData("text/plain", String(index));
+                                    event.dataTransfer.effectAllowed = "move";
+                                    setDraggingPhotoIndex(index);
+                                    const rect = event.currentTarget.getBoundingClientRect();
+                                    event.dataTransfer.setDragImage(
+                                      event.currentTarget,
+                                      rect.width / 2,
+                                      rect.height / 2,
+                                    );
+                                  }}
+                                  onDragEnd={() => setDraggingPhotoIndex(null)}
+                                  onDragOver={event => {
+                                    event.preventDefault();
+                                    event.dataTransfer.dropEffect = "move";
+                                  }}
+                                  onDrop={event => {
+                                    event.preventDefault();
+                                    const fromIndex = Number(event.dataTransfer.getData("text/plain"));
+                                    if (Number.isNaN(fromIndex)) return;
+                                    movePhoto(fromIndex, index);
+                                    setDraggingPhotoIndex(null);
+                                  }}
+                                  className={`group relative flex w-[170px] flex-shrink-0 flex-col gap-2 rounded-xl border border-border bg-muted/40 p-2 transition hover:border-primary/60 hover:bg-background/80 hover:shadow-md ${
+                                    draggingPhotoIndex === index ? "ring-2 ring-primary/30 opacity-90" : ""
+                                  }`}
+                                  title="Drag to reorder"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => removePhoto(photo)}
+                                    className="absolute -right-1.5 -top-1.5 z-10 inline-flex h-5 w-5 items-center justify-center rounded-full border border-destructive/70 bg-destructive/70 text-destructive-foreground ring-2 ring-background shadow-sm backdrop-blur-md transition hover:bg-destructive/85"
+                                    aria-label="Remove photo"
+                                    title="Remove photo"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                  <div className="relative">
+                                    <img
+                                      src={photo.url}
+                                      alt={photo.name}
+                                      draggable={false}
+                                      className={PHOTO_THUMB_CLASS}
+                                    />
+                                    {index === 0 && (
+                                      <span className="absolute bottom-2 left-2 rounded-full border border-white/40 bg-white/25 px-1.5 py-0.5 text-[9px] font-medium text-white shadow-sm backdrop-blur-md">
+                                        Cover on Labs cards
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-xs text-muted-foreground">No photos yet. Upload files to build your photo order bar.</p>
+                          )}
+                          <p className="mt-2 text-[11px] text-muted-foreground">
+                            Drag to reorder. Leftmost photo is the cover used on Labs cards.
+                          </p>
+                        </div>
+                      </Section>
+                    )}
+
+                    {editTab === "Offers" && (
+                      <Section title="Offers">
+                        <Field label="Offers lab space?" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                          <select
+                            id="lab-offers-space"
+                            value={formState.offersLabSpace}
+                            onChange={event => handleChange("offersLabSpace", event.target.value)}
+                            className={BASICS_INPUT_CLASS}
+                          >
+                            <option value="yes">Yes, accepting bench/space requests</option>
+                            <option value="no">No, visibility only</option>
+                          </select>
+                        </Field>
+                        <Field label="Rental offer profile" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                          <LabOfferProfileEditor
+                            draft={offerProfileDraft}
+                            onChange={setOfferProfileDraft}
+                            taxonomy={offerTaxonomy}
+                            loading={offerTaxonomyLoading}
+                            error={offerProfileError}
+                            disabled={formState.offersLabSpace !== "yes"}
+                          />
+                        </Field>
+                      </Section>
                     )}
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-description-short">
-                    Short description
-                  </label>
-                  <textarea
-                    id="lab-description-short"
-                    value={formState.descriptionShort}
-                    onChange={event => handleChange("descriptionShort", event.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    placeholder="One or two sentences under the lab title."
-                    rows={3}
-                  />
-                  <label className="text-sm font-medium text-foreground mt-4" htmlFor="lab-description-long">
-                    Long description
-                  </label>
-                  <textarea
-                    id="lab-description-long"
-                    value={formState.descriptionLong}
-                    onChange={event => handleChange("descriptionLong", event.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    placeholder="Longer overview shown later on the page."
-                    rows={6}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-offers-space">
-                    Offers lab space?
-                  </label>
-                  <select
-                    id="lab-offers-space"
-                    value={formState.offersLabSpace}
-                    onChange={event => handleChange("offersLabSpace", event.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    <option value="yes">Yes, accepting bench/space requests</option>
-                    <option value="no">No, visibility only</option>
-                  </select>
-                  <p className="text-xs text-muted-foreground">Controls whether pricing/offers show on the lab page.</p>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground" htmlFor="lab-address1">
-                      Address line 1 (internal)
-                    </label>
-                    <input
-                      id="lab-address1"
-                      type="text"
-                      value={formState.addressLine1}
-                      onChange={event => handleChange("addressLine1", event.target.value)}
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="123 Bio Ave"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground" htmlFor="lab-address2">
-                      Address line 2 (internal)
-                    </label>
-                    <input
-                      id="lab-address2"
-                      type="text"
-                      value={formState.addressLine2}
-                      onChange={event => handleChange("addressLine2", event.target.value)}
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="Suite, floor, etc."
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-hal-id">
-                    HAL structure ID (optional)
-                  </label>
-                  <input
-                    id="lab-hal-id"
-                    type="text"
-                    value={formState.halStructureId}
-                    onChange={event => handleChange("halStructureId", event.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    placeholder="struct-123456"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-hal-person-id">
-                    HAL person ID (optional)
-                  </label>
-                  <input
-                    id="lab-hal-person-id"
-                    type="text"
-                    value={formState.halPersonId}
-                    onChange={event => handleChange("halPersonId", event.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    placeholder="123456"
-                  />
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground" htmlFor="lab-city">
-                      City (internal)
-                    </label>
-                    <input
-                      id="lab-city"
-                      type="text"
-                      value={formState.city}
-                      onChange={event => handleChange("city", event.target.value)}
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="Boston"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground" htmlFor="lab-state">
-                      State/Region (internal)
-                    </label>
-                    <input
-                      id="lab-state"
-                      type="text"
-                      value={formState.state}
-                      onChange={event => handleChange("state", event.target.value)}
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="MA"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground" htmlFor="lab-postal">
-                      Postal code (internal)
-                    </label>
-                    <input
-                      id="lab-postal"
-                      type="text"
-                      value={formState.postalCode}
-                      onChange={event => handleChange("postalCode", event.target.value)}
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="02118"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-country">
-                    Country (internal)
-                  </label>
-                  <input
-                    id="lab-country"
-                    type="text"
-                    value={formState.country}
-                    onChange={event => handleChange("country", event.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    placeholder="United States"
-                  />
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground" htmlFor="lab-website">
-                      Website (optional)
-                    </label>
-                    <input
-                      id="lab-website"
-                      type="url"
-                      value={formState.website}
-                      onChange={event => handleChange("website", event.target.value)}
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="https://labs.example.com"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground" htmlFor="lab-linkedin">
-                      LinkedIn (optional)
-                    </label>
-                    <input
-                      id="lab-linkedin"
-                      type="url"
-                      value={formState.linkedin}
-                      onChange={event => handleChange("linkedin", event.target.value)}
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="https://www.linkedin.com/company/example"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground" htmlFor="lab-siret">
-                      SIRET (internal)
-                    </label>
-                    <input
-                      id="lab-siret"
-                      type="text"
-                      value={formState.siretNumber}
-                      onChange={event => handleChange("siretNumber", event.target.value)}
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="14-digit SIRET"
-                    />
-                    <p className="text-xs text-muted-foreground">Internal use only; not shown publicly.</p>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-verification">
-                    Audit status
-                  </label>
-                  <select
-                    id="lab-verification"
-                    value={formState.verification}
-                    onChange={event => handleChange("verification", event.target.value as VerificationOption)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    <option value="yes">Audit passed</option>
-                    <option value="no">Audit pending</option>
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-status">
-                    Lab status
-                  </label>
-                  <select
-                    id="lab-status"
-                    value={formState.labStatus}
-                    onChange={event => handleChange("labStatus", event.target.value as LabStatusOption)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    <option value="listed">Listed (unverified)</option>
-                    <option value="confirmed">Confirmed</option>
-                    <option value="verified_passive">Verified — passive</option>
-                    <option value="verified_active">Verified — active</option>
-                    <option value="premier">Premier</option>
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-org-role">
-                    Organization role
-                  </label>
-                  <select
-                    id="lab-org-role"
-                    value={formState.orgRole}
-                    onChange={event => handleChange("orgRole", event.target.value as "" | OrgRoleOption)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    <option value="">Select role type</option>
-                    {orgRoleOptions.map(role => (
-                      <option key={role} value={role}>
-                        {role}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-visibility">
-                    Visibility
-                  </label>
-                  <select
-                    id="lab-visibility"
-                    value={formState.isVisible}
-                    onChange={event => handleChange("isVisible", event.target.value as "yes" | "no")}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    <option value="yes">Visible in directory</option>
-                    <option value="no">Hidden (admin only)</option>
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-compliance">
-                    Compliance (comma separated)
-                  </label>
-                  <input
-                    id="lab-compliance"
-                    type="text"
-                    value={formState.compliance}
-                    onChange={event => handleChange("compliance", event.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    placeholder="BSL-2, ISO 7 Cleanroom"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Example: BSL-2, ISO 7 Cleanroom, GMP-aligned SOPs.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-complianceDocs">
-                    Compliance certificates (PDF)
-                  </label>
-                  <input
-                    id="lab-complianceDocs"
-                    type="file"
-                    accept="application/pdf"
-                    multiple
-                    onChange={handleComplianceUpload}
-                    className="w-full rounded-xl border border-dashed border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  />
-                  <p className="text-xs text-muted-foreground">Uploads are stored in the Supabase bucket `lab-pdfs`.</p>
-                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    {complianceAssets.map(asset => (
-                      <button
-                        key={asset.url}
-                        type="button"
-                        onClick={() => removeComplianceDoc(asset)}
-                        className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 transition hover:border-destructive hover:text-destructive"
-                      >
-                        <FileDown className="h-3 w-3 text-primary" />
-                        {asset.name}
-                        <X className="h-3 w-3" />
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      value={formState.complianceDocUrlInput}
-                      onChange={event => handleChange("complianceDocUrlInput", event.target.value)}
-                      className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="https://example.com/certificate.pdf"
-                    />
-                    <button
-                      type="button"
-                      onClick={addComplianceDocFromUrl}
-                      className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                    >
-                      <Upload className="h-4 w-4" />
-                      Add URL
-                    </button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Upload or link to safety certifications. These appear alongside compliance notes for researchers.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-focusAreas">
-                    Focus areas (comma separated)
-                  </label>
-                  <input
-                    id="lab-focusAreas"
-                    type="text"
-                    value={formState.focusAreas}
-                    onChange={event => handleChange("focusAreas", event.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    placeholder="Cell therapy, Process development"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-erc-disciplines">
-                    ERC disciplines (codes, comma separated)
-                  </label>
-                  <input
-                    id="lab-erc-disciplines"
-                    type="text"
-                    value={formState.ercDisciplineCodes}
-                    onChange={event => handleChange("ercDisciplineCodes", event.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    placeholder="LS1, LS7, PE2"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Use official ERC panel codes: PE1-PE11, LS1-LS9, SH1-SH8.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-erc-primary">
-                    Primary ERC discipline (single code)
-                  </label>
-                  <input
-                    id="lab-erc-primary"
-                    type="text"
-                    value={formState.primaryErcDisciplineCode}
-                    onChange={event => handleChange("primaryErcDisciplineCode", event.target.value.toUpperCase())}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    placeholder="LS1"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <span className="text-sm font-medium text-foreground">Rental offer profile</span>
-                  <LabOfferProfileEditor
-                    draft={offerProfileDraft}
-                    onChange={setOfferProfileDraft}
-                    taxonomy={offerTaxonomy}
-                    loading={offerTaxonomyLoading}
-                    error={offerProfileError}
-                    disabled={formState.offersLabSpace !== "yes"}
-                  />
-                  {formState.offersLabSpace !== "yes" && (
-                    <p className="text-xs text-muted-foreground">
-                      Set “Offers lab space?” to “Yes” to enable offer profile editing.
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-equipment">
-                    Equipment (comma separated)
-                  </label>
-                  <textarea
-                    id="lab-equipment"
-                    value={formState.equipment}
-                    onChange={event => handleChange("equipment", event.target.value)}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    placeholder="Single-use bioreactors, Cryostorage, Sequencing core"
-                    rows={3}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    List flagship instrumentation available to teams.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground" htmlFor="lab-photos">
-                    Lab photos
-                  </label>
-                  <input
-                    id="lab-photos"
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handlePhotoUpload}
-                    className="w-full rounded-xl border border-dashed border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  />
-                  <div className="grid gap-2 md:grid-cols-2">
-                    {photoAssets.map(asset => (
-                      <div key={asset.url} className="relative overflow-hidden rounded-2xl border border-border">
-                        <img src={asset.url} alt={asset.name} className="h-24 w-full object-cover" />
-                        <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground bg-background/80">
-                          <span className="truncate">{asset.name}</span>
-                          <button
-                            type="button"
-                            onClick={() => removePhoto(asset)}
-                            className="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] transition hover:border-destructive hover:text-destructive"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      value={formState.photoUrlInput}
-                      onChange={event => handleChange("photoUrlInput", event.target.value)}
-                      className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      placeholder="https://example.com/photo.jpg"
-                    />
-                    <button
-                      type="button"
-                      onClick={addPhotoFromUrl}
-                      className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                    >
-                      <ImageIcon className="h-4 w-4" />
-                      Add URL
-                    </button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Upload photos directly or link to hosted images. The first photo is used for the public thumbnail.
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap gap-3 pt-2">
-                  <button
-                    type="submit"
-                    disabled={isSaving}
-                    className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    <Save className="h-4 w-4" />
-                    {isSaving ? "Saving…" : "Save changes"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      cancelEdit();
-                      setStatusMessage(null);
-                    }}
-                    className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary"
-                  >
-                    <X className="h-4 w-4" />
-                    Cancel
-                  </button>
                 </div>
               </form>
-            ) : (
-              <div className="mt-16 text-center text-sm text-muted-foreground">
-                Select a lab from the list or choose “Add lab” to create a new listing.
-              </div>
-            )}
           </motion.div>
+          )}
         </div>
       </div>
+      {logoPreviewOpen && formState.logoUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/52 px-4 py-8">
+          <div className="w-full max-w-3xl rounded-3xl border border-white/45 bg-white/62 p-6 shadow-2xl backdrop-blur-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Logo preview</h2>
+                <p className="mt-1 text-sm text-slate-700">
+                  Preview how the logo avatar appears on Labs cards, then drag/zoom to adjust.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLogoPreviewOpen(false)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/60 bg-white/70 text-slate-700 transition hover:border-primary hover:text-primary"
+                aria-label="Close logo preview"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="rounded-2xl border border-white/50 bg-white/56 p-4 backdrop-blur-lg">
+                <p className="text-xs font-medium text-slate-700">Labs card avatar preview</p>
+                <div className="mt-3 rounded-2xl border border-white/55 bg-white/72 p-4 backdrop-blur-md">
+                  <div className="flex items-center gap-3">
+                    <div className="size-14 min-h-14 min-w-14 max-h-14 max-w-14 shrink-0 overflow-hidden rounded-full border-2 border-blue-400/80 bg-muted">
+                      <div
+                        className="h-full w-full overflow-hidden rounded-full"
+                        style={{
+                          padding: logoFramePaddingPercent,
+                          backgroundColor: logoFrameBackgroundColor,
+                          clipPath: "circle(50% at 50% 50%)",
+                        }}
+                      >
+                        <img
+                          src={formState.logoUrl}
+                          alt={`${formState.name || "Lab"} logo preview`}
+                          draggable={false}
+                          className="h-full w-full rounded-full object-cover"
+                          style={{
+                            transform: logoPreviewTransform,
+                            transformOrigin: "center center",
+                            clipPath: "circle(50% at 50% 50%)",
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900">{formState.name || "Your lab name"}</p>
+                      <p className="truncate text-xs text-slate-700">
+                        {formState.city || "City"}, {formState.country || "Country"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="relative mx-auto mt-4 h-56 w-56 rounded-2xl border border-white/55 bg-white/50 p-2 backdrop-blur-md">
+                  <div
+                    ref={logoEditorFrameRef}
+                    className="relative h-full w-full overflow-hidden rounded-full border-2 border-primary/80 cursor-grab active:cursor-grabbing"
+                    onMouseDown={handleLogoPreviewMouseDown}
+                    onMouseMove={handleLogoPreviewMouseMove}
+                    onMouseUp={handleLogoPreviewMouseUp}
+                    onMouseLeave={handleLogoPreviewMouseUp}
+                  >
+                    <div
+                      className="h-full w-full overflow-hidden rounded-full"
+                      style={{
+                        padding: logoFramePaddingPercent,
+                        backgroundColor: logoFrameBackgroundColor,
+                        clipPath: "circle(50% at 50% 50%)",
+                      }}
+                    >
+                      <img
+                        src={formState.logoUrl}
+                        alt={`${formState.name || "Lab"} logo editor`}
+                        draggable={false}
+                        className="h-full w-full rounded-full object-cover"
+                        style={{
+                          transform: logoPreviewTransform,
+                          transformOrigin: "center center",
+                          clipPath: "circle(50% at 50% 50%)",
+                        }}
+                      />
+                    </div>
+                    <div
+                      className="pointer-events-none absolute inset-0 opacity-45"
+                      style={{
+                        backgroundImage:
+                          "linear-gradient(to right, rgba(15,23,42,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(15,23,42,0.12) 1px, transparent 1px)",
+                        backgroundSize: "20px 20px",
+                      }}
+                    />
+                  </div>
+                  <span className="pointer-events-none absolute left-1/2 top-1.5 -translate-x-1/2 rounded-full border border-white/70 bg-white/75 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+                    Exact avatar crop area
+                  </span>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-white/50 bg-white/56 p-4 backdrop-blur-lg">
+                <p className="text-xs font-medium text-slate-700">Adjust image</p>
+                <div className="mt-3 space-y-4">
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-xs text-slate-700">
+                      <span>Zoom</span>
+                      <span>{logoPreviewScale.toFixed(2)}x</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={2.5}
+                      step={0.01}
+                      value={logoPreviewScale}
+                      onChange={event => setLogoPreviewScale(Number(event.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-xs text-slate-700">
+                      <span>Horizontal</span>
+                      <span>{logoPreviewOffsetX}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={-50}
+                      max={50}
+                      step={0.1}
+                      value={logoPreviewOffsetX}
+                      onChange={event => setLogoPreviewOffsetX(Number(event.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-xs text-slate-700">
+                      <span>Vertical</span>
+                      <span>{logoPreviewOffsetY}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={-50}
+                      max={50}
+                      step={0.1}
+                      value={logoPreviewOffsetY}
+                      onChange={event => setLogoPreviewOffsetY(Number(event.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-xs text-slate-700">
+                      <span>Frame thickness</span>
+                      <span>{logoFramePadding}px ({Math.round(logoFramePaddingRatio * 100)}%)</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={24}
+                      step={1}
+                      value={logoFramePadding}
+                      onChange={event => setLogoFramePadding(Number(event.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs text-slate-700">Frame color</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setLogoFrameColor("white")}
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition ${
+                          logoFrameColor === "white"
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-slate-300 bg-white/80 text-slate-700 hover:border-primary/60"
+                        }`}
+                      >
+                        <span className="h-2.5 w-2.5 rounded-full border border-slate-300 bg-white" />
+                        White
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLogoFrameColor("black")}
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition ${
+                          logoFrameColor === "black"
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-slate-300 bg-white/80 text-slate-700 hover:border-primary/60"
+                        }`}
+                      >
+                        <span className="h-2.5 w-2.5 rounded-full border border-slate-500 bg-black" />
+                        Black
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLogoFrameColor("custom")}
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition ${
+                          logoFrameColor === "custom"
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-slate-300 bg-white/80 text-slate-700 hover:border-primary/60"
+                        }`}
+                      >
+                        <span
+                          className="h-2.5 w-2.5 rounded-full border border-slate-400"
+                          style={{ backgroundColor: logoFrameCustomColor }}
+                        />
+                        Custom
+                      </button>
+                    </div>
+                    {logoFrameColor === "custom" && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={logoFrameCustomColor}
+                          onChange={event => setLogoFrameCustomColor(event.target.value)}
+                          className="h-8 w-10 cursor-pointer rounded border border-slate-300 bg-white p-0.5"
+                          aria-label="Choose custom frame color"
+                        />
+                        <input
+                          type="text"
+                          value={logoFrameCustomColor}
+                          onChange={event => setLogoFrameCustomColor(event.target.value)}
+                          className="h-8 w-28 rounded border border-slate-300 bg-white/90 px-2 text-xs text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          placeholder="#RRGGBB"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={resetLogoPreviewAdjustments}
+                      className="rounded-full border border-slate-300 bg-white/80 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-primary hover:text-primary"
+                    >
+                      Reset
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLogoPreviewOpen(false)}
+                      className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
+  );
+}
+
+function AdminStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card/70 px-4 py-3">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{label}</p>
+      <p className="mt-1 text-xl font-semibold text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="space-y-4 rounded-3xl border border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(248,250,252,0.78))] p-5 shadow-[0_18px_34px_-22px_rgba(15,23,42,0.45)] backdrop-blur-sm">
+      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+      <div className="grid gap-4">{children}</div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  children,
+  labelClassName,
+  containerClassName,
+  fieldId,
+  highlighted = false,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+  labelClassName?: string;
+  containerClassName?: string;
+  fieldId?: string;
+  highlighted?: boolean;
+}) {
+  return (
+    <div
+      id={fieldId}
+      className={`grid gap-2 transition ${
+        highlighted ? "ring-2 ring-primary/60 animate-[pulse_0.45s_ease-in-out_4]" : ""
+      } ${containerClassName ?? ""} shadow-[0_8px_18px_-16px_rgba(30,64,175,0.45)]`.trim()}
+    >
+      <label className={labelClassName ?? "text-sm font-medium text-foreground"}>{label}</label>
+      {children}
+    </div>
   );
 }
 

@@ -1869,7 +1869,21 @@ export default function MyLab({ params }: { params: { id: string } }) {
                     required
                   />
                 </Field>
-                <Field label="SIRET" labelClassName={BASICS_LABEL_CLASS} containerClassName={BASICS_FIELD_CLASS}>
+                <Field
+                  label={
+                    <span className="inline-flex items-center gap-2">
+                      <span>SIRET</span>
+                      <span className="group relative inline-flex h-4 w-4 items-center justify-center rounded-full border border-border bg-background/85 text-[9px] font-semibold text-muted-foreground transition hover:border-primary hover:text-primary">
+                        ↗
+                        <span className="pointer-events-none absolute left-full top-1/2 ml-2 -translate-y-1/2 whitespace-nowrap rounded-full border border-border bg-background/95 px-2 py-1 text-[10px] font-medium normal-case tracking-normal text-muted-foreground opacity-0 shadow-sm transition-opacity duration-200 group-hover:opacity-100">
+                          Used for patent search in your lab profile.
+                        </span>
+                      </span>
+                    </span>
+                  }
+                  labelClassName={BASICS_LABEL_CLASS}
+                  containerClassName={BASICS_FIELD_CLASS}
+                >
                   <input
                     className={BASICS_INPUT_CLASS}
                     value={form.siretNumber}
