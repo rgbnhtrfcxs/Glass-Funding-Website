@@ -55,6 +55,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const { hasAnalyticsConsent } = useConsent();
   const lab = labs.find(item => item.id === Number(params.id));
   const labId = lab?.id;
+  const halConfigured = Boolean(lab?.halStructureId || lab?.halPersonId);
   const primaryErcDiscipline = lab?.primaryErcDisciplineCode
     ? (lab.ercDisciplines ?? []).find(item => item.code === lab.primaryErcDisciplineCode)
     : null;
@@ -197,7 +198,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const [viewRecorded, setViewRecorded] = useState(false);
   const [showInvestor, setShowInvestor] = useState(false);
   const [investorName, setInvestorName] = useState("");
-  const [investorEmail, setInvestorEmail] = useState(user?.email || "");
+  const [investorEmail, setInvestorEmail] = useState<string>(user?.email || "");
   const [investorCompany, setInvestorCompany] = useState("");
   const [investorWebsite, setInvestorWebsite] = useState("");
   const [investorMessage, setInvestorMessage] = useState("");
@@ -303,6 +304,10 @@ export default function LabDetails({ params }: LabDetailsProps) {
       setFavoriteError("Sign in to favorite labs.");
       return;
     }
+    if (!labId) {
+      setFavoriteError("Lab not found.");
+      return;
+    }
     setFavoriteLoading(true);
     setFavoriteError(null);
     try {
@@ -313,7 +318,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
         return;
       }
       const method = isFavorite ? "DELETE" : "POST";
-      const res = await fetch(`/api/labs/${lab.id}/favorite`, {
+      const res = await fetch(`/api/labs/${labId}/favorite`, {
         method,
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -360,15 +365,28 @@ export default function LabDetails({ params }: LabDetailsProps) {
   useEffect(() => {
     if (!showHalModal || !labId) return;
     let active = true;
+    if (halModalType === "publications" && !halConfigured) {
+      setHalItems([]);
+      setHalError(null);
+      setHalLoading(false);
+      return;
+    }
     setHalLoading(true);
     setHalError(null);
     const endpoint =
-      halModalType === "patents" ? `/api/labs/${labId}/hal-patents` : `/api/labs/${labId}/hal-publications`;
+      halModalType === "patents" ? `/api/labs/${labId}/patents` : `/api/labs/${labId}/hal-publications`;
     fetch(endpoint)
       .then(async res => {
         if (!res.ok) {
           const txt = await res.text();
-          throw new Error(txt || `Unable to load ${halModalType}`);
+          let message = txt;
+          try {
+            const parsed = txt ? JSON.parse(txt) : null;
+            if (parsed?.message) message = parsed.message;
+          } catch {
+            // ignore parse failures
+          }
+          throw new Error(message || `Unable to load ${halModalType}`);
         }
         return res.json();
       })
@@ -384,7 +402,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
     return () => {
       active = false;
     };
-  }, [showHalModal, halModalType, labId]);
+  }, [showHalModal, halModalType, labId, halConfigured]);
 
   useEffect(() => {
     if (!hasAnalyticsConsent || viewRecorded || !labId) return;
@@ -451,11 +469,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
       : `${url}${url.includes("?") ? "&" : "?"}auto=format&fit=crop&w=${width}&q=80`;
   const labStatus = ((lab.labStatus || (lab as any).lab_status || "listed") as string).toLowerCase().trim();
   const isPremier = labStatus === "premier";
-  const auditPassed =
-    lab.auditPassed === true ||
-    lab.auditPassed === "true" ||
-    lab.auditPassed === 1 ||
-    lab.auditPassed === "1";
+  const auditPassed = Boolean(lab.auditPassed);
   const isPendingStatus = ["pending", "confirmed"].includes(labStatus);
   const logoUrl = (lab as any)?.logoUrl ?? (lab as any)?.logo_url ?? null;
   const status = (() => {
@@ -467,11 +481,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
     return "listed";
   })();
   const canRequestLab = status === "verified" || status === "premier";
-  const offersLabSpace =
-    lab.offersLabSpace === true ||
-    lab.offersLabSpace === "true" ||
-    lab.offersLabSpace === 1 ||
-    lab.offersLabSpace === "1";
+  const offersLabSpace = Boolean(lab.offersLabSpace);
   const teamGroups = (() => {
     const groups = new Map<string, typeof lab.teamMembers>();
     for (const member of lab.teamMembers) {
@@ -751,20 +761,6 @@ export default function LabDetails({ params }: LabDetailsProps) {
                     </span>
                   )}
                 </div>
-                {(lab.orgRole || topErcLabel) && (
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    {lab.orgRole && (
-                      <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 font-medium text-foreground">
-                        {lab.orgRole}
-                      </span>
-                    )}
-                    {topErcLabel && (
-                      <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 font-medium text-foreground">
-                        {topErcLabel}
-                      </span>
-                    )}
-                  </div>
-                )}
               </div>
               <div className="flex items-center gap-2">
                 {isListedOnly && (
@@ -814,6 +810,20 @@ export default function LabDetails({ params }: LabDetailsProps) {
               )}
               <h1 className="text-4xl font-semibold text-foreground">{lab.name}</h1>
             </div>
+            {(lab.orgRole || topErcLabel) && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                {lab.orgRole && (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 font-medium text-foreground">
+                    {lab.orgRole}
+                  </span>
+                )}
+                {topErcLabel && (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 font-medium text-foreground">
+                    {topErcLabel}
+                  </span>
+                )}
+              </div>
+            )}
             {lab.descriptionShort ? (
               <p className="text-muted-foreground text-base leading-relaxed text-justify">{lab.descriptionShort}</p>
             ) : (
@@ -1129,13 +1139,13 @@ export default function LabDetails({ params }: LabDetailsProps) {
             <p className="text-sm text-destructive">{teamsError}</p>
           )}
 
-          {(lab.halStructureId || lab.halPersonId) && (
+          {halConfigured && (
             <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-semibold text-foreground">Publications & patents</h2>
+                  <h2 className="text-lg font-semibold text-foreground">Publications</h2>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    View the lab&apos;s publications and patents from HAL.
+                    View the lab&apos;s publications from HAL.
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1148,17 +1158,6 @@ export default function LabDetails({ params }: LabDetailsProps) {
                     className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
                   >
                     View publications
-                    <ArrowUpRight className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setHalModalType("patents");
-                      setShowHalModal(true);
-                    }}
-                    className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                  >
-                    View patents
                     <ArrowUpRight className="h-4 w-4" />
                   </button>
                 </div>
@@ -1204,7 +1203,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
             <div className="w-full max-w-3xl rounded-3xl border border-border bg-background p-6 shadow-xl">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-foreground">
-                  {halModalType === "patents" ? "HAL patents" : "HAL publications"}
+                  {halModalType === "patents" ? "Patents" : "Publications"}
                 </h3>
                 <button
                   type="button"
@@ -1226,23 +1225,43 @@ export default function LabDetails({ params }: LabDetailsProps) {
                     No {halModalType === "patents" ? "patents" : "publications"} found for this lab.
                   </p>
                 )}
-                {halItems.map(item => (
-                  <a
-                    key={`${item.url}-${item.title}`}
-                    href={item.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary transition"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-foreground">{item.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {item.year ? `${item.year} • ` : ""}{item.doi || item.url}
-                      </p>
-                    </div>
-                    <ArrowUpRight className="h-4 w-4 flex-shrink-0" />
-                  </a>
-                ))}
+                {halItems.map((item, index) => {
+                  const content = (
+                    <>
+                      <div className="min-w-0">
+                        <p className="truncate text-foreground">{item.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.year ? `${item.year} • ` : ""}
+                          {item.doi || item.url || "No external link"}
+                        </p>
+                      </div>
+                      {item.url && <ArrowUpRight className="h-4 w-4 flex-shrink-0" />}
+                    </>
+                  );
+
+                  const className =
+                    "flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2 text-sm text-muted-foreground transition";
+
+                  if (!item.url) {
+                    return (
+                      <div key={`item-${item.title}-${index}`} className={className}>
+                        {content}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <a
+                      key={`${item.url}-${item.title}-${index}`}
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`${className} hover:border-primary hover:text-primary`}
+                    >
+                      {content}
+                    </a>
+                  );
+                })}
               </div>
             </div>
           </div>

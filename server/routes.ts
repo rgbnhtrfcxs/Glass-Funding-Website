@@ -1,5 +1,5 @@
 // server/routes.ts
-import express, { Express } from "express";
+import express, { Express, NextFunction, Request, Response } from "express";
 import { createServer } from "http";
 import { supabase } from "./supabaseClient.js";
 import { storage } from "./storage";
@@ -8,8 +8,8 @@ import { teamStore } from "./teams-store";
 import { labRequestStore } from "./lab-requests-store";
 import { labCollaborationStore } from "./collaboration-store";
 import { sendMail } from "./mailer";
-import jwt from "jsonwebtoken";
 import { supabasePublic } from "./supabasePublicClient.js";
+import { fetchInpiPatentsBySiren, isInpiConfigured, toSirenFromSiretOrSiren } from "./inpiClient.js";
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -29,10 +29,9 @@ import {
   insertLabRequestSchema,
   updateLabRequestStatusSchema,
 } from "@shared/labRequests";
+import { upsertLabOfferProfileSchema } from "@shared/labOffers";
 import { insertLabViewSchema } from "@shared/views";
 import { insertTeamSchema, updateTeamSchema } from "@shared/teams";
-
-import { insertDonationSchema } from "@shared/donations";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -204,6 +203,37 @@ const stripePricingCache: {
   expiresAt: 0,
 };
 
+const rateLimitState = new Map<string, { count: number; resetAt: number }>();
+
+const getRequestIp = (req: Request) => {
+  const ip = req.ip || req.socket.remoteAddress || "";
+  return ip.trim() || "unknown";
+};
+
+const createRateLimiter =
+  (scope: string, maxRequests: number, windowMs: number) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    const now = Date.now();
+    const ip = getRequestIp(req);
+    const key = `${scope}:${ip}`;
+    const existing = rateLimitState.get(key);
+
+    if (!existing || now >= existing.resetAt) {
+      rateLimitState.set(key, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+
+    if (existing.count >= maxRequests) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((existing.resetAt - now) / 1000));
+      res.setHeader("Retry-After", String(retryAfterSeconds));
+      return res.status(429).json({ message: "Too many requests. Please try again shortly." });
+    }
+
+    existing.count += 1;
+    rateLimitState.set(key, existing);
+    return next();
+  };
+
 const stripePriceMap = () => {
   const mapping: Record<string, { tier: "verified" | "premier"; interval: string }> = {};
   const add = (priceId: string | undefined, tier: "verified" | "premier", interval: string) => {
@@ -211,9 +241,26 @@ const stripePriceMap = () => {
   };
   add(process.env.STRIPE_PRICE_VERIFIED_MONTHLY, "verified", "monthly");
   add(process.env.STRIPE_PRICE_VERIFIED_YEARLY, "verified", "yearly");
+  add(process.env.STRIPE_PRICE_VERIFIED_YEARLY_DISCOUNT, "verified", "yearly");
   add(process.env.STRIPE_PRICE_PREMIER_MONTHLY, "premier", "monthly");
   add(process.env.STRIPE_PRICE_PREMIER_YEARLY, "premier", "yearly");
+  add(process.env.STRIPE_PRICE_PREMIER_YEARLY_DISCOUNT, "premier", "yearly");
   return mapping;
+};
+
+const resolveStripePriceId = (planKey: string, intervalKey: string) => {
+  const verifiedYearly =
+    process.env.STRIPE_PRICE_VERIFIED_YEARLY_DISCOUNT || process.env.STRIPE_PRICE_VERIFIED_YEARLY;
+  const premierYearly =
+    process.env.STRIPE_PRICE_PREMIER_YEARLY_DISCOUNT || process.env.STRIPE_PRICE_PREMIER_YEARLY;
+
+  if (planKey === "verified") {
+    return intervalKey === "yearly" ? verifiedYearly : process.env.STRIPE_PRICE_VERIFIED_MONTHLY;
+  }
+  if (planKey === "premier") {
+    return intervalKey === "yearly" ? premierYearly : process.env.STRIPE_PRICE_PREMIER_MONTHLY;
+  }
+  return undefined;
 };
 
 const timingSafeEqual = (a: string, b: string) => {
@@ -233,6 +280,113 @@ const listLabIdsForUser = async (userId?: string | null) => {
     });
   }
   return Array.from(ids);
+};
+
+const parseRequestedLabId = (value: unknown): number | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return Number.NaN;
+  return parsed;
+};
+
+const getLabSubscriptionTierRank = (status?: string | null) => {
+  const normalized = normalizeLabStatus(status);
+  if (normalized === "premier") return 2;
+  if (normalized === "verified" || normalized === "verified_active" || normalized === "verified_passive") {
+    return 1;
+  }
+  return 0;
+};
+
+const canLabSubscribeToPlan = (status: string | null | undefined, planKey: "verified" | "premier") => {
+  const rank = getLabSubscriptionTierRank(status);
+  if (planKey === "verified") return rank < 1;
+  return rank < 2;
+};
+
+const resolveSubscriptionLabId = async (
+  userId: string,
+  requestedLabId: unknown,
+  planKey: "verified" | "premier",
+) => {
+  const { data, error } = await supabase
+    .from("labs")
+    .select("id, name, lab_status")
+    .eq("owner_user_id", userId);
+  if (error) {
+    return {
+      labId: null as number | null,
+      error: { status: 500, message: "Unable to load labs for subscription." },
+    };
+  }
+
+  const ownedLabs = (data ?? [])
+    .map(row => ({
+      id: Number((row as any).id),
+      name: typeof (row as any).name === "string" ? (row as any).name : "",
+      labStatus: typeof (row as any).lab_status === "string" ? (row as any).lab_status : null,
+    }))
+    .filter(row => Number.isInteger(row.id) && row.id > 0);
+
+  if (!ownedLabs.length) {
+    return {
+      labId: null as number | null,
+      error: { status: 400, message: "No labs linked to this account. Create a lab before subscribing." },
+    };
+  }
+
+  const eligibleLabs = ownedLabs.filter(lab => canLabSubscribeToPlan(lab.labStatus, planKey));
+  if (!eligibleLabs.length) {
+    return {
+      labId: null as number | null,
+      error: {
+        status: 409,
+        message:
+          planKey === "premier"
+            ? "All your labs are already on Premier."
+            : "All your labs are already on Verified or Premier.",
+      },
+    };
+  }
+
+  const parsedLabId = parseRequestedLabId(requestedLabId);
+  if (parsedLabId === null) {
+    if (eligibleLabs.length === 1) {
+      return { labId: eligibleLabs[0].id, error: null as { status: number; message: string } | null };
+    }
+    return {
+      labId: null as number | null,
+      error: { status: 400, message: "Please select an eligible lab for this subscription." },
+    };
+  }
+  if (Number.isNaN(parsedLabId)) {
+    return {
+      labId: null as number | null,
+      error: { status: 400, message: "Invalid lab id" },
+    };
+  }
+  const selectedLab = ownedLabs.find(lab => lab.id === parsedLabId);
+  if (!selectedLab) {
+    return {
+      labId: null as number | null,
+      error: { status: 403, message: "You can only subscribe for your own lab." },
+    };
+  }
+  if (!canLabSubscribeToPlan(selectedLab.labStatus, planKey)) {
+    return {
+      labId: null as number | null,
+      error: {
+        status: 409,
+        message:
+          planKey === "premier"
+            ? `${selectedLab.name || "Selected lab"} is already on Premier.`
+            : `${selectedLab.name || "Selected lab"} is already on Verified or Premier.`,
+      },
+    };
+  }
+
+  return { labId: parsedLabId, error: null as { status: number; message: string } | null };
 };
 
 const parseBoolean = (value: boolean | string | null | undefined, fallback = false) => {
@@ -265,6 +419,17 @@ const getPasswordPolicyError = (password: string) => {
     return "Password must include at least one symbol.";
   }
   return null;
+};
+
+const resolvePublicSiteOrigin = (req: Request) => {
+  const configured = (process.env.PUBLIC_SITE_URL || "https://glass-connect.com").trim().replace(/\/+$/, "");
+  if (process.env.NODE_ENV !== "production") {
+    const hostHeader = req.get("host");
+    if (hostHeader) {
+      return `${req.protocol}://${hostHeader}`.replace(/\/+$/, "");
+    }
+  }
+  return configured;
 };
 
 const errorToMessage = (error: unknown, fallback: string) => {
@@ -1104,6 +1269,11 @@ const fetchProfileCapabilities = async (userId?: string | null) => {
 };
 
 const normalizeLabStatus = (status?: string | null) => (status || "listed").toLowerCase();
+const formatLabStatusLabel = (status?: string | null) => {
+  const normalized = normalizeLabStatus(status);
+  if (normalized === "verified_active" || normalized === "verified_passive") return "verified";
+  return normalized;
+};
 const isVerifiedLabStatus = (status?: string | null) =>
   ["verified_passive", "verified_active", "premier"].includes(normalizeLabStatus(status));
 const canForwardLabRequests = (status?: string | null) =>
@@ -1145,11 +1315,16 @@ const getStripePricing = async () => {
   const stripeKey = process.env.STRIPE_SECRET_KEY;
   if (!stripeKey) return null;
 
+  const verifiedYearlyPriceId =
+    process.env.STRIPE_PRICE_VERIFIED_YEARLY_DISCOUNT || process.env.STRIPE_PRICE_VERIFIED_YEARLY;
+  const premierYearlyPriceId =
+    process.env.STRIPE_PRICE_PREMIER_YEARLY_DISCOUNT || process.env.STRIPE_PRICE_PREMIER_YEARLY;
+
   const [verifiedMonthly, verifiedYearly, premierMonthly, premierYearly] = await Promise.all([
     fetchStripePrice(stripeKey, process.env.STRIPE_PRICE_VERIFIED_MONTHLY),
-    fetchStripePrice(stripeKey, process.env.STRIPE_PRICE_VERIFIED_YEARLY),
+    fetchStripePrice(stripeKey, verifiedYearlyPriceId),
     fetchStripePrice(stripeKey, process.env.STRIPE_PRICE_PREMIER_MONTHLY),
-    fetchStripePrice(stripeKey, process.env.STRIPE_PRICE_PREMIER_YEARLY),
+    fetchStripePrice(stripeKey, premierYearlyPriceId),
   ]);
 
   const data = {
@@ -1241,6 +1416,21 @@ const insertLegalAssistSchema = z.object({
   details: z.string().min(10, "Please add a short description"),
 });
 
+const insertTierUpgradeInterestSchema = z.object({
+  tier: z.enum(["verified", "premier"]),
+  interval: z.enum(["monthly", "yearly"]).optional(),
+  labIds: z.array(z.number().int().positive()).min(1, "Select at least one lab"),
+});
+
+const insertOnboardingCallRequestSchema = z.object({
+  labName: z.string().trim().min(2, "Lab name is required").max(160, "Lab name is too long"),
+  website: z.string().trim().min(3, "Website is required").max(255, "Website is too long"),
+  contactName: z.string().trim().min(2, "Contact name is required").max(120, "Contact name is too long"),
+  contactEmail: z.string().trim().email("Valid contact email is required"),
+  contactPhone: z.string().trim().max(80, "Contact phone is too long").optional(),
+  notes: z.string().trim().max(2000, "Notes are too long").optional(),
+});
+
 const resolveSubscriptionTier = (subscription: any) => {
   const metadataPlan = (subscription?.metadata?.plan as string | undefined)?.toLowerCase();
   if (metadataPlan === "verified" || metadataPlan === "premier") {
@@ -1287,7 +1477,7 @@ const getProfileSubscription = async (userId: string) => {
 const isActiveSubscriptionStatus = (status: string) =>
   status === "active" || status === "past_due" || status === "trialing";
 
-const authenticate = async (req, res, next) => {
+const authenticate = async (req: Request, res: Response, next: NextFunction) => {
   const authHeader = typeof req.headers.authorization === "string" ? req.headers.authorization.trim() : "";
   const token = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7).trim() : authHeader;
   const normalizedToken = token.replace(/^"+|"+$/g, "");
@@ -1300,10 +1490,57 @@ const authenticate = async (req, res, next) => {
   next();
 };
 
+const getOptionalUserIdFromAuthHeader = async (req: Request): Promise<string | null> => {
+  const authHeader = typeof req.headers.authorization === "string" ? req.headers.authorization.trim() : "";
+  const token = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7).trim() : authHeader;
+  const normalizedToken = token.replace(/^"+|"+$/g, "");
+  if (!normalizedToken) return null;
+
+  const { data, error } = await supabasePublic.auth.getUser(normalizedToken);
+  if (error || !data?.user?.id) return null;
+  return data.user.id;
+};
+
+const canAccessLabFromPublicRoute = async (req: Request, lab: { isVisible?: boolean | null; ownerUserId?: string | null }) => {
+  if (lab?.isVisible !== false) return true;
+  const userId = await getOptionalUserIdFromAuthHeader(req);
+  if (!userId) return false;
+  if (lab?.ownerUserId && lab.ownerUserId === userId) return true;
+  const profile = await fetchProfileCapabilities(userId);
+  return Boolean(profile?.isAdmin);
+};
+
+const sanitizePublicLab = (lab: any) => {
+  const {
+    ownerUserId: _ownerUserId,
+    owner_user_id: _ownerUserIdSnake,
+    contactEmail: _contactEmail,
+    contact_email: _contactEmailSnake,
+    ...safe
+  } = lab ?? {};
+  return safe;
+};
+
+const sanitizePublicTeam = (team: any) => ({
+  ...team,
+  ownerUserId: null,
+  members: Array.isArray(team?.members)
+    ? team.members.map((member: any) => ({
+        ...member,
+        email: null,
+      }))
+    : [],
+});
+
 export function registerRoutes(app: Express) {
   // Middleware
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+
+  const signupRateLimit = createRateLimiter("signup", 8, 15 * 60 * 1000);
+  const loginRateLimit = createRateLimiter("login", 20, 15 * 60 * 1000);
+  const publicFormRateLimit = createRateLimiter("public-form", 20, 10 * 60 * 1000);
+  const publicRequestRateLimit = createRateLimiter("public-request", 20, 10 * 60 * 1000);
 
   // --------- Stripe Webhook ----------
   app.post("/api/stripe/webhook", async (req, res) => {
@@ -1342,6 +1579,7 @@ export function registerRoutes(app: Express) {
       if (!customerId) return;
       let userId: string | null = subscription?.metadata?.user_id ?? null;
       let customerEmail: string | null = null;
+      let customerLabId: number | null = null;
 
       try {
         const stripeKey = process.env.STRIPE_SECRET_KEY;
@@ -1352,6 +1590,11 @@ export function registerRoutes(app: Express) {
         const customer = await fetchStripeCustomer(stripeKey, customerId);
         userId = userId || customer?.metadata?.user_id || null;
         customerEmail = customer?.email || null;
+        const parsedCustomerLabId = parseRequestedLabId(customer?.metadata?.lab_id);
+        customerLabId =
+          typeof parsedCustomerLabId === "number" && !Number.isNaN(parsedCustomerLabId)
+            ? parsedCustomerLabId
+            : null;
       } catch (error) {
         console.warn("[stripe] customer lookup failed", error);
       }
@@ -1386,6 +1629,30 @@ export function registerRoutes(app: Express) {
         console.warn("[stripe] failed to update profile", updateError.message);
       }
 
+      const parsedLabId = parseRequestedLabId(subscription?.metadata?.lab_id);
+      const subscriptionLabId =
+        typeof parsedLabId === "number" && !Number.isNaN(parsedLabId) ? parsedLabId : customerLabId;
+      const stripeSubscriptionStatus = typeof subscription?.status === "string" ? subscription.status.toLowerCase() : "";
+      const targetLabStatus =
+        stripeSubscriptionStatus === "active"
+          ? tier === "premier"
+            ? "premier"
+            : tier === "verified"
+              ? "verified_active"
+              : null
+          : null;
+
+      if (subscriptionLabId && targetLabStatus) {
+        const { error: labUpdateError } = await supabase
+          .from("labs")
+          .update({ lab_status: targetLabStatus })
+          .eq("id", subscriptionLabId)
+          .eq("owner_user_id", userId);
+        if (labUpdateError) {
+          console.warn("[stripe] failed to update lab status", labUpdateError.message);
+        }
+      }
+
     };
 
     try {
@@ -1416,230 +1683,10 @@ export function registerRoutes(app: Express) {
     return res.json({ received: true });
   });
 
-  // --------- Donations ----------
-  app.post("/api/donations", async (req, res) => {
-    try {
-      const payload = insertDonationSchema.parse(req.body);
-      const { data, error } = await supabase
-        .from("donations")
-        .insert(payload)
-        .select()
-        .single();
-      if (error) throw error;
-      res.status(201).json(data);
-    } catch (error) {
-      if (error instanceof ZodError) {
-        const issue = error.issues[0];
-        return res
-          .status(400)
-          .json({ message: issue?.message ?? "Invalid donation payload" });
-      }
-      res
-        .status(500)
-        .json({ message: error instanceof Error ? error.message : "Unable to save donation" });
-    }
-  });
-
-  app.get("/api/donations", async (_req, res) => {
-    try {
-      const { data, error } = await supabase
-        .from("donations")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      res.json(data ?? []);
-    } catch (error) {
-      res
-        .status(500)
-        .json({ message: error instanceof Error ? error.message : "Unable to load donations" });
-    }
-  });
-
-  // --------- Stripe Checkout for donations ----------
-  app.post("/api/donations/checkout", async (req, res) => {
-    try {
-      const { amount, email, donorType, recurring, ...meta } = req.body ?? {};
-      const amountNumber = Number(amount);
-      if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
-        return res.status(400).json({ message: "Valid amount is required" });
-      }
-      if (typeof email !== "string" || !email.trim()) {
-        return res.status(400).json({ message: "Valid email is required" });
-      }
-      const stripeKey = process.env.STRIPE_SECRET_KEY;
-      if (!stripeKey) return res.status(500).json({ message: "Stripe not configured" });
-
-      const recurringFlag =
-        recurring === true || recurring === "true" || recurring === 1 || recurring === "1";
-      const metaEntries = {
-        donorType: donorType || "",
-        recurring: recurringFlag ? "true" : "false",
-        ...meta,
-      };
-      const donorName =
-        (meta.fullName || "").trim() ||
-        (meta.companyName || "").trim() ||
-        (meta.contactName || "").trim() ||
-        email.trim();
-      let clientSecret: string | undefined;
-      let paymentIntentId: string | undefined;
-      let subscriptionId: string | undefined;
-      let status: string | undefined;
-      const billingMode = recurringFlag ? "subscription" : "payment_intent";
-
-      if (recurringFlag) {
-        const customerParams = new URLSearchParams();
-        customerParams.append("email", email.trim());
-        customerParams.append("name", donorName);
-        Object.entries(metaEntries).forEach(([key, val]) => {
-          if (val !== undefined && val !== null && val !== "") {
-            customerParams.append(`metadata[${key}]`, String(val));
-          }
-        });
-        const customerRes = await fetch("https://api.stripe.com/v1/customers", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${stripeKey}`,
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: customerParams.toString(),
-        });
-        if (!customerRes.ok) {
-          const errorText = await customerRes.text();
-          return res.status(500).json({ message: "Stripe error", detail: errorText });
-        }
-        const customer = await customerRes.json();
-
-        const params = new URLSearchParams();
-        params.append("customer", customer.id);
-        params.append("items[0][price_data][currency]", "eur");
-        params.append("items[0][price_data][unit_amount]", Math.round(amountNumber * 100).toString());
-        params.append("items[0][price_data][recurring][interval]", "month");
-        params.append("items[0][price_data][product_data][name]", "Glass Connect donation");
-        params.append("payment_behavior", "default_incomplete");
-        params.append("payment_settings[save_default_payment_method]", "on_subscription");
-        params.append("expand[]", "latest_invoice.payment_intent");
-        Object.entries(metaEntries).forEach(([key, val]) => {
-          if (val !== undefined && val !== null && val !== "") {
-            params.append(`metadata[${key}]`, String(val));
-          }
-        });
-
-        const response = await fetch("https://api.stripe.com/v1/subscriptions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${stripeKey}`,
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: params.toString(),
-        });
-        if (!response.ok) {
-          const errorText = await response.text();
-          return res.status(500).json({ message: "Stripe error", detail: errorText });
-        }
-        const subscription = await response.json();
-        subscriptionId = subscription?.id;
-        status = subscription?.status;
-        const paymentIntent = subscription?.latest_invoice?.payment_intent;
-        clientSecret = paymentIntent?.client_secret;
-        paymentIntentId = paymentIntent?.id;
-        console.info("[donations] created subscription", {
-          subscriptionId,
-          paymentIntentId,
-          status,
-        });
-      } else {
-        const params = new URLSearchParams();
-        params.append("amount", Math.round(amountNumber * 100).toString());
-        params.append("currency", "eur");
-        params.append("receipt_email", email.trim());
-        params.append("description", "Glass Connect donation");
-        params.append("automatic_payment_methods[enabled]", "true");
-        Object.entries(metaEntries).forEach(([key, val]) => {
-          if (val !== undefined && val !== null && val !== "") {
-            params.append(`metadata[${key}]`, String(val));
-          }
-        });
-
-        const response = await fetch("https://api.stripe.com/v1/payment_intents", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${stripeKey}`,
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: params.toString(),
-        });
-        if (!response.ok) {
-          const errorText = await response.text();
-          return res.status(500).json({ message: "Stripe error", detail: errorText });
-        }
-        const intent = await response.json();
-        clientSecret = intent?.client_secret;
-        paymentIntentId = intent?.id;
-        status = intent?.status;
-        console.info("[donations] created payment intent", {
-          paymentIntentId,
-          status,
-        });
-      }
-
-      if (!clientSecret) {
-        return res.status(500).json({ message: "Stripe error", detail: "Missing client secret" });
-      }
-
-      const donationAmountRaw = Number(meta.donationAmount);
-      const feeAmountRaw = Number(meta.feeAmount);
-      const donationAmount = Number.isFinite(donationAmountRaw) ? donationAmountRaw : null;
-      const feeAmount = Number.isFinite(feeAmountRaw) ? feeAmountRaw : null;
-
-      try {
-        const { error: insertError } = await supabase.from("donations").insert({
-          name: donorName,
-          email: email.trim(),
-          amount: amountNumber,
-          message: meta.message || null,
-          donor_type: donorType || null,
-          recurring: recurringFlag,
-          full_name: meta.fullName || null,
-          company_name: meta.companyName || null,
-          siret: meta.siret || null,
-          contact_name: meta.contactName || null,
-          address_line1: meta.addressLine1 || null,
-          address_line2: meta.addressLine2 || null,
-          city: meta.city || null,
-          postal_code: meta.postalCode || null,
-          country: meta.country || null,
-          donation_amount: donationAmount,
-          fee_amount: feeAmount,
-          stripe_payment_intent_id: paymentIntentId || null,
-          stripe_subscription_id: subscriptionId || null,
-          status: status || null,
-        });
-        if (insertError) {
-          console.warn("[donations] Failed to store donation", insertError.message);
-        }
-      } catch (err) {
-        console.warn("[donations] Failed to store donation", err);
-      }
-
-      return res.status(200).json({
-        client_secret: clientSecret,
-        mode: billingMode,
-        subscription_id: subscriptionId ?? null,
-        payment_intent_id: paymentIntentId ?? null,
-        status: status ?? null,
-      });
-    } catch (error) {
-      res
-        .status(500)
-        .json({ message: error instanceof Error ? error.message : "Unable to create payment intent" });
-    }
-  });
-
   // --------- Stripe Checkout for subscriptions ----------
   app.post("/api/subscriptions/checkout", authenticate, async (req, res) => {
     try {
-      const { plan, interval } = req.body ?? {};
+      const { plan, interval, labId } = req.body ?? {};
       const planKey = typeof plan === "string" ? plan.toLowerCase() : "";
       const intervalKey = typeof interval === "string" ? interval.toLowerCase() : "monthly";
       if (!planKey || !["verified", "premier"].includes(planKey)) {
@@ -1648,31 +1695,15 @@ export function registerRoutes(app: Express) {
       if (!["monthly", "yearly"].includes(intervalKey)) {
         return res.status(400).json({ message: "Invalid interval" });
       }
-
-      const { tier: currentTier, status: currentStatus } = await getProfileSubscription(req.user.id);
-      if (isActiveSubscriptionStatus(currentStatus)) {
-        if (currentTier === "premier") {
-          return res.status(409).json({ message: "Your account is already Premier." });
-        }
-        if (currentTier === "verified" && planKey === "verified") {
-          return res.status(409).json({ message: "Your account is already Verified." });
-        }
-        if (currentTier === "premier" && planKey === "verified") {
-          return res.status(409).json({ message: "Premier accounts cannot subscribe to Verified." });
-        }
+      const selectedLab = await resolveSubscriptionLabId(req.user.id, labId, planKey as "verified" | "premier");
+      if (selectedLab.error) {
+        return res.status(selectedLab.error.status).json({ message: selectedLab.error.message });
       }
 
       const stripeKey = process.env.STRIPE_SECRET_KEY;
       if (!stripeKey) return res.status(500).json({ message: "Stripe not configured" });
 
-      const priceId =
-        planKey === "verified"
-          ? intervalKey === "yearly"
-            ? process.env.STRIPE_PRICE_VERIFIED_YEARLY
-            : process.env.STRIPE_PRICE_VERIFIED_MONTHLY
-          : intervalKey === "yearly"
-            ? process.env.STRIPE_PRICE_PREMIER_YEARLY
-            : process.env.STRIPE_PRICE_PREMIER_MONTHLY;
+      const priceId = resolveStripePriceId(planKey, intervalKey);
 
       if (!priceId) {
         return res.status(500).json({ message: "Stripe price not configured" });
@@ -1697,6 +1728,10 @@ export function registerRoutes(app: Express) {
       }
       params.append("metadata[plan]", planKey);
       params.append("metadata[interval]", intervalKey);
+      params.append("metadata[lab_id]", String(selectedLab.labId));
+      params.append("subscription_data[metadata][plan]", planKey);
+      params.append("subscription_data[metadata][interval]", intervalKey);
+      params.append("subscription_data[metadata][lab_id]", String(selectedLab.labId));
 
       const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
         method: "POST",
@@ -1709,7 +1744,8 @@ export function registerRoutes(app: Express) {
 
       if (!response.ok) {
         const errorText = await response.text();
-        return res.status(500).json({ message: "Stripe error", detail: errorText });
+        console.error("[stripe] checkout session creation failed", errorText);
+        return res.status(500).json({ message: "Stripe error" });
       }
       const session = await response.json();
       return res.status(200).json({ url: session.url });
@@ -1723,7 +1759,7 @@ export function registerRoutes(app: Express) {
   // --------- Stripe embedded subscription intent ----------
   app.post("/api/subscriptions/intent", authenticate, async (req, res) => {
     try {
-      const { plan, interval, email } = req.body ?? {};
+      const { plan, interval, email, labId } = req.body ?? {};
       const planKey = typeof plan === "string" ? plan.toLowerCase() : "";
       const intervalKey = typeof interval === "string" ? interval.toLowerCase() : "yearly";
       const emailValue = typeof email === "string" ? email.trim() : "";
@@ -1737,31 +1773,15 @@ export function registerRoutes(app: Express) {
       if (!emailValue) {
         return res.status(400).json({ message: "Email is required" });
       }
-
-      const { tier: currentTier, status: currentStatus } = await getProfileSubscription(req.user.id);
-      if (isActiveSubscriptionStatus(currentStatus)) {
-        if (currentTier === "premier") {
-          return res.status(409).json({ message: "Your account is already Premier." });
-        }
-        if (currentTier === "verified" && planKey === "verified") {
-          return res.status(409).json({ message: "Your account is already Verified." });
-        }
-        if (currentTier === "premier" && planKey === "verified") {
-          return res.status(409).json({ message: "Premier accounts cannot subscribe to Verified." });
-        }
+      const selectedLab = await resolveSubscriptionLabId(req.user.id, labId, planKey as "verified" | "premier");
+      if (selectedLab.error) {
+        return res.status(selectedLab.error.status).json({ message: selectedLab.error.message });
       }
 
       const stripeKey = process.env.STRIPE_SECRET_KEY;
       if (!stripeKey) return res.status(500).json({ message: "Stripe not configured" });
 
-      const priceId =
-        planKey === "verified"
-          ? intervalKey === "yearly"
-            ? process.env.STRIPE_PRICE_VERIFIED_YEARLY
-            : process.env.STRIPE_PRICE_VERIFIED_MONTHLY
-          : intervalKey === "yearly"
-            ? process.env.STRIPE_PRICE_PREMIER_YEARLY
-            : process.env.STRIPE_PRICE_PREMIER_MONTHLY;
+      const priceId = resolveStripePriceId(planKey, intervalKey);
 
       if (!priceId) {
         return res.status(500).json({ message: "Stripe price not configured" });
@@ -1772,6 +1792,7 @@ export function registerRoutes(app: Express) {
       if (req.user?.id) {
         customerParams.append("metadata[user_id]", req.user.id);
       }
+      customerParams.append("metadata[lab_id]", String(selectedLab.labId));
       const customerRes = await fetch("https://api.stripe.com/v1/customers", {
         method: "POST",
         headers: {
@@ -1782,7 +1803,8 @@ export function registerRoutes(app: Express) {
       });
       if (!customerRes.ok) {
         const errorText = await customerRes.text();
-        return res.status(500).json({ message: "Stripe error", detail: errorText });
+        console.error("[stripe] customer creation failed", errorText);
+        return res.status(500).json({ message: "Stripe error" });
       }
       const customer = await customerRes.json();
 
@@ -1792,6 +1814,7 @@ export function registerRoutes(app: Express) {
       setupParams.append("usage", "off_session");
       setupParams.append("metadata[plan]", planKey);
       setupParams.append("metadata[interval]", intervalKey);
+      setupParams.append("metadata[lab_id]", String(selectedLab.labId));
       if (req.user?.id) {
         setupParams.append("metadata[user_id]", req.user.id);
       }
@@ -1806,7 +1829,8 @@ export function registerRoutes(app: Express) {
       });
       if (!setupRes.ok) {
         const errorText = await setupRes.text();
-        return res.status(500).json({ message: "Stripe error", detail: errorText });
+        console.error("[stripe] setup intent creation failed", errorText);
+        return res.status(500).json({ message: "Stripe error" });
       }
       const setupIntent = await setupRes.json();
       const clientSecret = setupIntent?.client_secret;
@@ -1828,6 +1852,7 @@ export function registerRoutes(app: Express) {
         plan: z.string(),
         interval: z.string(),
         setupIntentId: z.string(),
+        labId: z.coerce.number().int().positive().optional(),
       });
       const payload = schema.parse(req.body);
       const planKey = payload.plan.toLowerCase();
@@ -1838,31 +1863,19 @@ export function registerRoutes(app: Express) {
       if (!["monthly", "yearly"].includes(intervalKey)) {
         return res.status(400).json({ message: "Invalid interval" });
       }
-
-      const { tier: currentTier, status: currentStatus } = await getProfileSubscription(req.user.id);
-      if (isActiveSubscriptionStatus(currentStatus)) {
-        if (currentTier === "premier") {
-          return res.status(409).json({ message: "Your account is already Premier." });
-        }
-        if (currentTier === "verified" && planKey === "verified") {
-          return res.status(409).json({ message: "Your account is already Verified." });
-        }
-        if (currentTier === "premier" && planKey === "verified") {
-          return res.status(409).json({ message: "Premier accounts cannot subscribe to Verified." });
-        }
+      const selectedLab = await resolveSubscriptionLabId(
+        req.user.id,
+        payload.labId,
+        planKey as "verified" | "premier",
+      );
+      if (selectedLab.error) {
+        return res.status(selectedLab.error.status).json({ message: selectedLab.error.message });
       }
 
       const stripeKey = process.env.STRIPE_SECRET_KEY;
       if (!stripeKey) return res.status(500).json({ message: "Stripe not configured" });
 
-      const priceId =
-        planKey === "verified"
-          ? intervalKey === "yearly"
-            ? process.env.STRIPE_PRICE_VERIFIED_YEARLY
-            : process.env.STRIPE_PRICE_VERIFIED_MONTHLY
-          : intervalKey === "yearly"
-            ? process.env.STRIPE_PRICE_PREMIER_YEARLY
-            : process.env.STRIPE_PRICE_PREMIER_MONTHLY;
+      const priceId = resolveStripePriceId(planKey, intervalKey);
 
       if (!priceId) {
         return res.status(500).json({ message: "Stripe price not configured" });
@@ -1876,17 +1889,22 @@ export function registerRoutes(app: Express) {
       });
       if (!setupRes.ok) {
         const errorText = await setupRes.text();
-        return res.status(500).json({ message: "Stripe error", detail: errorText });
+        console.error("[stripe] setup intent lookup failed", errorText);
+        return res.status(500).json({ message: "Stripe error" });
       }
       const setupIntent = await setupRes.json();
       const paymentMethod = setupIntent?.payment_method;
       const customerId = setupIntent?.customer;
       const setupUserId = setupIntent?.metadata?.user_id;
+      const setupLabId = parseRequestedLabId(setupIntent?.metadata?.lab_id);
       if (!paymentMethod || !customerId) {
         return res.status(400).json({ message: "Setup intent incomplete" });
       }
       if (setupUserId && setupUserId !== req.user.id) {
         return res.status(403).json({ message: "Setup intent does not belong to this user" });
+      }
+      if (typeof setupLabId === "number" && !Number.isNaN(setupLabId) && setupLabId !== selectedLab.labId) {
+        return res.status(403).json({ message: "Setup intent lab does not match selected lab" });
       }
 
       const params = new URLSearchParams();
@@ -1900,6 +1918,7 @@ export function registerRoutes(app: Express) {
       params.append("expand[]", "latest_invoice.payment_intent");
       params.append("metadata[plan]", planKey);
       params.append("metadata[interval]", intervalKey);
+      params.append("metadata[lab_id]", String(selectedLab.labId));
       if (req.user?.id) {
         params.append("metadata[user_id]", req.user.id);
       }
@@ -1914,7 +1933,8 @@ export function registerRoutes(app: Express) {
       });
       if (!subRes.ok) {
         const errorText = await subRes.text();
-        return res.status(500).json({ message: "Stripe error", detail: errorText });
+        console.error("[stripe] subscription creation failed", errorText);
+        return res.status(500).json({ message: "Stripe error" });
       }
       const subscription = await subRes.json();
       const latestInvoice = subscription?.latest_invoice ?? null;
@@ -2004,14 +2024,13 @@ export function registerRoutes(app: Express) {
       const labId = Number(req.params.id);
       if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
 
-      const { data, error } = await supabase
-        .from("lab_profile")
-        .select("hal_structure_id, hal_person_id")
-        .eq("lab_id", labId)
-        .maybeSingle();
-      if (error) throw error;
-      const halStructureId = data?.hal_structure_id;
-      const halPersonId = data?.hal_person_id;
+      const lab = await labStore.findById(labId);
+      if (!lab) return res.status(404).json({ message: "Lab not found" });
+      const canAccess = await canAccessLabFromPublicRoute(req, lab);
+      if (!canAccess) return res.status(404).json({ message: "Lab not found" });
+
+      const halStructureId = lab.halStructureId;
+      const halPersonId = lab.halPersonId;
       if (!halStructureId && !halPersonId) return res.status(404).json({ message: "HAL ID not set" });
 
       const params = new URLSearchParams();
@@ -2038,7 +2057,8 @@ export function registerRoutes(app: Express) {
       const response = await fetch(`https://api.archives-ouvertes.fr/search/?${params.toString()}`);
       if (!response.ok) {
         const txt = await response.text();
-        return res.status(500).json({ message: "HAL error", detail: txt });
+        console.error("[hal] publications request failed", txt);
+        return res.status(500).json({ message: "HAL error" });
       }
       const payload = await response.json();
       const docs = payload?.response?.docs ?? [];
@@ -2061,14 +2081,13 @@ export function registerRoutes(app: Express) {
       const labId = Number(req.params.id);
       if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
 
-      const { data, error } = await supabase
-        .from("lab_profile")
-        .select("hal_structure_id, hal_person_id")
-        .eq("lab_id", labId)
-        .maybeSingle();
-      if (error) throw error;
-      const halStructureId = data?.hal_structure_id;
-      const halPersonId = data?.hal_person_id;
+      const lab = await labStore.findById(labId);
+      if (!lab) return res.status(404).json({ message: "Lab not found" });
+      const canAccess = await canAccessLabFromPublicRoute(req, lab);
+      if (!canAccess) return res.status(404).json({ message: "Lab not found" });
+
+      const halStructureId = lab.halStructureId;
+      const halPersonId = lab.halPersonId;
       if (!halStructureId && !halPersonId) return res.status(404).json({ message: "HAL ID not set" });
 
       const params = new URLSearchParams();
@@ -2096,7 +2115,8 @@ export function registerRoutes(app: Express) {
       const response = await fetch(`https://api.archives-ouvertes.fr/search/?${params.toString()}`);
       if (!response.ok) {
         const txt = await response.text();
-        return res.status(500).json({ message: "HAL error", detail: txt });
+        console.error("[hal] patents request failed", txt);
+        return res.status(500).json({ message: "HAL error" });
       }
       const payload = await response.json();
       const docs = payload?.response?.docs ?? [];
@@ -2113,8 +2133,40 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  // --------- INPI patents by SIREN ----------
+  app.get("/api/labs/:id/patents", async (req, res) => {
+    try {
+      const labId = Number(req.params.id);
+      if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
+
+      const lab = await labStore.findById(labId);
+      if (!lab) return res.status(404).json({ message: "Lab not found" });
+      const canAccess = await canAccessLabFromPublicRoute(req, lab);
+      if (!canAccess) return res.status(404).json({ message: "Lab not found" });
+
+      const siren = toSirenFromSiretOrSiren(lab.siretNumber);
+      if (!siren) {
+        return res.status(400).json({ message: "Missing valid SIREN/SIRET for this lab" });
+      }
+
+      if (!isInpiConfigured()) {
+        return res.status(503).json({
+          message:
+            "INPI API is not configured yet. Add INPI credentials in the server environment to enable patents import.",
+        });
+      }
+
+      const items = await fetchInpiPatentsBySiren(siren);
+      return res.json({ items, source: "inpi", siren });
+    } catch (err) {
+      return res.status(500).json({
+        message: err instanceof Error ? err.message : "Unable to load patents",
+      });
+    }
+  });
+
   // --------- Waitlist ----------
-  app.post("/api/waitlist", async (req, res) => {
+  app.post("/api/waitlist", publicFormRateLimit, async (req, res) => {
     try {
       const data = insertWaitlistSchema.parse(req.body);
       const result = await storage.addToWaitlist(data);
@@ -2125,13 +2177,152 @@ export function registerRoutes(app: Express) {
   });
 
   // --------- Contact ----------
-  app.post("/api/contact", async (req, res) => {
+  app.post("/api/contact", publicFormRateLimit, async (req, res) => {
     try {
       const data = insertContactSchema.parse(req.body);
       const result = await storage.submitContact(data);
       res.json(result);
     } catch (_error) {
       res.status(400).json({ message: "Invalid contact submission" });
+    }
+  });
+
+  app.post("/api/onboarding-call-request", publicFormRateLimit, async (req, res) => {
+    try {
+      const payload = insertOnboardingCallRequestSchema.parse(req.body);
+      const adminEmail = process.env.ADMIN_INBOX ?? "contact@glass-funding.com";
+      const phone = payload.contactPhone?.trim();
+      const notes = payload.notes?.trim();
+
+      const adminLines = [
+        "New onboarding call request",
+        "",
+        `Lab: ${payload.labName}`,
+        `Website: ${payload.website}`,
+        `Contact: ${payload.contactName} <${payload.contactEmail}>`,
+        phone ? `Phone: ${phone}` : null,
+        notes ? "" : null,
+        notes ? "Notes:" : null,
+        notes || null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const confirmationLines = [
+        `Hi ${payload.contactName},`,
+        "",
+        "Thanks for requesting an onboarding call with GLASS.",
+        "We received your request and will get back to you shortly.",
+        "",
+        `Lab: ${payload.labName}`,
+        `Website: ${payload.website}`,
+        phone ? `Phone: ${phone}` : null,
+        notes ? `Notes: ${notes}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      await Promise.all([
+        sendMail({
+          to: adminEmail,
+          from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
+          subject: `Onboarding call request: ${payload.labName}`,
+          text: adminLines,
+        }),
+        sendMail({
+          to: payload.contactEmail,
+          from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
+          subject: "We received your onboarding request",
+          text: confirmationLines,
+        }),
+      ]);
+
+      res.status(201).json({ ok: true });
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const issue = error.issues[0];
+        return res.status(400).json({ message: issue?.message ?? "Invalid onboarding request" });
+      }
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to submit onboarding request" });
+    }
+  });
+
+  app.post("/api/tier-upgrade-interest", authenticate, async (req, res) => {
+    try {
+      const payload = insertTierUpgradeInterestSchema.parse(req.body);
+      const uniqueLabIds = Array.from(new Set(payload.labIds));
+
+      const { data, error } = await supabase
+        .from("labs")
+        .select("id, name, lab_status")
+        .eq("owner_user_id", req.user.id)
+        .in("id", uniqueLabIds);
+      if (error) throw error;
+
+      const labs = (data ?? [])
+        .map(row => ({
+          id: Number((row as any).id),
+          name: typeof (row as any).name === "string" ? (row as any).name : "",
+          labStatus: typeof (row as any).lab_status === "string" ? (row as any).lab_status : "listed",
+        }))
+        .filter(lab => Number.isInteger(lab.id) && lab.id > 0);
+
+      if (labs.length !== uniqueLabIds.length) {
+        return res.status(403).json({ message: "One or more selected labs are invalid for this account." });
+      }
+
+      const ineligibleLabs = labs.filter(lab => !canLabSubscribeToPlan(lab.labStatus, payload.tier));
+      if (ineligibleLabs.length > 0) {
+        const label =
+          payload.tier === "premier"
+            ? "already on Premier"
+            : "already on Verified or Premier";
+        return res.status(409).json({
+          message:
+            ineligibleLabs.length === 1
+              ? `${ineligibleLabs[0].name || "Selected lab"} is ${label}.`
+              : "One or more selected labs are not eligible for this upgrade tier.",
+        });
+      }
+
+      const requesterName =
+        (req.user.user_metadata?.full_name as string | undefined) ||
+        (req.user.user_metadata?.name as string | undefined) ||
+        (req.user.user_metadata?.display_name as string | undefined) ||
+        "Unknown";
+      const requesterEmail = req.user.email || "unknown";
+      const adminEmail = process.env.ADMIN_INBOX ?? "contact@glass-funding.com";
+      const tierLabel = payload.tier === "premier" ? "Premier" : "Verified";
+
+      const lines = [
+        "New tier upgrade request",
+        "",
+        `Tier requested: ${tierLabel}`,
+        `Billing preference: ${(payload.interval || "yearly").toLowerCase()}`,
+        `Requester: ${requesterName} <${requesterEmail}>`,
+        `User ID: ${req.user.id}`,
+        "",
+        "Labs:",
+        ...labs.map(
+          lab =>
+            `- ${lab.name || `Lab #${lab.id}`} (id: ${lab.id}, current status: ${formatLabStatusLabel(lab.labStatus)})`,
+        ),
+      ].join("\n");
+
+      await sendMail({
+        to: adminEmail,
+        from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
+        subject: `Tier upgrade request: ${tierLabel} (${labs.length} lab${labs.length === 1 ? "" : "s"})`,
+        text: lines,
+      });
+
+      res.status(201).json({ ok: true });
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const issue = error.issues[0];
+        return res.status(400).json({ message: issue?.message ?? "Invalid upgrade request" });
+      }
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to submit upgrade request" });
     }
   });
 
@@ -2151,37 +2342,114 @@ export function registerRoutes(app: Express) {
     }
   });
 
-  app.get("/api/labs", async (req, res) => {
-    const includeHidden = req.query.includeHidden === "true" || req.query.includeHidden === "1";
-    const labs = includeHidden ? await labStore.list() : await labStore.listVisible();
-    res.json(labs);
+  app.get("/api/lab-offer-taxonomy", async (_req, res) => {
+    try {
+      const options = await labStore.listOfferTaxonomy();
+      res.json(options);
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load offer taxonomy" });
+    }
   });
 
-  app.post("/api/labs", async (req, res) => {
+  app.get("/api/labs", async (req, res) => {
+    const includeHiddenRequested = req.query.includeHidden === "true" || req.query.includeHidden === "1";
+    let includeHidden = false;
+    if (includeHiddenRequested) {
+      const userId = await getOptionalUserIdFromAuthHeader(req);
+      if (userId) {
+        const profile = await fetchProfileCapabilities(userId);
+        includeHidden = Boolean(profile?.isAdmin);
+      }
+    }
+    const labs = includeHidden ? await labStore.list() : await labStore.listVisible();
+    res.json(includeHidden ? labs : labs.map(sanitizePublicLab));
+  });
+
+  app.get("/api/labs/:id/offers-profile", async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ message: "Invalid lab id" });
+    }
     try {
-      const ownerId = req.body?.ownerUserId || req.body?.owner_user_id || null;
-      if (ownerId) {
-        const profile = await fetchProfileCapabilities(ownerId);
-        if (!profile) {
-          return res.status(403).json({ message: "Profile permissions not found for this account." });
-        }
-        if (!profile.canCreateLab) {
-          return res.status(403).json({ message: "This account is not allowed to create labs yet." });
-        }
-        if (!profile.canManageMultipleLabs) {
-          const { count, error: countErr } = await supabase
-            .from("labs")
-            .select("id", { count: "exact", head: true })
-            .eq("owner_user_id", ownerId);
-          if (countErr) throw countErr;
-          if ((count ?? 0) >= 1) {
-            return res
-              .status(403)
-              .json({ message: "This account can manage only one lab right now. Contact Glass to add more." });
-          }
+      const lab = await labStore.findById(id);
+      if (!lab) return res.status(404).json({ message: "Lab not found" });
+      const canAccess = await canAccessLabFromPublicRoute(req, lab);
+      if (!canAccess) return res.status(404).json({ message: "Lab not found" });
+
+      const profile = await labStore.findOfferProfileByLabId(id);
+      res.json(profile);
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load lab offers profile" });
+    }
+  });
+
+  app.put("/api/labs/:id/offers-profile", authenticate, async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ message: "Invalid lab id" });
+    }
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const requesterProfile = await fetchProfileCapabilities(userId);
+      const existingLab = await labStore.findById(id);
+      if (!existingLab) return res.status(404).json({ message: "Lab not found" });
+      const isOwner = existingLab.ownerUserId === userId;
+      if (!isOwner && !requesterProfile?.isAdmin) {
+        return res.status(403).json({ message: "Not authorized to update this lab offers profile" });
+      }
+
+      const payload = upsertLabOfferProfileSchema.parse(req.body);
+      const profile = await labStore.upsertOfferProfile(id, payload);
+      res.json(profile);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const issue = error.issues[0];
+        return res.status(400).json({ message: issue?.message ?? "Invalid offers profile payload" });
+      }
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to update lab offers profile" });
+    }
+  });
+
+  app.post("/api/labs", authenticate, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const requesterProfile = await fetchProfileCapabilities(userId);
+      if (!requesterProfile) {
+        return res.status(403).json({ message: "Profile permissions not found for this account." });
+      }
+      if (!requesterProfile.canCreateLab && !requesterProfile.isAdmin) {
+        return res.status(403).json({ message: "This account is not allowed to create labs yet." });
+      }
+
+      const requestedOwnerId = req.body?.ownerUserId || req.body?.owner_user_id || null;
+      const ownerId = requesterProfile.isAdmin && requestedOwnerId ? requestedOwnerId : userId;
+      const ownerProfile = ownerId === userId ? requesterProfile : await fetchProfileCapabilities(ownerId);
+      if (!ownerProfile && !requesterProfile.isAdmin) {
+        return res.status(403).json({ message: "Profile permissions not found for this account." });
+      }
+
+      if (!requesterProfile.isAdmin && !ownerProfile?.canManageMultipleLabs) {
+        const { count, error: countErr } = await supabase
+          .from("labs")
+          .select("id", { count: "exact", head: true })
+          .eq("owner_user_id", ownerId);
+        if (countErr) throw countErr;
+        if ((count ?? 0) >= 1) {
+          return res
+            .status(403)
+            .json({ message: "This account can manage only one lab right now. Contact Glass to add more." });
         }
       }
-      const lab = await labStore.create(req.body);
+
+      const payload = {
+        ...req.body,
+        ownerUserId: ownerId,
+      };
+      delete (payload as any).owner_user_id;
+
+      const lab = await labStore.create(payload);
       res.status(201).json(lab);
     } catch (error) {
       if (error instanceof ZodError) {
@@ -2194,13 +2462,43 @@ export function registerRoutes(app: Express) {
     }
   });
 
-  app.put("/api/labs/:id", async (req, res) => {
+  app.put("/api/labs/:id", authenticate, async (req, res) => {
     const id = Number(req.params.id);
     if (Number.isNaN(id)) {
       return res.status(400).json({ message: "Invalid lab id" });
     }
     try {
-      const lab = await labStore.update(id, req.body);
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const requesterProfile = await fetchProfileCapabilities(userId);
+      if (!requesterProfile) {
+        return res.status(403).json({ message: "Profile permissions not found for this account." });
+      }
+      const existing = await labStore.findById(id);
+      if (!existing) return res.status(404).json({ message: "Lab not found" });
+
+      const isOwner = existing.ownerUserId === userId;
+      if (!isOwner && !requesterProfile.isAdmin) {
+        return res.status(403).json({ message: "Not authorized to update this lab" });
+      }
+
+      const updates = { ...(req.body ?? {}) } as Record<string, unknown>;
+      const requestedOwnerCamel = updates.ownerUserId;
+      const requestedOwnerSnake = updates.owner_user_id;
+      if (!requesterProfile.isAdmin) {
+        if (requestedOwnerCamel !== undefined && requestedOwnerCamel !== existing.ownerUserId) {
+          return res.status(403).json({ message: "Not authorized to transfer lab ownership" });
+        }
+        if (requestedOwnerSnake !== undefined && requestedOwnerSnake !== existing.ownerUserId) {
+          return res.status(403).json({ message: "Not authorized to transfer lab ownership" });
+        }
+      }
+      if (requestedOwnerCamel === undefined && requestedOwnerSnake !== undefined) {
+        updates.ownerUserId = requestedOwnerSnake as string | null;
+      }
+      delete updates.owner_user_id;
+
+      const lab = await labStore.update(id, updates);
       res.json(lab);
     } catch (error) {
       if (error instanceof ZodError) {
@@ -2216,12 +2514,25 @@ export function registerRoutes(app: Express) {
     }
   });
 
-  app.delete("/api/labs/:id", async (req, res) => {
+  app.delete("/api/labs/:id", authenticate, async (req, res) => {
     const id = Number(req.params.id);
     if (Number.isNaN(id)) {
       return res.status(400).json({ message: "Invalid lab id" });
     }
     try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const requesterProfile = await fetchProfileCapabilities(userId);
+      if (!requesterProfile) {
+        return res.status(403).json({ message: "Profile permissions not found for this account." });
+      }
+      const existing = await labStore.findById(id);
+      if (!existing) return res.status(404).json({ message: "Lab not found" });
+      const isOwner = existing.ownerUserId === userId;
+      if (!isOwner && !requesterProfile.isAdmin) {
+        return res.status(403).json({ message: "Not authorized to delete this lab" });
+      }
+
       await labStore.delete(id);
       res.status(204).end();
     } catch (error) {
@@ -2445,9 +2756,17 @@ export function registerRoutes(app: Express) {
 
   // --------- Teams ----------
   app.get("/api/teams", async (req, res) => {
-    const includeHidden = req.query.includeHidden === "true" || req.query.includeHidden === "1";
+    const includeHiddenRequested = req.query.includeHidden === "true" || req.query.includeHidden === "1";
+    let includeHidden = false;
+    if (includeHiddenRequested) {
+      const userId = await getOptionalUserIdFromAuthHeader(req);
+      if (userId) {
+        const profile = await fetchProfileCapabilities(userId);
+        includeHidden = Boolean(profile?.isAdmin);
+      }
+    }
     const teams = includeHidden ? await teamStore.list() : await teamStore.listVisible();
-    res.json(teams);
+    res.json(includeHidden ? teams : teams.map(sanitizePublicTeam));
   });
 
   app.get("/api/teams/:id", async (req, res) => {
@@ -2458,7 +2777,7 @@ export function registerRoutes(app: Express) {
     try {
       const team = await teamStore.findById(id);
       if (!team) return res.status(404).json({ message: "Team not found" });
-      res.json(team);
+      res.json(sanitizePublicTeam(team));
     } catch (error) {
       res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load team" });
     }
@@ -2640,7 +2959,7 @@ export function registerRoutes(app: Express) {
     }
     try {
       const teams = await teamStore.listByLabId(labId);
-      res.json(teams);
+      res.json(teams.map(sanitizePublicTeam));
     } catch (error) {
       res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load teams" });
     }
@@ -2828,7 +3147,7 @@ export function registerRoutes(app: Express) {
   });
 
   // --------- Lab Collaborations ----------
-  app.post("/api/lab-collaborations", async (req, res) => {
+  app.post("/api/lab-collaborations", publicRequestRateLimit, async (req, res) => {
     try {
       const payload = insertLabCollaborationSchema.parse(req.body);
       const lab = await labStore.findById(payload.labId);
@@ -2922,12 +3241,18 @@ export function registerRoutes(app: Express) {
   });
 
   // --------- Lab Requests ----------
-  app.get("/api/lab-requests", async (_req, res) => {
+  app.get("/api/lab-requests", authenticate, async (req, res) => {
+    const userId = req.user?.id;
+    if (!userId) return res.status(400).json({ message: "No user on request" });
+    const profile = await fetchProfileCapabilities(userId);
+    if (!profile?.isAdmin) {
+      return res.status(403).json({ message: "Only admins can access lab requests." });
+    }
     const requests = await labRequestStore.list();
     res.json(requests);
   });
 
-  app.post("/api/lab-requests", async (req, res) => {
+  app.post("/api/lab-requests", publicRequestRateLimit, async (req, res) => {
     try {
       const payload = insertLabRequestSchema.parse(req.body);
       const lab = await labStore.findById(payload.labId);
@@ -3063,11 +3388,18 @@ export function registerRoutes(app: Express) {
     }
   });
 
-  app.patch("/api/lab-requests/:id/status", async (req, res) => {
+  app.patch("/api/lab-requests/:id/status", authenticate, async (req, res) => {
     const id = Number(req.params.id);
     if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid request id" });
 
     try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const profile = await fetchProfileCapabilities(userId);
+      if (!profile?.isAdmin) {
+        return res.status(403).json({ message: "Only admins can update request status." });
+      }
+
       const data = updateLabRequestStatusSchema.parse(req.body);
       const updated = await labRequestStore.updateStatus(id, data);
       res.json(updated);
@@ -3085,45 +3417,18 @@ export function registerRoutes(app: Express) {
     }
   });
 
-  // Get a profile by ID
-app.get("/api/profile/:id", async (req, res) => {
-  const { id } = req.params;
-  try {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", id)
-      .single();
+  // Legacy profile endpoints (archived for security hardening)
+  const profileLegacyArchived = (_req: Request, res: Response) =>
+    res.status(410).json({
+      message: "This legacy profile endpoint is archived. Use /api/me/profile instead.",
+    });
 
-    if (error) return res.status(404).json({ error: error.message });
-    res.status(200).json(data);
-  } catch (err) {
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-// Create or update a profile
-app.post("/api/profile/:id", async (req, res) => {
-  const { id } = req.params;
-  const updates = req.body; // e.g., { full_name: "John Doe" }
-
-  try {
-    const { data, error } = await supabase
-      .from("profiles")
-      .upsert({ id, ...updates })
-      .select()
-      .single();
-
-    if (error) return res.status(500).json({ error: error.message });
-    res.status(200).json(data);
-  } catch (err) {
-    res.status(500).json({ error: "Server error" });
-  }
-});
+  app.get("/api/profile/:id", profileLegacyArchived);
+  app.post("/api/profile/:id", profileLegacyArchived);
 
 
 // Signup
-app.post("/api/signup", async (req, res) => {
+app.post("/api/signup", signupRateLimit, async (req, res) => {
   try {
     const { email, password, display_name } = req.body;
     const normalizedEmail = typeof email === "string" ? email.trim() : "";
@@ -3137,14 +3442,7 @@ app.post("/api/signup", async (req, res) => {
       return res.status(400).json({ message: passwordPolicyError });
     }
 
-    const originHeader = typeof req.headers.origin === "string" ? req.headers.origin : "";
-    const hostHeader = req.get("host");
-    const origin = (
-      originHeader ||
-      (hostHeader ? `${req.protocol}://${hostHeader}` : "") ||
-      process.env.PUBLIC_SITE_URL ||
-      "https://glass-connect.com"
-    ).replace(/\/+$/, "");
+    const origin = resolvePublicSiteOrigin(req);
 
     const { data, error } = await supabasePublic.auth.signUp({
       email: normalizedEmail,
@@ -3164,7 +3462,7 @@ app.post("/api/signup", async (req, res) => {
 });
 
 // Login
-  app.post("/api/login", async (req, res) => {
+  app.post("/api/login", loginRateLimit, async (req, res) => {
   try {
     const { email, password } = req.body;
     const { data, error } = await supabasePublic.auth.signInWithPassword({ email, password });
@@ -3185,9 +3483,9 @@ app.post("/api/signup", async (req, res) => {
 
 
 
-// Example of a protected route
-app.get("/api/profile", authenticate, async (req, res) => {
-  res.json({ message: "Authenticated!", user: req.user });
+// Legacy debug route archived
+app.get("/api/profile", (_req, res) => {
+  res.status(410).json({ message: "This endpoint is archived. Use /api/me/profile instead." });
 });
 
   app.get("/api/me/profile", authenticate, async (req, res) => {
@@ -3324,9 +3622,6 @@ app.get("/api/profile", authenticate, async (req, res) => {
         await runCleanup("lab collaborations", async () =>
           supabase.from("lab_collaborations").delete().ilike("contact_email", userEmail),
         );
-        await runCleanup("donations", async () =>
-          supabase.from("donations").delete().ilike("donor_email", userEmail),
-        );
       }
       await runCleanup("profile", async () =>
         supabase.from("profiles").delete().eq("user_id", userId),
@@ -3405,20 +3700,31 @@ app.get("/api/profile", authenticate, async (req, res) => {
   app.post("/api/news", authenticate, async (req, res) => {
     try {
       const payload = insertNewsSchema.parse(req.body);
+      const requesterUserId = req.user?.id;
+      if (!requesterUserId) return res.status(400).json({ message: "No user on request" });
+      const requesterProfile = await fetchProfileCapabilities(requesterUserId);
+      if (!requesterProfile) {
+        return res.status(403).json({ message: "Profile permissions not found for this account." });
+      }
+
       const lab = await labStore.findById(payload.labId);
       if (!lab) return res.status(404).json({ message: "Lab not found" });
       const ownerUserId = lab.ownerUserId ?? null;
       if (!ownerUserId) {
         return res.status(403).json({ message: "Only claimed labs can post news right now." });
       }
-      const profile = await fetchProfileCapabilities(ownerUserId);
-      if (!profile?.canCreateLab) {
+      const ownerProfile = await fetchProfileCapabilities(ownerUserId);
+      if (!ownerProfile?.canCreateLab) {
         return res.status(403).json({ message: "News is available to lab owners only." });
       }
       if (lab.labStatus !== "premier") {
         return res.status(403).json({ message: "News is available for premier labs only." });
       }
-      if (payload.authorId && ownerUserId !== payload.authorId) {
+      const isOwner = ownerUserId === requesterUserId;
+      if (!isOwner && !requesterProfile.isAdmin) {
+        return res.status(403).json({ message: "Not allowed to post for this lab" });
+      }
+      if (!requesterProfile.isAdmin && payload.authorId && payload.authorId !== requesterUserId) {
         return res.status(403).json({ message: "Not allowed to post for this lab" });
       }
 
@@ -3430,7 +3736,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
           summary: payload.summary,
           category: payload.category ?? "update",
           images: payload.images ?? [],
-          created_by: payload.authorId ?? req.user.id ?? null,
+          created_by: requesterProfile.isAdmin ? (payload.authorId ?? requesterUserId) : requesterUserId,
           status: "pending",
         })
         .select()
@@ -3476,7 +3782,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
   });
 
   // --------- Investor contact (premier labs) ----------
-  app.post("/api/labs/:id/investor", async (req, res) => {
+  app.post("/api/labs/:id/investor", publicRequestRateLimit, async (req, res) => {
     const labId = Number(req.params.id);
     if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
     try {
@@ -3542,7 +3848,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
   });
 
   // --------- Legal assistance contact ----------
-  app.post("/api/legal-assist", async (req, res) => {
+  app.post("/api/legal-assist", publicRequestRateLimit, async (req, res) => {
     try {
       const payload = insertLegalAssistSchema.parse(req.body);
       const lab = payload.labId ? await labStore.findById(payload.labId) : null;
@@ -3583,7 +3889,16 @@ app.get("/api/profile", authenticate, async (req, res) => {
 
   // --------- Pricing ----------
   app.get("/api/pricing", async (_req, res) => {
-    let list = defaultPricing.map(tier => ({
+    let list: Array<{
+      name: string;
+      monthly_price: number | null;
+      yearly_price: number | null;
+      currency: string | null;
+      description: string;
+      highlights: readonly string[];
+      featured: boolean;
+      sort_order: number;
+    }> = defaultPricing.map(tier => ({
       name: tier.name,
       monthly_price: tier.monthly_price ?? null,
       yearly_price: tier.name === "Base" ? 0 : null as number | null,
@@ -3593,6 +3908,43 @@ app.get("/api/profile", authenticate, async (req, res) => {
       featured: tier.featured ?? false,
       sort_order: tier.sort_order ?? 999,
     }));
+
+    try {
+      const { data, error } = await supabase
+        .from("pricing_features")
+        .select("id, tier_name, feature, sort_order, created_at")
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true });
+
+      if (error) {
+        console.warn("[pricing] pricing_features lookup failed", error);
+      } else if (Array.isArray(data) && data.length > 0) {
+        const featuresByTier = new Map<string, string[]>();
+        for (const row of data as Array<{ tier_name?: string | null; feature?: string | null }>) {
+          const tierKey = (row.tier_name || "").toLowerCase().trim();
+          const feature = (row.feature || "").trim();
+          if (!tierKey || !feature) continue;
+
+          const existing = featuresByTier.get(tierKey) ?? [];
+          if (!existing.includes(feature) && existing.length < 10) {
+            existing.push(feature);
+            featuresByTier.set(tierKey, existing);
+          }
+        }
+
+        list = list.map(tier => {
+          const tierKey = (tier.name || "").toLowerCase().trim();
+          const features = featuresByTier.get(tierKey);
+          if (features && features.length > 0) {
+            return { ...tier, highlights: features };
+          }
+          return tier;
+        });
+      }
+    } catch (error) {
+      console.warn("[pricing] unable to load pricing_features", error);
+    }
 
     try {
       const stripePricing = await getStripePricing();
@@ -3872,7 +4224,7 @@ app.get("/api/profile", authenticate, async (req, res) => {
         .in("id", labIds);
       if (error) throw error;
 
-      const mapped = (data ?? []).map(row => {
+      const mapped = ((data as unknown as any[]) ?? []).map(row => {
         const pickOne = (value: any) => (Array.isArray(value) ? value[0] : value) ?? null;
         const profileRow = pickOne((row as any).lab_profile);
         const locationRow = pickOne((row as any).lab_location);
@@ -3995,7 +4347,19 @@ app.get("/api/profile", authenticate, async (req, res) => {
       if (labError) throw labError;
       if (!labRow) return res.status(404).json({ message: "No lab linked to this account" });
 
-      const updated = await labStore.update(labId, req.body);
+      const updates = { ...(req.body ?? {}) } as Record<string, unknown>;
+      const requestedOwnerCamel = updates.ownerUserId;
+      const requestedOwnerSnake = updates.owner_user_id;
+      if (requestedOwnerCamel !== undefined && requestedOwnerCamel !== userId) {
+        return res.status(403).json({ message: "Not authorized to transfer lab ownership" });
+      }
+      if (requestedOwnerSnake !== undefined && requestedOwnerSnake !== userId) {
+        return res.status(403).json({ message: "Not authorized to transfer lab ownership" });
+      }
+      delete updates.ownerUserId;
+      delete updates.owner_user_id;
+
+      const updated = await labStore.update(labId, updates);
       res.json(updated);
     } catch (err) {
       if (err instanceof ZodError) {
@@ -4261,27 +4625,105 @@ app.get("/api/profile", authenticate, async (req, res) => {
       const labIdList = labs.map(l => Number(l.id)).filter(id => !Number.isNaN(id));
       if (!labIdList.length && !labNames.length) return res.json({ labs, collaborations: [], contacts: [] });
 
-      // Prefer matching by lab_id; fall back to case-insensitive lab_name to catch legacy rows
-      const [collabs, contacts] = await Promise.all([
-        supabase.from("lab_collaborations").select("*").order("created_at", { ascending: false }),
-        supabase.from("lab_contact_requests").select("*").order("created_at", { ascending: false }),
-      ]);
+      const collaborationColumns = [
+        "id",
+        "lab_id",
+        "lab_name",
+        "contact_name",
+        "contact_email",
+        "preferred_contact",
+        "target_labs",
+        "collaboration_focus",
+        "resources_offered",
+        "desired_timeline",
+        "additional_notes",
+        "created_at",
+      ].join(",");
+      const contactColumns = [
+        "id",
+        "lab_id",
+        "lab_name",
+        "contact_name",
+        "contact_email",
+        "requester_name",
+        "requester_email",
+        "preferred_contact_methods",
+        "message",
+        "type",
+        "organization",
+        "created_at",
+      ].join(",");
 
-      if (collabs.error) throw collabs.error;
-      if (contacts.error) throw contacts.error;
+      const { data: collabsById, error: collabsByIdError } = await supabase
+        .from("lab_collaborations")
+        .select(collaborationColumns)
+        .in("lab_id", labIdList)
+        .order("created_at", { ascending: false });
+      if (collabsByIdError) throw collabsByIdError;
 
-      const nameSet = new Set(labNames.map(n => (n || "").toLowerCase()));
-      const idSet = new Set(labIdList);
-      const filteredCollabs = (collabs.data ?? []).filter(row => {
-        const rowId = Number((row as any).lab_id);
-        if (!Number.isNaN(rowId) && idSet.has(rowId)) return true;
-        return nameSet.has((row.lab_name || "").toLowerCase());
-      });
-      const filteredContacts = (contacts.data ?? []).filter(row => {
-        const rowId = Number((row as any).lab_id);
-        if (!Number.isNaN(rowId) && idSet.has(rowId)) return true;
-        return nameSet.has((row.lab_name || "").toLowerCase());
-      });
+      const { data: contactsById, error: contactsByIdError } = await supabase
+        .from("lab_contact_requests")
+        .select(contactColumns)
+        .in("lab_id", labIdList)
+        .order("created_at", { ascending: false });
+      if (contactsByIdError) throw contactsByIdError;
+
+      let collabsByNameLegacy: any[] = [];
+      let contactsByNameLegacy: any[] = [];
+      if (labNames.length) {
+        const { data: collabNameRows, error: collabNameError } = await supabase
+          .from("lab_collaborations")
+          .select(collaborationColumns)
+          .is("lab_id", null)
+          .in("lab_name", labNames)
+          .order("created_at", { ascending: false });
+        if (collabNameError) throw collabNameError;
+        collabsByNameLegacy = collabNameRows ?? [];
+
+        const { data: contactNameRows, error: contactNameError } = await supabase
+          .from("lab_contact_requests")
+          .select(contactColumns)
+          .is("lab_id", null)
+          .in("lab_name", labNames)
+          .order("created_at", { ascending: false });
+        if (contactNameError) throw contactNameError;
+        contactsByNameLegacy = contactNameRows ?? [];
+      }
+
+      const dedupeAndSort = (rows: any[]) => {
+        const seen = new Set<string>();
+        return rows
+          .filter(row => {
+            const key =
+              row?.id !== undefined && row?.id !== null
+                ? String(row.id)
+                : `${row?.lab_id ?? ""}|${row?.lab_name ?? ""}|${row?.contact_email ?? row?.requester_email ?? ""}|${row?.created_at ?? ""}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+          .sort((a, b) => {
+            const aTs = a?.created_at ? new Date(a.created_at).getTime() : 0;
+            const bTs = b?.created_at ? new Date(b.created_at).getTime() : 0;
+            return bTs - aTs;
+          });
+      };
+
+      const filteredCollabs = dedupeAndSort([...(collabsById ?? []), ...collabsByNameLegacy]);
+      const filteredContacts = dedupeAndSort([...(contactsById ?? []), ...contactsByNameLegacy]).map(row => ({
+        id: row?.id ?? null,
+        lab_id: row?.lab_id ?? null,
+        lab_name: row?.lab_name ?? null,
+        contact_name: row?.contact_name ?? row?.requester_name ?? null,
+        contact_email: row?.contact_email ?? row?.requester_email ?? null,
+        preferred_contact: Array.isArray(row?.preferred_contact_methods)
+          ? row.preferred_contact_methods[0] ?? null
+          : null,
+        message: row?.message ?? null,
+        type: row?.type ?? null,
+        organization: row?.organization ?? null,
+        created_at: row?.created_at ?? null,
+      }));
 
       res.json({
         labs,
@@ -4295,8 +4737,80 @@ app.get("/api/profile", authenticate, async (req, res) => {
 
   app.post("/api/my-labs/requests/viewed", authenticate, async (req, res) => {
     try {
-      const { contactEmail, labName, type } = req.body || {};
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+
+      const profile = await fetchProfileCapabilities(userId);
+      if (!profile?.canCreateLab && !profile?.isAdmin) {
+        return res.status(403).json({ message: "This account is not enabled to manage labs yet." });
+      }
+
+      const contactEmail = typeof req.body?.contactEmail === "string" ? req.body.contactEmail.trim().toLowerCase() : "";
+      const labName = typeof req.body?.labName === "string" ? req.body.labName.trim() : "";
+      const type = typeof req.body?.type === "string" ? req.body.type.trim() : "request";
       if (!contactEmail) return res.status(400).json({ message: "Missing contact email" });
+      if (!labName) return res.status(400).json({ message: "Missing lab name" });
+
+      const labIds = await listLabIdsForUser(userId);
+      if (!labIds.length) {
+        return res.status(403).json({ message: "No lab linked to this account" });
+      }
+      const { data: ownedLabs, error: ownedLabsError } = await supabase
+        .from("labs")
+        .select("id, name")
+        .in("id", labIds);
+      if (ownedLabsError) throw ownedLabsError;
+      const ownedIdSet = new Set((ownedLabs ?? []).map(row => Number(row.id)).filter(id => !Number.isNaN(id)));
+      const ownedNameSet = new Set((ownedLabs ?? []).map(row => String(row.name || "").trim().toLowerCase()).filter(Boolean));
+      const normalizedLabName = labName.toLowerCase();
+      if (!ownedNameSet.has(normalizedLabName)) {
+        return res.status(403).json({ message: "Not authorized to notify contacts for this lab" });
+      }
+
+      const [collaborationMatches, requesterMatches] = await Promise.all([
+        supabase
+          .from("lab_collaborations")
+          .select("id, lab_id, lab_name, contact_email")
+          .eq("contact_email", contactEmail)
+          .limit(50),
+        supabase
+          .from("lab_contact_requests")
+          .select("id, lab_id, lab_name, requester_email")
+          .eq("requester_email", contactEmail)
+          .limit(50),
+      ]);
+      if (collaborationMatches.error) throw collaborationMatches.error;
+      if (requesterMatches.error) throw requesterMatches.error;
+
+      let contactMatchesByContactEmail: Array<{ id: number; lab_id: number | null; lab_name: string | null; contact_email: string | null }> = [];
+      const contactEmailMatchResult = await supabase
+        .from("lab_contact_requests")
+        .select("id, lab_id, lab_name, contact_email")
+        .eq("contact_email", contactEmail)
+        .limit(50);
+      if (contactEmailMatchResult.error) {
+        const message = String(contactEmailMatchResult.error.message ?? "").toLowerCase();
+        if (!message.includes("contact_email")) {
+          throw contactEmailMatchResult.error;
+        }
+      } else {
+        contactMatchesByContactEmail = contactEmailMatchResult.data ?? [];
+      }
+
+      const belongsToOwnedLab = (row: { lab_id?: number | null; lab_name?: string | null }) => {
+        const rowLabId = Number(row.lab_id);
+        const rowLabName = String(row.lab_name || "").trim().toLowerCase();
+        const matchesOwnedLab = (!Number.isNaN(rowLabId) && ownedIdSet.has(rowLabId)) || ownedNameSet.has(rowLabName);
+        return matchesOwnedLab && rowLabName === normalizedLabName;
+      };
+      const canNotify = [
+        ...(collaborationMatches.data ?? []),
+        ...(requesterMatches.data ?? []),
+        ...contactMatchesByContactEmail,
+      ].some(row => belongsToOwnedLab(row));
+      if (!canNotify) {
+        return res.status(403).json({ message: "Not authorized to notify this contact" });
+      }
 
       // One notification per (email + labName + type) per runtime
       const cacheKey = `${(contactEmail || "").toLowerCase()}|${(labName || "").toLowerCase()}|${type || "request"}`;
@@ -4339,7 +4853,19 @@ app.get("/api/profile", authenticate, async (req, res) => {
       if (!labRow) return res.status(404).json({ message: "No lab linked to this account" });
 
       const labId = Number(labRow.id);
-      const updated = await labStore.update(labId, req.body);
+      const updates = { ...(req.body ?? {}) } as Record<string, unknown>;
+      const requestedOwnerCamel = updates.ownerUserId;
+      const requestedOwnerSnake = updates.owner_user_id;
+      if (requestedOwnerCamel !== undefined && requestedOwnerCamel !== userId) {
+        return res.status(403).json({ message: "Not authorized to transfer lab ownership" });
+      }
+      if (requestedOwnerSnake !== undefined && requestedOwnerSnake !== userId) {
+        return res.status(403).json({ message: "Not authorized to transfer lab ownership" });
+      }
+      delete updates.ownerUserId;
+      delete updates.owner_user_id;
+
+      const updated = await labStore.update(labId, updates);
       res.json(updated);
     } catch (err) {
       if (err instanceof ZodError) {

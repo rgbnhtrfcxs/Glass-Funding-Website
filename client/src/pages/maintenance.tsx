@@ -14,7 +14,7 @@ export default function Maintenance() {
         </h1>
         <p className="mt-4 max-w-2xl text-lg text-muted-foreground leading-relaxed">
           The Glass platform is temporarily unavailable while we roll out new improvements. We expect to be back online by{" "}
-          <span className="font-semibold text-foreground">18:00 UTC</span>. Your data and ongoing donations are safe.
+          <span className="font-semibold text-foreground">18:00 UTC</span>. Your data is safe.
         </p>
 
         <div className="mt-10 flex flex-col gap-3 sm:flex-row">

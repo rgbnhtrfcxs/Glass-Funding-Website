@@ -94,7 +94,7 @@ export default function Login() {
               Sign in to keep backing the science that matters to you.
             </h1>
             <p className="text-sm md:text-base text-muted-foreground leading-relaxed">
-              Access your portfolio, track donations, and stay close to the research teams you support.
+              Access your portfolio, track your activity, and stay close to the research teams you support.
             </p>
             <div className="rounded-3xl border border-border bg-card/80 p-6 text-sm text-muted-foreground shadow-sm">
               <p className="font-medium text-foreground">New to Glass?</p>

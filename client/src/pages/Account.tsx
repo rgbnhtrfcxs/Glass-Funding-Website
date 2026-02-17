@@ -54,7 +54,7 @@ type TeamMember = {
   website?: string | null;
   teamName?: string | null;
   roleRank?: number | null;
-  isLead?: boolean;
+  isLead: boolean;
 };
 
 type TeamMemberForm = {
@@ -182,6 +182,15 @@ export default function Account() {
 
   const toBool = (value: unknown) =>
     value === true || value === "true" || value === 1 || value === "1";
+  const normalizeTeamMember = (value: any): TeamMember => ({
+    name: typeof value?.name === "string" ? value.name : "",
+    title: typeof value?.title === "string" ? value.title : "",
+    linkedin: typeof value?.linkedin === "string" ? value.linkedin : null,
+    website: typeof value?.website === "string" ? value.website : null,
+    teamName: typeof value?.teamName === "string" ? value.teamName : null,
+    roleRank: typeof value?.roleRank === "number" && Number.isFinite(value.roleRank) ? value.roleRank : null,
+    isLead: Boolean(value?.isLead),
+  });
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [verifyLabId, setVerifyLabId] = useState<number | null>(null);
   const [verifySubmitting, setVerifySubmitting] = useState(false);
@@ -417,7 +426,7 @@ export default function Account() {
         setError(error.message);
         setProfile(null);
       } else {
-        setProfile((data as Profile) ?? null);
+        setProfile((data as unknown as Profile | null) ?? null);
       }
       setLoading(false);
     }
@@ -799,7 +808,9 @@ export default function Account() {
     );
     setTeamDrafts(
       ownedLabs.reduce((acc: Record<number, TeamMember[]>, lab) => {
-        acc[lab.id] = Array.isArray((lab as any).teamMembers) ? (lab as any).teamMembers : [];
+        acc[lab.id] = Array.isArray((lab as any).teamMembers)
+          ? ((lab as any).teamMembers as any[]).map(normalizeTeamMember).filter(member => member.name && member.title)
+          : [];
         return acc;
       }, {}),
     );
@@ -937,7 +948,9 @@ export default function Account() {
       const updated = await updateLab(labId, { teamMembers: members });
       setTeamDrafts(prev => ({
         ...prev,
-        [labId]: Array.isArray((updated as any).teamMembers) ? (updated as any).teamMembers : members,
+        [labId]: Array.isArray((updated as any).teamMembers)
+          ? ((updated as any).teamMembers as any[]).map(normalizeTeamMember).filter(member => member.name && member.title)
+          : members,
       }));
     } catch (err: any) {
       setTeamError(prev => ({ ...prev, [labId]: err?.message || "Unable to update team members" }));
@@ -1135,7 +1148,8 @@ export default function Account() {
       try {
         const { data: session } = await supabase.auth.getSession();
         const token = session.session?.access_token;
-        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        const headers = new Headers();
+        if (token) headers.set("Authorization", `Bearer ${token}`);
         const res = await fetch("/api/news/mine", { headers });
         const ct = res.headers.get("content-type") || "";
         if (!res.ok || !ct.includes("application/json")) {
@@ -1191,9 +1205,9 @@ export default function Account() {
     { id: "overview", label: "Overview" },
     { id: "edit", label: "Edit account" },
     { id: "requests", label: "Requests", hidden: !(profile && toBool(profile.can_broker_requests)) },
-    { id: "manageLab", label: "Manage lab", hidden: !(profile && toBool(profile.can_create_lab)) },
+    { id: "manageLab", label: "Lab workspace", hidden: !(profile && toBool(profile.can_create_lab)) },
     { id: "manageTeams", label: "Manage teams", hidden: !(profile && toBool(profile.can_manage_teams)) },
-    { id: "adminLabs", label: "Admin labs", hidden: !(profile && toBool(profile.is_admin)) },
+    { id: "adminLabs", label: "Labs admin", hidden: !(profile && toBool(profile.is_admin)) },
     { id: "favorites", label: `Favorites (${favoriteLabs.length})` },
     { id: "legal", label: "Legal assistance", hidden: !(profile && (toBool(profile.can_create_lab) || toBool(profile.can_manage_teams))) },
   ];
@@ -1560,7 +1574,7 @@ export default function Account() {
                   >
                     <span className="flex items-center gap-2">
                       <ShieldAlert className="h-4 w-4" />
-                      Admin labs
+                      Labs admin
                     </span>
                   </button>
                 )}
@@ -1663,23 +1677,28 @@ export default function Account() {
                                     return (
                                       <div
                                         key={lab.id}
-                                        className="rounded-2xl border border-border bg-background/60 px-4 py-3 text-sm flex flex-col gap-2"
+                                        className="rounded-2xl border border-border bg-background/60 px-4 py-4 text-sm flex flex-col gap-2 min-h-[152px]"
                                       >
-                                        <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-start justify-between gap-2">
                                           <div>
                                             <p className="font-semibold text-foreground">{lab.name}</p>
                                             <p className="text-xs text-muted-foreground">
                                               {premium ? "Premier" : labStatusLabel(lab as any)} • {lab.isVisible === false ? "Hidden" : "Visible"}
                                             </p>
                                           </div>
-                                          <Link href={`/lab/manage/${lab.id}`} className="text-xs font-medium text-primary hover:underline">
+                                        </div>
+                                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                          <span className="rounded-full border border-border px-2.5 py-1">7d views: {lab.views7d}</span>
+                                          <span className="rounded-full border border-border px-2.5 py-1">30d views: {lab.views30d}</span>
+                                          <span className="rounded-full border border-border px-2.5 py-1">Favorites: {lab.favorites}</span>
+                                        </div>
+                                        <div className="mt-auto flex justify-end pt-2">
+                                          <Link
+                                            href={`/lab/manage/${lab.id}`}
+                                            className="inline-flex items-center rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/15"
+                                          >
                                             Manage
                                           </Link>
-                                        </div>
-                                        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                                          <span className="rounded-full border border-border px-2 py-1">7d views: {lab.views7d}</span>
-                                          <span className="rounded-full border border-border px-2 py-1">30d views: {lab.views30d}</span>
-                                          <span className="rounded-full border border-border px-2 py-1">Favorites: {lab.favorites}</span>
                                         </div>
                                       </div>
                                     );
@@ -1730,7 +1749,7 @@ export default function Account() {
                           onClick={() => setActiveTab("manageLab")}
                           className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90"
                         >
-                          Manage labs
+                          Open workspace
                         </button>
                       </div>
                     </div>
@@ -2097,19 +2116,44 @@ export default function Account() {
           {activeTab === "requests" && <Requests embedded />}
 
           {activeTab === "manageLab" && (
-            <div className="space-y-4">
-              <div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab("overview");
-                    setOverviewTab("labs");
-                  }}
-                  className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                >
-                  <ArrowLeft className="h-3 w-3" />
-                  Back
-                </button>
+            <div className="space-y-5">
+              <div className="rounded-3xl border border-border bg-card/80 p-5 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Lab workspace</p>
+                    <h3 className="mt-1 text-lg font-semibold text-foreground">Manage linked labs</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Use this workspace to update your labs, add new listings, and keep visibility current.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab("overview");
+                        setOverviewTab("labs");
+                      }}
+                      className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                    >
+                      <ArrowLeft className="h-3 w-3" />
+                      Back to overview
+                    </button>
+                    {profile && toBool(profile.is_admin) && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("adminLabs")}
+                        className="inline-flex items-center gap-2 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:bg-primary/90"
+                      >
+                        Open labs admin
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <InfoTile label="Linked labs" value={ownedLabs.length.toString()} />
+                  <InfoTile label="Visible" value={ownedLabs.filter(lab => (lab as any).isVisible !== false).length.toString()} />
+                  <InfoTile label="Need verification" value={ownedUnverifiedLabs.length.toString()} />
+                </div>
               </div>
               <ManageSelect embedded />
             </div>
@@ -2125,7 +2169,30 @@ export default function Account() {
             />
           )}
 
-          {activeTab === "adminLabs" && <AdminLabs embedded />}
+          {activeTab === "adminLabs" && (
+            <div className="space-y-5">
+              <div className="rounded-3xl border border-border bg-card/80 p-5 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Admin tools</p>
+                    <h3 className="mt-1 text-lg font-semibold text-foreground">Directory operations</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Review listings, issue certificates, and maintain quality across the full lab directory.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("manageLab")}
+                    className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                  >
+                    <ArrowLeft className="h-3 w-3" />
+                    Back to workspace
+                  </button>
+                </div>
+              </div>
+              <AdminLabs embedded />
+            </div>
+          )}
 
           {activeTab === "favorites" && <Favorites embedded />}
 

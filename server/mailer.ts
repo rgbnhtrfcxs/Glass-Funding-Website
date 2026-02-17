@@ -101,7 +101,12 @@ export async function sendMail({ to, subject, text, html, from, templateId, para
 
   // If we don't have SMTP config, log and return silently.
   if (!host || !user || !pass) {
-    console.warn("[mailer] SMTP not configured; logging instead", { to, subject, text });
+    console.warn("[mailer] SMTP not configured; skipping send", {
+      to,
+      subject,
+      textLength: text.length,
+      hasHtml: Boolean(html),
+    });
     return;
   }
 

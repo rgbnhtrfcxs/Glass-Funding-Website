@@ -20,8 +20,8 @@ import ResetPassword from "@/pages/ResetPassword";
 import ConfirmEmail from "@/pages/ConfirmEmail";
 
 import Labs from "@/pages/Labs";
-import Terms from "@/pages/terms";
-import Privacy from "@/pages/privacy";
+import Terms from "@/pages/Terms";
+import Privacy from "@/pages/Privacy";
 import Waitlist1 from "@/pages/Waitlist";
 import OnePagers from "@/pages/OnePagers";
 import Roadmap from "@/pages/Roadmap";
@@ -33,6 +33,7 @@ import LabRequest from "@/pages/LabRequest";
 import LabCollaboration from "@/pages/LabCollaboration";
 import AdminLabs from "@/pages/AdminLabs";
 import Pricing from "@/pages/Pricing";
+import PricingArchiveCheckout from "@/pages/PricingArchiveCheckout";
 import LabProfile from "@/pages/LabProfile";
 import Account from "@/pages/Account";
 import Teams from "@/pages/Teams";
@@ -47,8 +48,8 @@ import ManageSelect from "@/pages/ManageSelect";
 import NewLab from "@/pages/NewLab";
 import Favorites from "@/pages/Favorites";
 import Subscribe from "@/pages/Subscribe";
+import SubscribeArchiveCheckout from "@/pages/SubscribeArchiveCheckout";
 import Subscriptions from "@/pages/Subscriptions";
-import DonationDisabled from "@/pages/DonationDisabled";
 import { LabsProvider } from "@/context/LabsContext";
 import { TeamsProvider } from "@/context/TeamsContext";
 import { AuthProvider } from "@/context/AuthContext";
@@ -144,9 +145,8 @@ function Router() {
       <ProtectedRoute path="/team/manage/:id" component={TeamEditor} />
       <Route path="/payments" component={PaymentFlow} />
       <Route path="/stripe" component={StripeCheckout} />
-      <Route path="/donate" component={DonationDisabled} />
-      <Route path="/donate-confirmation" component={DonationDisabled} />
       <ProtectedRoute path="/subscribe" component={Subscribe} />
+      <ProtectedRoute path="/subscribe-archive" component={SubscribeArchiveCheckout} />
       <Route path="/logout" component={Logout} />
 
       {/* Auth Pages */}
@@ -163,6 +163,7 @@ function Router() {
       <Route path="/verified-by-glass" component={VerifiedByGlass} />
       <Route path="/glass-id" component={GlassId} />
       <Route path="/pricing" component={Pricing} />
+      <Route path="/pricing-archive" component={PricingArchiveCheckout} />
       <Route path="/contact" component={Contact} />
       <Route path="/one-pagers" component={OnePagers} />
       <Route path="/roadmap" component={Roadmap} />

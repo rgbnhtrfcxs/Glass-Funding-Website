@@ -9,9 +9,10 @@ import {
   Heart,
   ShieldAlert,
   ShieldCheck,
+  ArrowUpRight,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, type ReactNode } from "react";
 import { useLabs } from "@/context/LabsContext";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
@@ -28,10 +29,35 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { orgRoleOptions, type OrgRoleOption } from "@shared/labs";
 
+type DirectoryMode = "discover" | "rent";
+type SearchMatchReason = {
+  field: string;
+  value: string;
+};
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const highlightSearchMatch = (value: string, tokens: string[]): ReactNode => {
+  if (!value || tokens.length === 0) return value;
+  const escaped = tokens.map(escapeRegExp).filter(Boolean);
+  if (escaped.length === 0) return value;
+  const regex = new RegExp(`(${escaped.join("|")})`, "gi");
+  return value.split(regex).map((part, index) => {
+    const isToken = tokens.includes(part.toLowerCase());
+    if (!isToken) return <span key={`${part}-${index}`}>{part}</span>;
+    return (
+      <mark key={`${part}-${index}`} className="rounded-sm bg-pink-200/80 px-0.5 text-pink-900">
+        {part}
+      </mark>
+    );
+  });
+};
+
 export default function Labs() {
   const { labs, isLoading, error, refresh } = useLabs();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
+  const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("discover");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedOrgRoles, setSelectedOrgRoles] = useState<OrgRoleOption[]>([]);
   const [selectedErcCodes, setSelectedErcCodes] = useState<string[]>([]);
@@ -47,6 +73,7 @@ export default function Labs() {
   const [mapMissingLabs, setMapMissingLabs] = useState<string[]>([]);
   const [selectedMarker, setSelectedMarker] = useState<MapMarker | null>(null);
   const uiStateRef = useRef({
+    directoryMode: "discover" as DirectoryMode,
     searchTerm: "",
     selectedOrgRoles: [] as OrgRoleOption[],
     selectedErcCodes: [] as string[],
@@ -73,17 +100,25 @@ export default function Labs() {
       .slice(0, 2)
       .join("")
       .toUpperCase();
-
+  const offersLabSpaceFlag = (value: unknown) => ["true", "1", true, 1].includes(value as any);
   const visibleLabs = useMemo(() => labs.filter(lab => lab.isVisible !== false), [labs]);
-  const labCount = visibleLabs.length;
-  const verifiedCount = visibleLabs.filter(lab => isVerifiedStatus(lab.labStatus)).length;
-  const availableOrgRoles = useMemo(
-    () => orgRoleOptions.filter(role => visibleLabs.some(lab => lab.orgRole === role)),
+  const rentReadyLabs = useMemo(
+    () =>
+      visibleLabs.filter(
+        lab => offersLabSpaceFlag(lab.offersLabSpace) && isVerifiedStatus(statusValue(lab)),
+      ),
     [visibleLabs],
+  );
+  const modeLabs = directoryMode === "rent" ? rentReadyLabs : visibleLabs;
+  const labCount = modeLabs.length;
+  const verifiedCount = modeLabs.filter(lab => isVerifiedStatus(lab.labStatus)).length;
+  const availableOrgRoles = useMemo(
+    () => orgRoleOptions.filter(role => modeLabs.some(lab => lab.orgRole === role)),
+    [modeLabs],
   );
   const availableErcDisciplines = useMemo(() => {
     const labels = new Map<string, string>();
-    visibleLabs.forEach(lab => {
+    modeLabs.forEach(lab => {
       (lab.ercDisciplines ?? []).forEach(item => {
         const code = item.code.trim().toUpperCase();
         if (!isErcCode(code)) return;
@@ -98,7 +133,7 @@ export default function Labs() {
     return Array.from(labels.entries())
       .sort(([a], [b]) => a.localeCompare(b, "en", { numeric: true }))
       .map(([code, label]) => ({ code, label }));
-  }, [visibleLabs]);
+  }, [modeLabs]);
   const formatLocation = (lab: { city?: string | null; country?: string | null }) =>
     [lab.city, lab.country].filter(Boolean).join(", ");
   const normalizeSearchText = (value: string) =>
@@ -107,13 +142,25 @@ export default function Labs() {
       .replace(/[()/,-]/g, " ")
       .replace(/\s+/g, " ")
       .trim();
+  const searchHighlightTokens = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          normalizeSearchText(searchTerm)
+            .split(" ")
+            .map(token => token.trim())
+            .filter(Boolean),
+        ),
+      ).sort((a, b) => b.length - a.length),
+    [searchTerm],
+  );
   const uniqueEquipmentCount = useMemo(() => {
     const equipment = new Set<string>();
-    visibleLabs.forEach(lab => {
+    modeLabs.forEach(lab => {
       lab.equipment.forEach(item => equipment.add(item.toLowerCase()));
     });
     return equipment.size;
-  }, [visibleLabs]);
+  }, [modeLabs]);
   const getImageUrl = (url: string, width = 1200) =>
     url.startsWith("data:")
       ? url
@@ -125,6 +172,9 @@ export default function Labs() {
     if (!stored) return;
     try {
       const parsed = JSON.parse(stored);
+      if (parsed.directoryMode === "discover" || parsed.directoryMode === "rent") {
+        setDirectoryMode(parsed.directoryMode);
+      }
       if (typeof parsed.searchTerm === "string") setSearchTerm(parsed.searchTerm);
       if (Array.isArray(parsed.selectedOrgRoles)) {
         const validSelectedRoles = parsed.selectedOrgRoles.filter(isOrgRoleOption);
@@ -152,6 +202,7 @@ export default function Labs() {
 
   useEffect(() => {
     uiStateRef.current = {
+      directoryMode,
       searchTerm,
       selectedOrgRoles,
       selectedErcCodes,
@@ -159,7 +210,7 @@ export default function Labs() {
       verifiedOnly,
       showMap,
     };
-  }, [searchTerm, selectedOrgRoles, selectedErcCodes, favoritesOnly, verifiedOnly, showMap]);
+  }, [directoryMode, searchTerm, selectedOrgRoles, selectedErcCodes, favoritesOnly, verifiedOnly, showMap]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -178,7 +229,7 @@ export default function Labs() {
 
   useEffect(() => {
     saveUiState();
-  }, [searchTerm, selectedOrgRoles, selectedErcCodes, favoritesOnly, verifiedOnly, showMap]);
+  }, [directoryMode, searchTerm, selectedOrgRoles, selectedErcCodes, favoritesOnly, verifiedOnly, showMap]);
 
   useEffect(() => {
     return () => {
@@ -249,28 +300,42 @@ export default function Labs() {
     }
   };
 
-  const filteredLabs = useMemo(() => {
+  const { filteredLabs, searchMatchReasonsByLabId } = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     const normalizedTerm = normalizeSearchText(term);
+    const matchesSearch = (value: string) => {
+      const lower = value.toLowerCase();
+      const normalized = normalizeSearchText(value);
+      return lower.includes(term) || normalized.includes(normalizedTerm);
+    };
+    const reasonsByLabId = new Map<number, SearchMatchReason[]>();
     let subset = term
-      ? visibleLabs.filter(lab => {
-          const rawHaystack = [
-            lab.name,
-            ...(lab.alternateNames ?? []),
-            formatLocation(lab),
-            lab.equipment.join(" "),
-            lab.focusAreas.join(" "),
-            (lab.ercDisciplines ?? []).map(item => `${item.code} ${item.title}`).join(" "),
-            (lab.ercDisciplineCodes ?? []).join(" "),
-            (lab.tags ?? []).join(" "),
-          ]
-            .filter(Boolean)
-            .join(" ");
-          const haystack = rawHaystack.toLowerCase();
-          const normalizedHaystack = normalizeSearchText(rawHaystack);
-          return haystack.includes(term) || normalizedHaystack.includes(normalizedTerm);
+      ? modeLabs.filter(lab => {
+          const reasons: SearchMatchReason[] = [];
+          const seen = new Set<string>();
+          const pushReason = (field: string, value: string | null | undefined) => {
+            const cleaned = value?.trim();
+            if (!cleaned) return;
+            if (!matchesSearch(cleaned)) return;
+            const key = `${field}:${cleaned.toLowerCase()}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            reasons.push({ field, value: cleaned });
+          };
+
+          pushReason("Name", lab.name);
+          pushReason("Location", formatLocation(lab));
+          (lab.alternateNames ?? []).forEach(item => pushReason("Alt name", item));
+          (lab.focusAreas ?? []).forEach(item => pushReason("Focus", item));
+          (lab.equipment ?? []).forEach(item => pushReason("Equipment", item));
+          (lab.ercDisciplines ?? []).forEach(item => pushReason("ERC", `${item.code} ${item.title}`));
+          (lab.ercDisciplineCodes ?? []).forEach(item => pushReason("ERC code", item));
+          (lab.tags ?? []).forEach(item => pushReason("Tag", item));
+
+          if (reasons.length > 0) reasonsByLabId.set(lab.id, reasons);
+          return reasons.length > 0;
         })
-      : visibleLabs;
+      : modeLabs;
     if (selectedOrgRoles.length > 0) {
       subset = subset.filter(lab => (lab.orgRole ? selectedOrgRoles.includes(lab.orgRole) : false));
     }
@@ -280,7 +345,7 @@ export default function Labs() {
         return selectedErcCodes.some(code => labCodes.has(code));
       });
     }
-    if (verifiedOnly) {
+    if (directoryMode === "discover" && verifiedOnly) {
       subset = subset.filter(lab => {
         return isVerifiedStatus(statusValue(lab));
       });
@@ -288,16 +353,18 @@ export default function Labs() {
     if (favoritesOnly) {
       subset = subset.filter(lab => favorites.has(lab.id));
     }
-    return [...subset].sort((a, b) => {
+    const sortedLabs = [...subset].sort((a, b) => {
       const aPremium = statusValue(a) === "premier";
       const bPremium = statusValue(b) === "premier";
       if (aPremium === bPremium) return 0;
       return aPremium ? -1 : 1;
     });
-  }, [visibleLabs, searchTerm, selectedOrgRoles, selectedErcCodes, favoritesOnly, favorites, verifiedOnly]);
+    return { filteredLabs: sortedLabs, searchMatchReasonsByLabId: reasonsByLabId };
+  }, [modeLabs, searchTerm, selectedOrgRoles, selectedErcCodes, favoritesOnly, favorites, verifiedOnly, directoryMode]);
   // Potential future premium search: include labManager, focusAreas, equipment, offers.
   const hasActiveFilters = selectedOrgRoles.length > 0 || selectedErcCodes.length > 0;
   const activeFilterCount = selectedOrgRoles.length + selectedErcCodes.length;
+  const isRentComingSoon = directoryMode === "rent" && rentReadyLabs.length === 0;
 
   useEffect(() => {
     if (!showMap) return;
@@ -462,18 +529,44 @@ export default function Labs() {
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="max-w-3xl"
+          className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between"
         >
-          <span className="text-sm uppercase tracking-[0.35em] text-muted-foreground">
-            Partner Labs
-          </span>
-          <h1 className="mt-4 text-4xl md:text-5xl font-semibold leading-tight">
-            Rent bench space inside vetted labs aligned with Glass.
-          </h1>
-          <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-            Each partner lab lists core equipment, focus areas, and compliance posture so your team can
-            spin up work quickly with the right infrastructure in place.
-          </p>
+          <div className="max-w-3xl">
+            <h1 className="text-4xl md:text-5xl font-semibold leading-tight">
+              {directoryMode === "rent"
+                ? "Find your next lab home."
+                : "Discover labs across the Glass network."}
+            </h1>
+            <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
+              {directoryMode === "rent"
+                ? "Explore verified hosts with real capacity, from bench access to fully equipped environments, and launch experiments faster."
+                : "Discover mode shows the full lab directory so you can browse partners, capabilities, and locations."}
+            </p>
+          </div>
+          <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card/80 p-1.5 shadow-sm self-end lg:self-start lg:mt-1">
+            <button
+              type="button"
+              onClick={() => setDirectoryMode("discover")}
+              className={`inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-sm md:text-base font-semibold transition ${
+                directoryMode === "discover"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-primary"
+              }`}
+            >
+              Discover
+            </button>
+            <button
+              type="button"
+              onClick={() => setDirectoryMode("rent")}
+              className={`inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-sm md:text-base font-semibold transition ${
+                directoryMode === "rent"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-primary"
+              }`}
+            >
+              Rent
+            </button>
+          </div>
         </motion.div>
 
         <motion.div
@@ -482,41 +575,49 @@ export default function Labs() {
           transition={{ duration: 0.6, delay: 0.1 }}
           className="mt-10 flex flex-wrap items-start gap-4 md:gap-6"
         >
-          <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm flex-1 min-w-[240px] max-w-sm">
+          <div
+            className={`rounded-3xl border border-border bg-card/80 p-6 shadow-sm flex-1 min-w-[240px] ${
+              directoryMode === "rent" ? "max-w-xl" : "max-w-sm"
+            }`}
+          >
             <div className="flex items-center gap-3 justify-between">
               <div>
-                <p className="text-xs font-medium uppercase tracking-[0.3em] text-muted-foreground">Network size</p>
+                <p className="text-sm font-medium uppercase tracking-[0.3em] text-muted-foreground">Network size</p>
                 <p className="mt-2 text-3xl font-semibold text-foreground">{labCount} labs</p>
-                <p className="mt-1 text-sm text-muted-foreground">Vetted partners with GLASS-Connect alignment.</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {directoryMode === "rent"
+                    ? "Rent-ready labs currently listed."
+                    : "Partner labs currently visible in the directory."}
+                </p>
               </div>
             </div>
           </div>
-          <div className="relative rounded-3xl border border-border bg-card/80 p-6 shadow-sm flex-1 min-w-[240px] max-w-sm">
-            <div className="flex items-center gap-3 justify-between">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-[0.3em] text-muted-foreground">Verified labs</p>
-                <p className="mt-2 text-3xl font-semibold text-foreground">{verifiedCount} verified</p>
-                <p className="mt-1 text-sm text-muted-foreground">Completed verification to boost trust and routing.</p>
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground md:hidden">
-                  <Link href="/verified-by-glass" className="hover:text-primary hover:underline">
-                    What is Verified by GLASS?
-                  </Link>
-                  <span aria-hidden="true">•</span>
-                  <Link href="/glass-id" className="hover:text-primary hover:underline">
-                    What is GLASS-ID?
-                  </Link>
+          {directoryMode === "discover" && (
+            <div className="relative rounded-3xl border border-border bg-card/80 p-6 shadow-sm flex-1 min-w-[240px] max-w-sm">
+              <div className="flex items-center gap-3 justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium uppercase tracking-[0.3em] text-muted-foreground">Verified labs</p>
+                  </div>
+                  <p className="mt-2 text-3xl font-semibold text-foreground">{verifiedCount} verified</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Completed verification to boost trust and routing.
+                  </p>
                 </div>
               </div>
-            </div>
-            <div className="hidden md:flex absolute left-full top-0 ml-3 flex-col gap-1 text-xs text-muted-foreground whitespace-nowrap">
-              <Link href="/verified-by-glass" className="hover:text-primary hover:underline">
-                What is Verified by GLASS?
+              <Link
+                href="/verified-by-glass"
+                className="group absolute right-3.5 top-5 inline-flex items-center rounded-full border border-border bg-background/85 px-2 py-0.5 text-[11px] font-semibold text-muted-foreground transition hover:border-primary hover:text-primary"
+                title="What is Verified by GLASS?"
+                aria-label="What is Verified by GLASS?"
+              >
+                <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 group-hover:mr-1 group-hover:max-w-[200px] group-hover:opacity-100">
+                  What is Verified by GLASS?
+                </span>
+                <ArrowUpRight className="h-3 w-3" />
               </Link>
-              <Link href="/glass-id" className="hover:text-primary hover:underline">
-                What is GLASS-ID?
-              </Link>
             </div>
-          </div>
+          )}
         </motion.div>
 
         <p className="mt-6 text-sm text-muted-foreground">
@@ -555,32 +656,39 @@ export default function Labs() {
                 </button>
               )}
             </div>
-            <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card/70 p-1 w-fit">
-              <button
-                type="button"
-                onClick={() => setVerifiedOnly(true)}
-                className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                  verifiedOnly
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:text-primary"
-                }`}
-              >
+            {directoryMode === "discover" ? (
+              <div className="inline-flex items-center gap-1 rounded-full border border-border bg-card/70 p-1 w-fit">
+                <button
+                  type="button"
+                  onClick={() => setVerifiedOnly(true)}
+                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                    verifiedOnly
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-primary"
+                  }`}
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  GLASS verified
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVerifiedOnly(false)}
+                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                    !verifiedOnly
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-primary"
+                  }`}
+                >
+                  <ShieldAlert className="h-3.5 w-3.5" />
+                  Include unverified
+                </button>
+              </div>
+            ) : (
+              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">
                 <ShieldCheck className="h-3.5 w-3.5" />
-                GLASS verified
-              </button>
-              <button
-                type="button"
-                onClick={() => setVerifiedOnly(false)}
-                className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                  !verifiedOnly
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:text-primary"
-                }`}
-              >
-                <ShieldAlert className="h-3.5 w-3.5" />
-                Include unverified
-              </button>
-            </div>
+                Verified only
+              </div>
+            )}
           </div>
           <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row sm:items-center sm:gap-3">
             <div className="w-full sm:w-auto">
@@ -669,7 +777,11 @@ export default function Labs() {
                 type="search"
                 value={searchTerm}
                 onChange={event => setSearchTerm(event.target.value)}
-                placeholder="Search by name, city, or equipment"
+                placeholder={
+                  directoryMode === "rent"
+                    ? "Search rent listings by name, city, or equipment"
+                    : "Search labs by name, city, or equipment"
+                }
                 className="w-full rounded-full border border-border bg-card/80 pl-10 pr-4 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
               <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -779,7 +891,9 @@ export default function Labs() {
             <span>{error}</span>
             <button
               type="button"
-              onClick={refresh}
+              onClick={() => {
+                void refresh();
+              }}
               className="rounded-full border border-destructive/40 px-3 py-1 text-xs font-medium uppercase tracking-[0.3em]"
             >
               Retry
@@ -798,9 +912,15 @@ export default function Labs() {
                 ? "We couldn't load the lab directory. Please retry."
                 : "No partner labs are available yet. Check back soon."}
             </div>
+          ) : isRentComingSoon ? (
+            <div className="rounded-3xl border border-dashed border-border bg-card/70 p-10 text-center text-muted-foreground">
+              Rent listings are coming soon.
+            </div>
           ) : filteredLabs.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-border bg-card/70 p-10 text-center text-muted-foreground">
-              No labs match that search. Try a different name, city, or equipment keyword.
+              {directoryMode === "rent"
+                ? "No rent-ready labs match that search. Try a different name, city, or equipment keyword."
+                : "No labs match that search. Try a different name, city, or equipment keyword."}
             </div>
           ) : (
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -811,7 +931,14 @@ export default function Labs() {
                 const hasAuditFlag = lab.auditPassed !== undefined && lab.auditPassed !== null;
                 const auditPassed = ["true", true, 1, "1"].includes(lab.auditPassed as any);
                 const isAuditPending = isVerified && hasAuditFlag && !auditPassed;
-                const offersLabSpace = ["true", "1", true, 1].includes(lab.offersLabSpace as any);
+                const offersLabSpace = offersLabSpaceFlag(lab.offersLabSpace);
+                const searchReasons = searchMatchReasonsByLabId.get(lab.id) ?? [];
+                const highlightNameInCard = searchReasons.some(reason => reason.field === "Name");
+                const highlightLocationInCard = searchReasons.some(reason => reason.field === "Location");
+                const extraSearchReasons = searchReasons.filter(
+                  reason => reason.field !== "Name" && reason.field !== "Location",
+                );
+                const locationLabel = formatLocation(lab);
                 const badgeClass =
                   isAuditPending
                     ? "bg-amber-50 text-amber-700"
@@ -897,10 +1024,20 @@ export default function Labs() {
 
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
-                        <h3 className="text-xl font-semibold text-foreground">{lab.name}</h3>
+                        <h3 className="text-xl font-semibold text-foreground">
+                          {highlightNameInCard && searchHighlightTokens.length > 0
+                            ? highlightSearchMatch(lab.name, searchHighlightTokens)
+                            : lab.name}
+                        </h3>
                         <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
                           <MapPin className="h-4 w-4 text-primary" />
-                          <span>{formatLocation(lab) || "Location not set"}</span>
+                          <span>
+                            {locationLabel
+                              ? highlightLocationInCard && searchHighlightTokens.length > 0
+                                ? highlightSearchMatch(locationLabel, searchHighlightTokens)
+                                : locationLabel
+                              : "Location not set"}
+                          </span>
                         </div>
                         {lab.orgRole && (
                           <span className="mt-2 inline-flex items-center rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground">
@@ -943,71 +1080,93 @@ export default function Labs() {
                       </div>
                     </div>
 
-                  <div className="mt-5 grid gap-4">
-                    {lab.focusAreas.length > 0 && (
-                      <div>
-                        <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">Focus</h4>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {lab.focusAreas.slice(0, 3).map(area => (
+                    {searchHighlightTokens.length > 0 && extraSearchReasons.length > 0 && (
+                      <div className="mt-4 rounded-2xl border border-pink-200 bg-pink-50/70 px-3 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-pink-700">Search match</p>
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {extraSearchReasons.slice(0, 3).map((reason, reasonIndex) => (
                             <span
-                              key={area}
-                              className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
+                              key={`${lab.id}-${reason.field}-${reason.value}-${reasonIndex}`}
+                              className="inline-flex max-w-full items-center gap-1 rounded-full border border-pink-200 bg-white/80 px-2.5 py-1 text-[11px] text-pink-800"
                             >
-                              {area}
+                              <span className="font-semibold">{reason.field}:</span>
+                              <span>{highlightSearchMatch(reason.value, searchHighlightTokens)}</span>
                             </span>
                           ))}
-                        </div>
-                      </div>
-                    )}
-                    {((lab.ercDisciplines ?? []).length > 0 || (lab.ercDisciplineCodes ?? []).length > 0) && (
-                      <div>
-                        <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">ERC Panels</h4>
-                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                          {(lab.ercDisciplines ?? []).length > 0
-                            ? (lab.ercDisciplines ?? []).slice(0, 3).map(item => (
-                                <span
-                                  key={item.code}
-                                  className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
-                                  title={item.title}
-                                >
-                                  {item.code} - {item.title}
-                                </span>
-                              ))
-                            : (lab.ercDisciplineCodes ?? []).slice(0, 4).map(code => (
-                                <span
-                                  key={code}
-                                  className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
-                                >
-                                  {code}
-                                </span>
-                              ))}
-                        </div>
-                      </div>
-                    )}
-                    {lab.equipment.length > 0 && (
-                      <div>
-                        <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">Equipment</h4>
-                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                          {lab.equipment.slice(0, 3).map(item => (
-                            <span
-                              key={item}
-                              className="rounded-full bg-muted/60 px-3 py-1"
-                            >
-                              {item}
+                          {extraSearchReasons.length > 3 && (
+                            <span className="inline-flex items-center rounded-full border border-pink-200 bg-white/80 px-2.5 py-1 text-[11px] text-pink-700">
+                              +{extraSearchReasons.length - 3} more
                             </span>
-                          ))}
+                          )}
                         </div>
                       </div>
                     )}
-                    {lab.photos.length > 1 && (
-                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1">
-                          <Images className="h-3.5 w-3.5 text-primary" />
-                          {lab.photos.length} photos provided
-                        </span>
-                      </div>
-                    )}
-                  </div>
+
+                    <div className="mt-5 grid gap-4">
+                      {lab.focusAreas.length > 0 && (
+                        <div>
+                          <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">Focus</h4>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {lab.focusAreas.slice(0, 3).map(area => (
+                              <span
+                                key={area}
+                                className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
+                              >
+                                {area}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {((lab.ercDisciplines ?? []).length > 0 || (lab.ercDisciplineCodes ?? []).length > 0) && (
+                        <div>
+                          <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">ERC Panels</h4>
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            {(lab.ercDisciplines ?? []).length > 0
+                              ? (lab.ercDisciplines ?? []).slice(0, 3).map(item => (
+                                  <span
+                                    key={item.code}
+                                    className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
+                                    title={item.title}
+                                  >
+                                    {item.code} - {item.title}
+                                  </span>
+                                ))
+                              : (lab.ercDisciplineCodes ?? []).slice(0, 4).map(code => (
+                                  <span
+                                    key={code}
+                                    className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
+                                  >
+                                    {code}
+                                  </span>
+                                ))}
+                          </div>
+                        </div>
+                      )}
+                      {lab.equipment.length > 0 && (
+                        <div>
+                          <h4 className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">Equipment</h4>
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            {lab.equipment.slice(0, 3).map(item => (
+                              <span
+                                key={item}
+                                className="rounded-full bg-muted/60 px-3 py-1"
+                              >
+                                {item}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {lab.photos.length > 1 && (
+                        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1">
+                            <Images className="h-3.5 w-3.5 text-primary" />
+                            {lab.photos.length} photos provided
+                          </span>
+                        </div>
+                      )}
+                    </div>
 
                     </div>
                   </motion.div>
