@@ -9,6 +9,7 @@ import { labRequestStore } from "./lab-requests-store";
 import { labCollaborationStore } from "./collaboration-store";
 import { sendMail } from "./mailer";
 import { supabasePublic } from "./supabasePublicClient.js";
+import { fetchInpiPatentsBySiren, isInpiConfigured, toSirenFromSiretOrSiren } from "./inpiClient.js";
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -240,9 +241,26 @@ const stripePriceMap = () => {
   };
   add(process.env.STRIPE_PRICE_VERIFIED_MONTHLY, "verified", "monthly");
   add(process.env.STRIPE_PRICE_VERIFIED_YEARLY, "verified", "yearly");
+  add(process.env.STRIPE_PRICE_VERIFIED_YEARLY_DISCOUNT, "verified", "yearly");
   add(process.env.STRIPE_PRICE_PREMIER_MONTHLY, "premier", "monthly");
   add(process.env.STRIPE_PRICE_PREMIER_YEARLY, "premier", "yearly");
+  add(process.env.STRIPE_PRICE_PREMIER_YEARLY_DISCOUNT, "premier", "yearly");
   return mapping;
+};
+
+const resolveStripePriceId = (planKey: string, intervalKey: string) => {
+  const verifiedYearly =
+    process.env.STRIPE_PRICE_VERIFIED_YEARLY_DISCOUNT || process.env.STRIPE_PRICE_VERIFIED_YEARLY;
+  const premierYearly =
+    process.env.STRIPE_PRICE_PREMIER_YEARLY_DISCOUNT || process.env.STRIPE_PRICE_PREMIER_YEARLY;
+
+  if (planKey === "verified") {
+    return intervalKey === "yearly" ? verifiedYearly : process.env.STRIPE_PRICE_VERIFIED_MONTHLY;
+  }
+  if (planKey === "premier") {
+    return intervalKey === "yearly" ? premierYearly : process.env.STRIPE_PRICE_PREMIER_MONTHLY;
+  }
+  return undefined;
 };
 
 const timingSafeEqual = (a: string, b: string) => {
@@ -262,6 +280,113 @@ const listLabIdsForUser = async (userId?: string | null) => {
     });
   }
   return Array.from(ids);
+};
+
+const parseRequestedLabId = (value: unknown): number | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return Number.NaN;
+  return parsed;
+};
+
+const getLabSubscriptionTierRank = (status?: string | null) => {
+  const normalized = normalizeLabStatus(status);
+  if (normalized === "premier") return 2;
+  if (normalized === "verified" || normalized === "verified_active" || normalized === "verified_passive") {
+    return 1;
+  }
+  return 0;
+};
+
+const canLabSubscribeToPlan = (status: string | null | undefined, planKey: "verified" | "premier") => {
+  const rank = getLabSubscriptionTierRank(status);
+  if (planKey === "verified") return rank < 1;
+  return rank < 2;
+};
+
+const resolveSubscriptionLabId = async (
+  userId: string,
+  requestedLabId: unknown,
+  planKey: "verified" | "premier",
+) => {
+  const { data, error } = await supabase
+    .from("labs")
+    .select("id, name, lab_status")
+    .eq("owner_user_id", userId);
+  if (error) {
+    return {
+      labId: null as number | null,
+      error: { status: 500, message: "Unable to load labs for subscription." },
+    };
+  }
+
+  const ownedLabs = (data ?? [])
+    .map(row => ({
+      id: Number((row as any).id),
+      name: typeof (row as any).name === "string" ? (row as any).name : "",
+      labStatus: typeof (row as any).lab_status === "string" ? (row as any).lab_status : null,
+    }))
+    .filter(row => Number.isInteger(row.id) && row.id > 0);
+
+  if (!ownedLabs.length) {
+    return {
+      labId: null as number | null,
+      error: { status: 400, message: "No labs linked to this account. Create a lab before subscribing." },
+    };
+  }
+
+  const eligibleLabs = ownedLabs.filter(lab => canLabSubscribeToPlan(lab.labStatus, planKey));
+  if (!eligibleLabs.length) {
+    return {
+      labId: null as number | null,
+      error: {
+        status: 409,
+        message:
+          planKey === "premier"
+            ? "All your labs are already on Premier."
+            : "All your labs are already on Verified or Premier.",
+      },
+    };
+  }
+
+  const parsedLabId = parseRequestedLabId(requestedLabId);
+  if (parsedLabId === null) {
+    if (eligibleLabs.length === 1) {
+      return { labId: eligibleLabs[0].id, error: null as { status: number; message: string } | null };
+    }
+    return {
+      labId: null as number | null,
+      error: { status: 400, message: "Please select an eligible lab for this subscription." },
+    };
+  }
+  if (Number.isNaN(parsedLabId)) {
+    return {
+      labId: null as number | null,
+      error: { status: 400, message: "Invalid lab id" },
+    };
+  }
+  const selectedLab = ownedLabs.find(lab => lab.id === parsedLabId);
+  if (!selectedLab) {
+    return {
+      labId: null as number | null,
+      error: { status: 403, message: "You can only subscribe for your own lab." },
+    };
+  }
+  if (!canLabSubscribeToPlan(selectedLab.labStatus, planKey)) {
+    return {
+      labId: null as number | null,
+      error: {
+        status: 409,
+        message:
+          planKey === "premier"
+            ? `${selectedLab.name || "Selected lab"} is already on Premier.`
+            : `${selectedLab.name || "Selected lab"} is already on Verified or Premier.`,
+      },
+    };
+  }
+
+  return { labId: parsedLabId, error: null as { status: number; message: string } | null };
 };
 
 const parseBoolean = (value: boolean | string | null | undefined, fallback = false) => {
@@ -1144,6 +1269,11 @@ const fetchProfileCapabilities = async (userId?: string | null) => {
 };
 
 const normalizeLabStatus = (status?: string | null) => (status || "listed").toLowerCase();
+const formatLabStatusLabel = (status?: string | null) => {
+  const normalized = normalizeLabStatus(status);
+  if (normalized === "verified_active" || normalized === "verified_passive") return "verified";
+  return normalized;
+};
 const isVerifiedLabStatus = (status?: string | null) =>
   ["verified_passive", "verified_active", "premier"].includes(normalizeLabStatus(status));
 const canForwardLabRequests = (status?: string | null) =>
@@ -1185,11 +1315,16 @@ const getStripePricing = async () => {
   const stripeKey = process.env.STRIPE_SECRET_KEY;
   if (!stripeKey) return null;
 
+  const verifiedYearlyPriceId =
+    process.env.STRIPE_PRICE_VERIFIED_YEARLY_DISCOUNT || process.env.STRIPE_PRICE_VERIFIED_YEARLY;
+  const premierYearlyPriceId =
+    process.env.STRIPE_PRICE_PREMIER_YEARLY_DISCOUNT || process.env.STRIPE_PRICE_PREMIER_YEARLY;
+
   const [verifiedMonthly, verifiedYearly, premierMonthly, premierYearly] = await Promise.all([
     fetchStripePrice(stripeKey, process.env.STRIPE_PRICE_VERIFIED_MONTHLY),
-    fetchStripePrice(stripeKey, process.env.STRIPE_PRICE_VERIFIED_YEARLY),
+    fetchStripePrice(stripeKey, verifiedYearlyPriceId),
     fetchStripePrice(stripeKey, process.env.STRIPE_PRICE_PREMIER_MONTHLY),
-    fetchStripePrice(stripeKey, process.env.STRIPE_PRICE_PREMIER_YEARLY),
+    fetchStripePrice(stripeKey, premierYearlyPriceId),
   ]);
 
   const data = {
@@ -1281,6 +1416,21 @@ const insertLegalAssistSchema = z.object({
   details: z.string().min(10, "Please add a short description"),
 });
 
+const insertTierUpgradeInterestSchema = z.object({
+  tier: z.enum(["verified", "premier"]),
+  interval: z.enum(["monthly", "yearly"]).optional(),
+  labIds: z.array(z.number().int().positive()).min(1, "Select at least one lab"),
+});
+
+const insertOnboardingCallRequestSchema = z.object({
+  labName: z.string().trim().min(2, "Lab name is required").max(160, "Lab name is too long"),
+  website: z.string().trim().min(3, "Website is required").max(255, "Website is too long"),
+  contactName: z.string().trim().min(2, "Contact name is required").max(120, "Contact name is too long"),
+  contactEmail: z.string().trim().email("Valid contact email is required"),
+  contactPhone: z.string().trim().max(80, "Contact phone is too long").optional(),
+  notes: z.string().trim().max(2000, "Notes are too long").optional(),
+});
+
 const resolveSubscriptionTier = (subscription: any) => {
   const metadataPlan = (subscription?.metadata?.plan as string | undefined)?.toLowerCase();
   if (metadataPlan === "verified" || metadataPlan === "premier") {
@@ -1366,12 +1516,6 @@ const sanitizePublicLab = (lab: any) => {
     owner_user_id: _ownerUserIdSnake,
     contactEmail: _contactEmail,
     contact_email: _contactEmailSnake,
-    siretNumber: _siretNumber,
-    siret_number: _siretNumberSnake,
-    halStructureId: _halStructureId,
-    hal_structure_id: _halStructureIdSnake,
-    halPersonId: _halPersonId,
-    hal_person_id: _halPersonIdSnake,
     ...safe
   } = lab ?? {};
   return safe;
@@ -1435,6 +1579,7 @@ export function registerRoutes(app: Express) {
       if (!customerId) return;
       let userId: string | null = subscription?.metadata?.user_id ?? null;
       let customerEmail: string | null = null;
+      let customerLabId: number | null = null;
 
       try {
         const stripeKey = process.env.STRIPE_SECRET_KEY;
@@ -1445,6 +1590,11 @@ export function registerRoutes(app: Express) {
         const customer = await fetchStripeCustomer(stripeKey, customerId);
         userId = userId || customer?.metadata?.user_id || null;
         customerEmail = customer?.email || null;
+        const parsedCustomerLabId = parseRequestedLabId(customer?.metadata?.lab_id);
+        customerLabId =
+          typeof parsedCustomerLabId === "number" && !Number.isNaN(parsedCustomerLabId)
+            ? parsedCustomerLabId
+            : null;
       } catch (error) {
         console.warn("[stripe] customer lookup failed", error);
       }
@@ -1477,6 +1627,30 @@ export function registerRoutes(app: Express) {
         .eq("user_id", userId);
       if (updateError) {
         console.warn("[stripe] failed to update profile", updateError.message);
+      }
+
+      const parsedLabId = parseRequestedLabId(subscription?.metadata?.lab_id);
+      const subscriptionLabId =
+        typeof parsedLabId === "number" && !Number.isNaN(parsedLabId) ? parsedLabId : customerLabId;
+      const stripeSubscriptionStatus = typeof subscription?.status === "string" ? subscription.status.toLowerCase() : "";
+      const targetLabStatus =
+        stripeSubscriptionStatus === "active"
+          ? tier === "premier"
+            ? "premier"
+            : tier === "verified"
+              ? "verified_active"
+              : null
+          : null;
+
+      if (subscriptionLabId && targetLabStatus) {
+        const { error: labUpdateError } = await supabase
+          .from("labs")
+          .update({ lab_status: targetLabStatus })
+          .eq("id", subscriptionLabId)
+          .eq("owner_user_id", userId);
+        if (labUpdateError) {
+          console.warn("[stripe] failed to update lab status", labUpdateError.message);
+        }
       }
 
     };
@@ -1512,7 +1686,7 @@ export function registerRoutes(app: Express) {
   // --------- Stripe Checkout for subscriptions ----------
   app.post("/api/subscriptions/checkout", authenticate, async (req, res) => {
     try {
-      const { plan, interval } = req.body ?? {};
+      const { plan, interval, labId } = req.body ?? {};
       const planKey = typeof plan === "string" ? plan.toLowerCase() : "";
       const intervalKey = typeof interval === "string" ? interval.toLowerCase() : "monthly";
       if (!planKey || !["verified", "premier"].includes(planKey)) {
@@ -1521,31 +1695,15 @@ export function registerRoutes(app: Express) {
       if (!["monthly", "yearly"].includes(intervalKey)) {
         return res.status(400).json({ message: "Invalid interval" });
       }
-
-      const { tier: currentTier, status: currentStatus } = await getProfileSubscription(req.user.id);
-      if (isActiveSubscriptionStatus(currentStatus)) {
-        if (currentTier === "premier") {
-          return res.status(409).json({ message: "Your account is already Premier." });
-        }
-        if (currentTier === "verified" && planKey === "verified") {
-          return res.status(409).json({ message: "Your account is already Verified." });
-        }
-        if (currentTier === "premier" && planKey === "verified") {
-          return res.status(409).json({ message: "Premier accounts cannot subscribe to Verified." });
-        }
+      const selectedLab = await resolveSubscriptionLabId(req.user.id, labId, planKey as "verified" | "premier");
+      if (selectedLab.error) {
+        return res.status(selectedLab.error.status).json({ message: selectedLab.error.message });
       }
 
       const stripeKey = process.env.STRIPE_SECRET_KEY;
       if (!stripeKey) return res.status(500).json({ message: "Stripe not configured" });
 
-      const priceId =
-        planKey === "verified"
-          ? intervalKey === "yearly"
-            ? process.env.STRIPE_PRICE_VERIFIED_YEARLY
-            : process.env.STRIPE_PRICE_VERIFIED_MONTHLY
-          : intervalKey === "yearly"
-            ? process.env.STRIPE_PRICE_PREMIER_YEARLY
-            : process.env.STRIPE_PRICE_PREMIER_MONTHLY;
+      const priceId = resolveStripePriceId(planKey, intervalKey);
 
       if (!priceId) {
         return res.status(500).json({ message: "Stripe price not configured" });
@@ -1570,6 +1728,10 @@ export function registerRoutes(app: Express) {
       }
       params.append("metadata[plan]", planKey);
       params.append("metadata[interval]", intervalKey);
+      params.append("metadata[lab_id]", String(selectedLab.labId));
+      params.append("subscription_data[metadata][plan]", planKey);
+      params.append("subscription_data[metadata][interval]", intervalKey);
+      params.append("subscription_data[metadata][lab_id]", String(selectedLab.labId));
 
       const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
         method: "POST",
@@ -1597,7 +1759,7 @@ export function registerRoutes(app: Express) {
   // --------- Stripe embedded subscription intent ----------
   app.post("/api/subscriptions/intent", authenticate, async (req, res) => {
     try {
-      const { plan, interval, email } = req.body ?? {};
+      const { plan, interval, email, labId } = req.body ?? {};
       const planKey = typeof plan === "string" ? plan.toLowerCase() : "";
       const intervalKey = typeof interval === "string" ? interval.toLowerCase() : "yearly";
       const emailValue = typeof email === "string" ? email.trim() : "";
@@ -1611,31 +1773,15 @@ export function registerRoutes(app: Express) {
       if (!emailValue) {
         return res.status(400).json({ message: "Email is required" });
       }
-
-      const { tier: currentTier, status: currentStatus } = await getProfileSubscription(req.user.id);
-      if (isActiveSubscriptionStatus(currentStatus)) {
-        if (currentTier === "premier") {
-          return res.status(409).json({ message: "Your account is already Premier." });
-        }
-        if (currentTier === "verified" && planKey === "verified") {
-          return res.status(409).json({ message: "Your account is already Verified." });
-        }
-        if (currentTier === "premier" && planKey === "verified") {
-          return res.status(409).json({ message: "Premier accounts cannot subscribe to Verified." });
-        }
+      const selectedLab = await resolveSubscriptionLabId(req.user.id, labId, planKey as "verified" | "premier");
+      if (selectedLab.error) {
+        return res.status(selectedLab.error.status).json({ message: selectedLab.error.message });
       }
 
       const stripeKey = process.env.STRIPE_SECRET_KEY;
       if (!stripeKey) return res.status(500).json({ message: "Stripe not configured" });
 
-      const priceId =
-        planKey === "verified"
-          ? intervalKey === "yearly"
-            ? process.env.STRIPE_PRICE_VERIFIED_YEARLY
-            : process.env.STRIPE_PRICE_VERIFIED_MONTHLY
-          : intervalKey === "yearly"
-            ? process.env.STRIPE_PRICE_PREMIER_YEARLY
-            : process.env.STRIPE_PRICE_PREMIER_MONTHLY;
+      const priceId = resolveStripePriceId(planKey, intervalKey);
 
       if (!priceId) {
         return res.status(500).json({ message: "Stripe price not configured" });
@@ -1646,6 +1792,7 @@ export function registerRoutes(app: Express) {
       if (req.user?.id) {
         customerParams.append("metadata[user_id]", req.user.id);
       }
+      customerParams.append("metadata[lab_id]", String(selectedLab.labId));
       const customerRes = await fetch("https://api.stripe.com/v1/customers", {
         method: "POST",
         headers: {
@@ -1667,6 +1814,7 @@ export function registerRoutes(app: Express) {
       setupParams.append("usage", "off_session");
       setupParams.append("metadata[plan]", planKey);
       setupParams.append("metadata[interval]", intervalKey);
+      setupParams.append("metadata[lab_id]", String(selectedLab.labId));
       if (req.user?.id) {
         setupParams.append("metadata[user_id]", req.user.id);
       }
@@ -1704,6 +1852,7 @@ export function registerRoutes(app: Express) {
         plan: z.string(),
         interval: z.string(),
         setupIntentId: z.string(),
+        labId: z.coerce.number().int().positive().optional(),
       });
       const payload = schema.parse(req.body);
       const planKey = payload.plan.toLowerCase();
@@ -1714,31 +1863,19 @@ export function registerRoutes(app: Express) {
       if (!["monthly", "yearly"].includes(intervalKey)) {
         return res.status(400).json({ message: "Invalid interval" });
       }
-
-      const { tier: currentTier, status: currentStatus } = await getProfileSubscription(req.user.id);
-      if (isActiveSubscriptionStatus(currentStatus)) {
-        if (currentTier === "premier") {
-          return res.status(409).json({ message: "Your account is already Premier." });
-        }
-        if (currentTier === "verified" && planKey === "verified") {
-          return res.status(409).json({ message: "Your account is already Verified." });
-        }
-        if (currentTier === "premier" && planKey === "verified") {
-          return res.status(409).json({ message: "Premier accounts cannot subscribe to Verified." });
-        }
+      const selectedLab = await resolveSubscriptionLabId(
+        req.user.id,
+        payload.labId,
+        planKey as "verified" | "premier",
+      );
+      if (selectedLab.error) {
+        return res.status(selectedLab.error.status).json({ message: selectedLab.error.message });
       }
 
       const stripeKey = process.env.STRIPE_SECRET_KEY;
       if (!stripeKey) return res.status(500).json({ message: "Stripe not configured" });
 
-      const priceId =
-        planKey === "verified"
-          ? intervalKey === "yearly"
-            ? process.env.STRIPE_PRICE_VERIFIED_YEARLY
-            : process.env.STRIPE_PRICE_VERIFIED_MONTHLY
-          : intervalKey === "yearly"
-            ? process.env.STRIPE_PRICE_PREMIER_YEARLY
-            : process.env.STRIPE_PRICE_PREMIER_MONTHLY;
+      const priceId = resolveStripePriceId(planKey, intervalKey);
 
       if (!priceId) {
         return res.status(500).json({ message: "Stripe price not configured" });
@@ -1759,11 +1896,15 @@ export function registerRoutes(app: Express) {
       const paymentMethod = setupIntent?.payment_method;
       const customerId = setupIntent?.customer;
       const setupUserId = setupIntent?.metadata?.user_id;
+      const setupLabId = parseRequestedLabId(setupIntent?.metadata?.lab_id);
       if (!paymentMethod || !customerId) {
         return res.status(400).json({ message: "Setup intent incomplete" });
       }
       if (setupUserId && setupUserId !== req.user.id) {
         return res.status(403).json({ message: "Setup intent does not belong to this user" });
+      }
+      if (typeof setupLabId === "number" && !Number.isNaN(setupLabId) && setupLabId !== selectedLab.labId) {
+        return res.status(403).json({ message: "Setup intent lab does not match selected lab" });
       }
 
       const params = new URLSearchParams();
@@ -1777,6 +1918,7 @@ export function registerRoutes(app: Express) {
       params.append("expand[]", "latest_invoice.payment_intent");
       params.append("metadata[plan]", planKey);
       params.append("metadata[interval]", intervalKey);
+      params.append("metadata[lab_id]", String(selectedLab.labId));
       if (req.user?.id) {
         params.append("metadata[user_id]", req.user.id);
       }
@@ -1991,6 +2133,38 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  // --------- INPI patents by SIREN ----------
+  app.get("/api/labs/:id/patents", async (req, res) => {
+    try {
+      const labId = Number(req.params.id);
+      if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
+
+      const lab = await labStore.findById(labId);
+      if (!lab) return res.status(404).json({ message: "Lab not found" });
+      const canAccess = await canAccessLabFromPublicRoute(req, lab);
+      if (!canAccess) return res.status(404).json({ message: "Lab not found" });
+
+      const siren = toSirenFromSiretOrSiren(lab.siretNumber);
+      if (!siren) {
+        return res.status(400).json({ message: "Missing valid SIREN/SIRET for this lab" });
+      }
+
+      if (!isInpiConfigured()) {
+        return res.status(503).json({
+          message:
+            "INPI API is not configured yet. Add INPI credentials in the server environment to enable patents import.",
+        });
+      }
+
+      const items = await fetchInpiPatentsBySiren(siren);
+      return res.json({ items, source: "inpi", siren });
+    } catch (err) {
+      return res.status(500).json({
+        message: err instanceof Error ? err.message : "Unable to load patents",
+      });
+    }
+  });
+
   // --------- Waitlist ----------
   app.post("/api/waitlist", publicFormRateLimit, async (req, res) => {
     try {
@@ -2010,6 +2184,145 @@ export function registerRoutes(app: Express) {
       res.json(result);
     } catch (_error) {
       res.status(400).json({ message: "Invalid contact submission" });
+    }
+  });
+
+  app.post("/api/onboarding-call-request", publicFormRateLimit, async (req, res) => {
+    try {
+      const payload = insertOnboardingCallRequestSchema.parse(req.body);
+      const adminEmail = process.env.ADMIN_INBOX ?? "contact@glass-funding.com";
+      const phone = payload.contactPhone?.trim();
+      const notes = payload.notes?.trim();
+
+      const adminLines = [
+        "New onboarding call request",
+        "",
+        `Lab: ${payload.labName}`,
+        `Website: ${payload.website}`,
+        `Contact: ${payload.contactName} <${payload.contactEmail}>`,
+        phone ? `Phone: ${phone}` : null,
+        notes ? "" : null,
+        notes ? "Notes:" : null,
+        notes || null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const confirmationLines = [
+        `Hi ${payload.contactName},`,
+        "",
+        "Thanks for requesting an onboarding call with GLASS.",
+        "We received your request and will get back to you shortly.",
+        "",
+        `Lab: ${payload.labName}`,
+        `Website: ${payload.website}`,
+        phone ? `Phone: ${phone}` : null,
+        notes ? `Notes: ${notes}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      await Promise.all([
+        sendMail({
+          to: adminEmail,
+          from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
+          subject: `Onboarding call request: ${payload.labName}`,
+          text: adminLines,
+        }),
+        sendMail({
+          to: payload.contactEmail,
+          from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
+          subject: "We received your onboarding request",
+          text: confirmationLines,
+        }),
+      ]);
+
+      res.status(201).json({ ok: true });
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const issue = error.issues[0];
+        return res.status(400).json({ message: issue?.message ?? "Invalid onboarding request" });
+      }
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to submit onboarding request" });
+    }
+  });
+
+  app.post("/api/tier-upgrade-interest", authenticate, async (req, res) => {
+    try {
+      const payload = insertTierUpgradeInterestSchema.parse(req.body);
+      const uniqueLabIds = Array.from(new Set(payload.labIds));
+
+      const { data, error } = await supabase
+        .from("labs")
+        .select("id, name, lab_status")
+        .eq("owner_user_id", req.user.id)
+        .in("id", uniqueLabIds);
+      if (error) throw error;
+
+      const labs = (data ?? [])
+        .map(row => ({
+          id: Number((row as any).id),
+          name: typeof (row as any).name === "string" ? (row as any).name : "",
+          labStatus: typeof (row as any).lab_status === "string" ? (row as any).lab_status : "listed",
+        }))
+        .filter(lab => Number.isInteger(lab.id) && lab.id > 0);
+
+      if (labs.length !== uniqueLabIds.length) {
+        return res.status(403).json({ message: "One or more selected labs are invalid for this account." });
+      }
+
+      const ineligibleLabs = labs.filter(lab => !canLabSubscribeToPlan(lab.labStatus, payload.tier));
+      if (ineligibleLabs.length > 0) {
+        const label =
+          payload.tier === "premier"
+            ? "already on Premier"
+            : "already on Verified or Premier";
+        return res.status(409).json({
+          message:
+            ineligibleLabs.length === 1
+              ? `${ineligibleLabs[0].name || "Selected lab"} is ${label}.`
+              : "One or more selected labs are not eligible for this upgrade tier.",
+        });
+      }
+
+      const requesterName =
+        (req.user.user_metadata?.full_name as string | undefined) ||
+        (req.user.user_metadata?.name as string | undefined) ||
+        (req.user.user_metadata?.display_name as string | undefined) ||
+        "Unknown";
+      const requesterEmail = req.user.email || "unknown";
+      const adminEmail = process.env.ADMIN_INBOX ?? "contact@glass-funding.com";
+      const tierLabel = payload.tier === "premier" ? "Premier" : "Verified";
+
+      const lines = [
+        "New tier upgrade request",
+        "",
+        `Tier requested: ${tierLabel}`,
+        `Billing preference: ${(payload.interval || "yearly").toLowerCase()}`,
+        `Requester: ${requesterName} <${requesterEmail}>`,
+        `User ID: ${req.user.id}`,
+        "",
+        "Labs:",
+        ...labs.map(
+          lab =>
+            `- ${lab.name || `Lab #${lab.id}`} (id: ${lab.id}, current status: ${formatLabStatusLabel(lab.labStatus)})`,
+        ),
+      ].join("\n");
+
+      await sendMail({
+        to: adminEmail,
+        from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
+        subject: `Tier upgrade request: ${tierLabel} (${labs.length} lab${labs.length === 1 ? "" : "s"})`,
+        text: lines,
+      });
+
+      res.status(201).json({ ok: true });
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const issue = error.issues[0];
+        return res.status(400).json({ message: issue?.message ?? "Invalid upgrade request" });
+      }
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to submit upgrade request" });
     }
   });
 
@@ -3595,6 +3908,43 @@ app.get("/api/profile", (_req, res) => {
       featured: tier.featured ?? false,
       sort_order: tier.sort_order ?? 999,
     }));
+
+    try {
+      const { data, error } = await supabase
+        .from("pricing_features")
+        .select("id, tier_name, feature, sort_order, created_at")
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true });
+
+      if (error) {
+        console.warn("[pricing] pricing_features lookup failed", error);
+      } else if (Array.isArray(data) && data.length > 0) {
+        const featuresByTier = new Map<string, string[]>();
+        for (const row of data as Array<{ tier_name?: string | null; feature?: string | null }>) {
+          const tierKey = (row.tier_name || "").toLowerCase().trim();
+          const feature = (row.feature || "").trim();
+          if (!tierKey || !feature) continue;
+
+          const existing = featuresByTier.get(tierKey) ?? [];
+          if (!existing.includes(feature) && existing.length < 10) {
+            existing.push(feature);
+            featuresByTier.set(tierKey, existing);
+          }
+        }
+
+        list = list.map(tier => {
+          const tierKey = (tier.name || "").toLowerCase().trim();
+          const features = featuresByTier.get(tierKey);
+          if (features && features.length > 0) {
+            return { ...tier, highlights: features };
+          }
+          return tier;
+        });
+      }
+    } catch (error) {
+      console.warn("[pricing] unable to load pricing_features", error);
+    }
 
     try {
       const stripePricing = await getStripePricing();

@@ -33,6 +33,7 @@ import LabRequest from "@/pages/LabRequest";
 import LabCollaboration from "@/pages/LabCollaboration";
 import AdminLabs from "@/pages/AdminLabs";
 import Pricing from "@/pages/Pricing";
+import PricingArchiveCheckout from "@/pages/PricingArchiveCheckout";
 import LabProfile from "@/pages/LabProfile";
 import Account from "@/pages/Account";
 import Teams from "@/pages/Teams";
@@ -47,6 +48,7 @@ import ManageSelect from "@/pages/ManageSelect";
 import NewLab from "@/pages/NewLab";
 import Favorites from "@/pages/Favorites";
 import Subscribe from "@/pages/Subscribe";
+import SubscribeArchiveCheckout from "@/pages/SubscribeArchiveCheckout";
 import Subscriptions from "@/pages/Subscriptions";
 import { LabsProvider } from "@/context/LabsContext";
 import { TeamsProvider } from "@/context/TeamsContext";
@@ -144,6 +146,7 @@ function Router() {
       <Route path="/payments" component={PaymentFlow} />
       <Route path="/stripe" component={StripeCheckout} />
       <ProtectedRoute path="/subscribe" component={Subscribe} />
+      <ProtectedRoute path="/subscribe-archive" component={SubscribeArchiveCheckout} />
       <Route path="/logout" component={Logout} />
 
       {/* Auth Pages */}
@@ -160,6 +163,7 @@ function Router() {
       <Route path="/verified-by-glass" component={VerifiedByGlass} />
       <Route path="/glass-id" component={GlassId} />
       <Route path="/pricing" component={Pricing} />
+      <Route path="/pricing-archive" component={PricingArchiveCheckout} />
       <Route path="/contact" component={Contact} />
       <Route path="/one-pagers" component={OnePagers} />
       <Route path="/roadmap" component={Roadmap} />

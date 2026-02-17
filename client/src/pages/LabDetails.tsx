@@ -55,6 +55,9 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const { hasAnalyticsConsent } = useConsent();
   const lab = labs.find(item => item.id === Number(params.id));
   const labId = lab?.id;
+  const halConfigured = Boolean(lab?.halStructureId || lab?.halPersonId);
+  const frenchBusinessIdDigits = (lab?.siretNumber ?? "").replace(/\D/g, "");
+  const hasSiretOrSiren = frenchBusinessIdDigits.length === 14 || frenchBusinessIdDigits.length === 9;
   const primaryErcDiscipline = lab?.primaryErcDisciplineCode
     ? (lab.ercDisciplines ?? []).find(item => item.code === lab.primaryErcDisciplineCode)
     : null;
@@ -364,15 +367,34 @@ export default function LabDetails({ params }: LabDetailsProps) {
   useEffect(() => {
     if (!showHalModal || !labId) return;
     let active = true;
+    if (halModalType === "patents" && !hasSiretOrSiren) {
+      setHalItems([]);
+      setHalError(null);
+      setHalLoading(false);
+      return;
+    }
+    if (halModalType === "publications" && !halConfigured) {
+      setHalItems([]);
+      setHalError(null);
+      setHalLoading(false);
+      return;
+    }
     setHalLoading(true);
     setHalError(null);
     const endpoint =
-      halModalType === "patents" ? `/api/labs/${labId}/hal-patents` : `/api/labs/${labId}/hal-publications`;
+      halModalType === "patents" ? `/api/labs/${labId}/patents` : `/api/labs/${labId}/hal-publications`;
     fetch(endpoint)
       .then(async res => {
         if (!res.ok) {
           const txt = await res.text();
-          throw new Error(txt || `Unable to load ${halModalType}`);
+          let message = txt;
+          try {
+            const parsed = txt ? JSON.parse(txt) : null;
+            if (parsed?.message) message = parsed.message;
+          } catch {
+            // ignore parse failures
+          }
+          throw new Error(message || `Unable to load ${halModalType}`);
         }
         return res.json();
       })
@@ -388,7 +410,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
     return () => {
       active = false;
     };
-  }, [showHalModal, halModalType, labId]);
+  }, [showHalModal, halModalType, labId, halConfigured, hasSiretOrSiren]);
 
   useEffect(() => {
     if (!hasAnalyticsConsent || viewRecorded || !labId) return;
@@ -1125,38 +1147,48 @@ export default function LabDetails({ params }: LabDetailsProps) {
             <p className="text-sm text-destructive">{teamsError}</p>
           )}
 
-          {(lab.halStructureId || lab.halPersonId) && (
+          {(halConfigured || hasSiretOrSiren) && (
             <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-semibold text-foreground">Publications & patents</h2>
+                  <h2 className="text-lg font-semibold text-foreground">
+                    {halConfigured && hasSiretOrSiren ? "Publications & patents" : halConfigured ? "Publications" : "Patents"}
+                  </h2>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    View the lab&apos;s publications and patents from HAL.
+                    {halConfigured && hasSiretOrSiren
+                      ? "View the lab&apos;s publications and patents."
+                      : halConfigured
+                        ? "View the lab&apos;s publications from HAL."
+                        : "View patents linked to this lab."}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setHalModalType("publications");
-                      setShowHalModal(true);
-                    }}
-                    className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                  >
-                    View publications
-                    <ArrowUpRight className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setHalModalType("patents");
-                      setShowHalModal(true);
-                    }}
-                    className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                  >
-                    View patents
-                    <ArrowUpRight className="h-4 w-4" />
-                  </button>
+                  {halConfigured && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHalModalType("publications");
+                        setShowHalModal(true);
+                      }}
+                      className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                    >
+                      View publications
+                      <ArrowUpRight className="h-4 w-4" />
+                    </button>
+                  )}
+                  {hasSiretOrSiren && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHalModalType("patents");
+                        setShowHalModal(true);
+                      }}
+                      className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                    >
+                      View patents
+                      <ArrowUpRight className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             </section>
@@ -1200,7 +1232,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
             <div className="w-full max-w-3xl rounded-3xl border border-border bg-background p-6 shadow-xl">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-foreground">
-                  {halModalType === "patents" ? "HAL patents" : "HAL publications"}
+                  {halModalType === "patents" ? "Patents" : "Publications"}
                 </h3>
                 <button
                   type="button"
@@ -1222,23 +1254,43 @@ export default function LabDetails({ params }: LabDetailsProps) {
                     No {halModalType === "patents" ? "patents" : "publications"} found for this lab.
                   </p>
                 )}
-                {halItems.map(item => (
-                  <a
-                    key={`${item.url}-${item.title}`}
-                    href={item.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary transition"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-foreground">{item.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {item.year ? `${item.year} • ` : ""}{item.doi || item.url}
-                      </p>
-                    </div>
-                    <ArrowUpRight className="h-4 w-4 flex-shrink-0" />
-                  </a>
-                ))}
+                {halItems.map((item, index) => {
+                  const content = (
+                    <>
+                      <div className="min-w-0">
+                        <p className="truncate text-foreground">{item.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.year ? `${item.year} • ` : ""}
+                          {item.doi || item.url || "No external link"}
+                        </p>
+                      </div>
+                      {item.url && <ArrowUpRight className="h-4 w-4 flex-shrink-0" />}
+                    </>
+                  );
+
+                  const className =
+                    "flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-2 text-sm text-muted-foreground transition";
+
+                  if (!item.url) {
+                    return (
+                      <div key={`item-${item.title}-${index}`} className={className}>
+                        {content}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <a
+                      key={`${item.url}-${item.title}-${index}`}
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`${className} hover:border-primary hover:text-primary`}
+                    >
+                      {content}
+                    </a>
+                  );
+                })}
               </div>
             </div>
           </div>
