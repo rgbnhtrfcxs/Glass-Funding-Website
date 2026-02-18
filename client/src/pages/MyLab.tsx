@@ -44,6 +44,7 @@ import { Link, useLocation } from "wouter";
 const INPUT_CLASS =
   "w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
 const PHOTO_THUMB_CLASS = "h-24 w-full rounded object-cover transition duration-200 group-hover:brightness-110";
+const PARTNER_LOGO_THUMB_CLASS = "h-32 w-32 rounded-xl bg-white/90 object-contain p-1 transition duration-200 group-hover:brightness-110";
 const BASICS_INPUT_CLASS =
   "w-full rounded-none border-0 border-b border-border bg-transparent px-0 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-0 focus-visible:border-primary";
 const BASICS_LABEL_CLASS = "text-xs font-semibold tracking-[0.02em] text-foreground/90";
@@ -242,6 +243,25 @@ export default function MyLab({ params }: { params: { id: string } }) {
   const [logoFrameCustomColor, setLogoFrameCustomColor] = useState("#dbeafe");
   const logoDragRef = useRef<{ x: number; y: number; originX: number; originY: number; width: number; height: number } | null>(null);
   const logoEditorFrameRef = useRef<HTMLDivElement | null>(null);
+  const [partnerLogoPreviewOpen, setPartnerLogoPreviewOpen] = useState(false);
+  const [partnerLogoEditingIndex, setPartnerLogoEditingIndex] = useState<number | null>(null);
+  const [partnerLogoPreviewScale, setPartnerLogoPreviewScale] = useState(1);
+  const [partnerLogoPreviewOffsetX, setPartnerLogoPreviewOffsetX] = useState(0);
+  const [partnerLogoPreviewOffsetY, setPartnerLogoPreviewOffsetY] = useState(0);
+  const [partnerLogoFramePadding, setPartnerLogoFramePadding] = useState(6);
+  const [partnerLogoFrameColor, setPartnerLogoFrameColor] = useState<"white" | "black" | "custom">("white");
+  const [partnerLogoFrameCustomColor, setPartnerLogoFrameCustomColor] = useState("#dbeafe");
+  const [partnerLogoEditorError, setPartnerLogoEditorError] = useState<string | null>(null);
+  const [partnerLogoProcessing, setPartnerLogoProcessing] = useState(false);
+  const partnerLogoDragRef = useRef<{
+    x: number;
+    y: number;
+    originX: number;
+    originY: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const partnerLogoEditorFrameRef = useRef<HTMLDivElement | null>(null);
   const [offerProfileDraft, setOfferProfileDraft] = useState<LabOfferProfileDraft>(defaultLabOfferProfileDraft);
   const [offerTaxonomy, setOfferTaxonomy] = useState<LabOfferTaxonomyOption[]>([]);
   const [offerTaxonomyLoading, setOfferTaxonomyLoading] = useState(false);
@@ -253,8 +273,11 @@ export default function MyLab({ params }: { params: { id: string } }) {
   const [secondaryErcDomain, setSecondaryErcDomain] = useState<ErcDomainOption>("LS");
   const draftKey = useMemo(() => `my-lab-draft:${labIdParam || "unknown"}`, [labIdParam]);
   const canUseLogo = ["verified_passive", "verified_active", "premier"].includes((labStatus || "listed").toLowerCase());
-  const canUsePartnerLogos =
-    (labStatus || "").toLowerCase() === "premier" || profileCaps.canManageMultipleLabs;
+  const canUsePartnerLogos = ["verified_passive", "verified_active", "verified", "premier"].includes(
+    (labStatus || "listed").toLowerCase(),
+  );
+  const activePartnerLogo =
+    partnerLogoEditingIndex !== null && partnerLogoEditingIndex >= 0 ? partnerLogos[partnerLogoEditingIndex] ?? null : null;
   const ercLabelByCode = useMemo(
     () => new Map(ercOptions.map(option => [option.code, `${option.code} - ${option.title}`])),
     [ercOptions],
@@ -582,6 +605,17 @@ export default function MyLab({ params }: { params: { id: string } }) {
         : "#ffffff";
   const logoFramePaddingRatio = Math.max(0, Math.min(0.45, logoFramePadding / 224));
   const logoFramePaddingPercent = `${(logoFramePaddingRatio * 100).toFixed(2)}%`;
+  const partnerLogoPreviewTransform = `translate(${partnerLogoPreviewOffsetX}%, ${partnerLogoPreviewOffsetY}%) scale(${partnerLogoPreviewScale})`;
+  const validatedPartnerLogoFrameCustomColor =
+    /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(partnerLogoFrameCustomColor) ? partnerLogoFrameCustomColor : "#dbeafe";
+  const partnerLogoFrameBackgroundColor =
+    partnerLogoFrameColor === "black"
+      ? "#000000"
+      : partnerLogoFrameColor === "custom"
+        ? validatedPartnerLogoFrameCustomColor
+        : "#ffffff";
+  const partnerLogoFramePaddingRatio = Math.max(0, Math.min(0.45, partnerLogoFramePadding / 224));
+  const partnerLogoFramePaddingPercent = `${(partnerLogoFramePaddingRatio * 100).toFixed(2)}%`;
 
   function resetLogoPreviewAdjustments() {
     setLogoPreviewScale(1);
@@ -618,11 +652,80 @@ export default function MyLab({ params }: { params: { id: string } }) {
     logoDragRef.current = null;
   }
 
-  async function renderAndUploadFramedLogo(labIdValue: number) {
-    if (!form.logoUrl) return form.logoUrl;
+  function resetPartnerLogoPreviewAdjustments() {
+    setPartnerLogoPreviewScale(1);
+    setPartnerLogoPreviewOffsetX(0);
+    setPartnerLogoPreviewOffsetY(0);
+    setPartnerLogoFramePadding(6);
+    setPartnerLogoFrameColor("white");
+    setPartnerLogoFrameCustomColor("#dbeafe");
+  }
+
+  function handlePartnerLogoPreviewMouseDown(event: React.MouseEvent<HTMLDivElement>) {
+    const rect = partnerLogoEditorFrameRef.current?.getBoundingClientRect();
+    partnerLogoDragRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      originX: partnerLogoPreviewOffsetX,
+      originY: partnerLogoPreviewOffsetY,
+      width: rect?.width || 1,
+      height: rect?.height || 1,
+    };
+  }
+
+  function handlePartnerLogoPreviewMouseMove(event: React.MouseEvent<HTMLDivElement>) {
+    if (!partnerLogoDragRef.current) return;
+    const dx = event.clientX - partnerLogoDragRef.current.x;
+    const dy = event.clientY - partnerLogoDragRef.current.y;
+    const nextX = partnerLogoDragRef.current.originX + (dx / partnerLogoDragRef.current.width) * 100;
+    const nextY = partnerLogoDragRef.current.originY + (dy / partnerLogoDragRef.current.height) * 100;
+    setPartnerLogoPreviewOffsetX(Math.max(-50, Math.min(50, Number(nextX.toFixed(1)))));
+    setPartnerLogoPreviewOffsetY(Math.max(-50, Math.min(50, Number(nextY.toFixed(1)))));
+  }
+
+  function handlePartnerLogoPreviewMouseUp() {
+    partnerLogoDragRef.current = null;
+  }
+
+  function openPartnerLogoPreview(index: number) {
+    setPartnerLogoEditingIndex(index);
+    setPartnerLogoEditorError(null);
+    setPartnerLogoProcessing(false);
+    resetPartnerLogoPreviewAdjustments();
+    setPartnerLogoPreviewOpen(true);
+  }
+
+  function closePartnerLogoPreview() {
+    setPartnerLogoPreviewOpen(false);
+    setPartnerLogoEditingIndex(null);
+    setPartnerLogoEditorError(null);
+    setPartnerLogoProcessing(false);
+  }
+
+  async function renderAndUploadFramedLogoAsset({
+    sourceUrl,
+    filePath,
+    previewScale,
+    previewOffsetX,
+    previewOffsetY,
+    framePadding,
+    frameColor,
+    frameCustomColor,
+    fitMode = "cover",
+  }: {
+    sourceUrl: string;
+    filePath: string;
+    previewScale: number;
+    previewOffsetX: number;
+    previewOffsetY: number;
+    framePadding: number;
+    frameColor: "white" | "black" | "custom";
+    frameCustomColor: string;
+    fitMode?: "cover" | "contain";
+  }) {
     const image = new Image();
     image.crossOrigin = "anonymous";
-    image.src = form.logoUrl;
+    image.src = sourceUrl;
     await new Promise<void>((resolve, reject) => {
       image.onload = () => resolve();
       image.onerror = () => reject(new Error("Unable to load logo for processing."));
@@ -630,7 +733,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
 
     const size = 1024;
     const editorBaseSize = 224; // Matches h-56 w-56 preview frame.
-    const paddingRatio = Math.max(0, Math.min(0.45, logoFramePadding / editorBaseSize));
+    const paddingRatio = Math.max(0, Math.min(0.45, framePadding / editorBaseSize));
     const paddingPx = Math.round(size * paddingRatio);
     const innerSize = Math.max(1, size - paddingPx * 2);
 
@@ -640,44 +743,56 @@ export default function MyLab({ params }: { params: { id: string } }) {
     const mainCtx = mainCanvas.getContext("2d");
     if (!mainCtx) throw new Error("Unable to prepare logo output canvas.");
 
-    const frameColor =
-      logoFrameColor === "black"
+    const resolvedCustomFrameColor = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(frameCustomColor) ? frameCustomColor : "#dbeafe";
+    const resolvedFrameColor =
+      frameColor === "black"
         ? "#000000"
-        : logoFrameColor === "custom"
-          ? validatedCustomLogoFrameColor
+        : frameColor === "custom"
+          ? resolvedCustomFrameColor
           : "#ffffff";
-    mainCtx.fillStyle = frameColor;
+    mainCtx.fillStyle = resolvedFrameColor;
     mainCtx.fillRect(0, 0, size, size);
 
     mainCtx.save();
-    const dx = (logoPreviewOffsetX / 100) * innerSize;
-    const dy = (logoPreviewOffsetY / 100) * innerSize;
+    const dx = (previewOffsetX / 100) * innerSize;
+    const dy = (previewOffsetY / 100) * innerSize;
     mainCtx.translate(size / 2 + dx, size / 2 + dy);
-    mainCtx.scale(logoPreviewScale, logoPreviewScale);
+    mainCtx.scale(previewScale, previewScale);
     const imageRatio = image.width / image.height;
-    const targetRatio = 1;
-    let sx = 0;
-    let sy = 0;
-    let sWidth = image.width;
-    let sHeight = image.height;
-    if (imageRatio > targetRatio) {
-      sWidth = image.height * targetRatio;
-      sx = (image.width - sWidth) / 2;
-    } else if (imageRatio < targetRatio) {
-      sHeight = image.width / targetRatio;
-      sy = (image.height - sHeight) / 2;
+    if (fitMode === "contain") {
+      let drawWidth = innerSize;
+      let drawHeight = innerSize;
+      if (imageRatio > 1) {
+        drawHeight = innerSize / imageRatio;
+      } else if (imageRatio < 1) {
+        drawWidth = innerSize * imageRatio;
+      }
+      mainCtx.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+    } else {
+      const targetRatio = 1;
+      let sx = 0;
+      let sy = 0;
+      let sWidth = image.width;
+      let sHeight = image.height;
+      if (imageRatio > targetRatio) {
+        sWidth = image.height * targetRatio;
+        sx = (image.width - sWidth) / 2;
+      } else if (imageRatio < targetRatio) {
+        sHeight = image.width / targetRatio;
+        sy = (image.height - sHeight) / 2;
+      }
+      mainCtx.drawImage(
+        image,
+        sx,
+        sy,
+        sWidth,
+        sHeight,
+        -innerSize / 2,
+        -innerSize / 2,
+        innerSize,
+        innerSize,
+      );
     }
-    mainCtx.drawImage(
-      image,
-      sx,
-      sy,
-      sWidth,
-      sHeight,
-      -innerSize / 2,
-      -innerSize / 2,
-      innerSize,
-      innerSize,
-    );
     mainCtx.restore();
 
     const blob = await new Promise<Blob>((resolve, reject) => {
@@ -690,14 +805,66 @@ export default function MyLab({ params }: { params: { id: string } }) {
       }, "image/png");
     });
 
-    const filename = `${labIdValue}-logo-v2-${Date.now()}.png`;
-    const filePath = `logos/${filename}`;
     const { error: uploadError } = await supabase.storage
       .from("lab-logos")
       .upload(filePath, blob, { upsert: true, contentType: "image/png" });
     if (uploadError) throw uploadError;
     const { data } = supabase.storage.from("lab-logos").getPublicUrl(filePath);
     return data.publicUrl;
+  }
+
+  async function renderAndUploadFramedLogo(labIdValue: number) {
+    if (!form.logoUrl) return form.logoUrl;
+    const filename = `${labIdValue}-logo-v2-${Date.now()}.png`;
+    const filePath = `logos/${filename}`;
+    return renderAndUploadFramedLogoAsset({
+      sourceUrl: form.logoUrl,
+      filePath,
+      previewScale: logoPreviewScale,
+      previewOffsetX: logoPreviewOffsetX,
+      previewOffsetY: logoPreviewOffsetY,
+      framePadding: logoFramePadding,
+      frameColor: logoFrameColor,
+      frameCustomColor: logoFrameCustomColor,
+      fitMode: "cover",
+    });
+  }
+
+  async function applyPartnerLogoEdits() {
+    if (partnerLogoEditingIndex === null || !activePartnerLogo) return;
+    setPartnerLogoProcessing(true);
+    setPartnerLogoEditorError(null);
+    try {
+      const folder = labId ? `labs/${labId}/partners` : "partners";
+      const filename = `${labId ?? "lab"}-partner-logo-v2-${Date.now()}.png`;
+      const filePath = `${folder}/${filename}`;
+      const editedUrl = await renderAndUploadFramedLogoAsset({
+        sourceUrl: activePartnerLogo.url,
+        filePath,
+        previewScale: partnerLogoPreviewScale,
+        previewOffsetX: partnerLogoPreviewOffsetX,
+        previewOffsetY: partnerLogoPreviewOffsetY,
+        framePadding: partnerLogoFramePadding,
+        frameColor: partnerLogoFrameColor,
+        frameCustomColor: partnerLogoFrameCustomColor,
+        fitMode: "contain",
+      });
+      setPartnerLogos(prev =>
+        prev.map((item, index) => (index === partnerLogoEditingIndex ? { ...item, url: editedUrl } : item)),
+      );
+      setForm(prev => ({
+        ...prev,
+        partnerLogos: prev.partnerLogos.map((item, index) =>
+          index === partnerLogoEditingIndex ? { ...item, url: editedUrl } : item,
+        ),
+      }));
+      setMessage("Partner logo updated");
+      closePartnerLogoPreview();
+    } catch (err: any) {
+      setPartnerLogoEditorError(err?.message || "Unable to apply partner logo edits");
+    } finally {
+      setPartnerLogoProcessing(false);
+    }
   }
 
   async function handleLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -2420,7 +2587,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
                       <p className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
                         <span>Partner logos</span>
                         <span className="rounded-full border border-emerald-300/60 bg-emerald-400/20 px-2 py-0.5 text-[10px] font-medium text-emerald-700 shadow-sm backdrop-blur-md">
-                          premier or multi-lab feature
+                          verified or premier feature
                         </span>
                       </p>
                       <label className="inline-flex items-center">
@@ -2437,11 +2604,20 @@ export default function MyLab({ params }: { params: { id: string } }) {
                     </div>
                     {partnerLogos.length > 0 ? (
                       <div className="flex w-full max-w-full gap-3 overflow-x-auto overflow-y-hidden pb-1 pr-3 pt-2">
-                        {partnerLogos.map(logo => (
+                        {partnerLogos.map((logo, index) => (
                           <div
-                            key={logo.url}
-                            className="group relative flex w-[210px] flex-shrink-0 flex-col gap-2 rounded-xl border border-border bg-muted/40 p-2 transition hover:border-primary/60 hover:bg-background/80 hover:shadow-md"
+                            key={`${logo.url}-${index}`}
+                            className="group relative flex w-[236px] flex-shrink-0 flex-col gap-2 rounded-xl border border-border bg-muted/40 p-2 transition hover:border-primary/60 hover:bg-background/80 hover:shadow-md"
                           >
+                            <button
+                              type="button"
+                              onClick={() => openPartnerLogoPreview(index)}
+                              className="absolute -left-1.5 -top-1.5 z-10 inline-flex h-5 items-center justify-center rounded-full border border-border/80 bg-white/85 px-2 text-[10px] font-semibold text-slate-700 ring-2 ring-background shadow-sm backdrop-blur-md transition hover:border-primary hover:text-primary"
+                              aria-label="Edit partner logo"
+                              title="Edit partner logo"
+                            >
+                              Edit
+                            </button>
                             <button
                               type="button"
                               onClick={() => removePartnerLogo(logo.url)}
@@ -2456,7 +2632,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
                                 src={logo.url}
                                 alt={logo.name}
                                 draggable={false}
-                                className={PHOTO_THUMB_CLASS}
+                                className={PARTNER_LOGO_THUMB_CLASS}
                               />
                               <span className="absolute bottom-2 left-2 rounded-full border border-white/40 bg-white/25 px-1.5 py-0.5 text-[9px] font-medium text-white shadow-sm backdrop-blur-md">
                                 Partner logo
@@ -2477,7 +2653,7 @@ export default function MyLab({ params }: { params: { id: string } }) {
                   </div>
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground">Partner logos are available on the premier plan or multi-lab accounts.</p>
+                <p className="text-xs text-muted-foreground">Partner logos are available on verified or premier labs.</p>
               )}
 
               <div className="rounded-2xl border border-border bg-card/50 p-3 overflow-hidden">
@@ -2866,6 +3042,245 @@ export default function MyLab({ params }: { params: { id: string } }) {
                       className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
                     >
                       Done
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {partnerLogoPreviewOpen && activePartnerLogo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/52 px-4 py-8">
+          <div className="w-full max-w-3xl rounded-3xl border border-white/45 bg-white/62 p-6 shadow-2xl backdrop-blur-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Partner logo preview</h2>
+                <p className="mt-1 text-sm text-slate-700">Use the same editor controls to frame this partner logo.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closePartnerLogoPreview}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/60 bg-white/70 text-slate-700 transition hover:border-primary hover:text-primary"
+                aria-label="Close partner logo preview"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="rounded-2xl border border-white/50 bg-white/56 p-4 backdrop-blur-lg">
+                <p className="text-xs font-medium text-slate-700">Partner tile preview</p>
+                <div className="mt-3 rounded-2xl border border-white/55 bg-white/72 p-4 backdrop-blur-md">
+                  <div className="flex items-center gap-3">
+                    <div className="size-20 min-h-20 min-w-20 max-h-20 max-w-20 shrink-0 overflow-hidden rounded-xl border-2 border-blue-400/80 bg-muted">
+                      <div
+                        className="h-full w-full overflow-hidden rounded-xl"
+                        style={{
+                          padding: partnerLogoFramePaddingPercent,
+                          backgroundColor: partnerLogoFrameBackgroundColor,
+                        }}
+                      >
+                        <img
+                          src={activePartnerLogo.url}
+                          alt={`${activePartnerLogo.name || "Partner"} logo preview`}
+                          draggable={false}
+                          className="h-full w-full object-contain"
+                          style={{
+                            transform: partnerLogoPreviewTransform,
+                            transformOrigin: "center center",
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900">{activePartnerLogo.name || "Partner logo"}</p>
+                      <p className="truncate text-xs text-slate-700">{activePartnerLogo.website || "No website set"}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="relative mx-auto mt-4 h-56 w-56 rounded-2xl border border-white/55 bg-white/50 p-2 backdrop-blur-md">
+                  <div
+                    ref={partnerLogoEditorFrameRef}
+                    className="relative h-full w-full overflow-hidden rounded-2xl border-2 border-primary/80 cursor-grab active:cursor-grabbing"
+                    onMouseDown={handlePartnerLogoPreviewMouseDown}
+                    onMouseMove={handlePartnerLogoPreviewMouseMove}
+                    onMouseUp={handlePartnerLogoPreviewMouseUp}
+                    onMouseLeave={handlePartnerLogoPreviewMouseUp}
+                  >
+                    <div
+                      className="h-full w-full overflow-hidden rounded-2xl"
+                      style={{
+                        padding: partnerLogoFramePaddingPercent,
+                        backgroundColor: partnerLogoFrameBackgroundColor,
+                      }}
+                    >
+                      <img
+                        src={activePartnerLogo.url}
+                        alt={`${activePartnerLogo.name || "Partner"} logo editor`}
+                        draggable={false}
+                        className="h-full w-full object-contain"
+                        style={{
+                          transform: partnerLogoPreviewTransform,
+                          transformOrigin: "center center",
+                        }}
+                      />
+                    </div>
+                    <div
+                      className="pointer-events-none absolute inset-0 opacity-45"
+                      style={{
+                        backgroundImage:
+                          "linear-gradient(to right, rgba(15,23,42,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(15,23,42,0.12) 1px, transparent 1px)",
+                        backgroundSize: "20px 20px",
+                      }}
+                    />
+                  </div>
+                  <span className="pointer-events-none absolute left-1/2 top-1.5 -translate-x-1/2 rounded-full border border-white/70 bg-white/75 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+                    Exact partner tile crop area
+                  </span>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-white/50 bg-white/56 p-4 backdrop-blur-lg">
+                <p className="text-xs font-medium text-slate-700">Adjust image</p>
+                <div className="mt-3 space-y-4">
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-xs text-slate-700">
+                      <span>Zoom</span>
+                      <span>{partnerLogoPreviewScale.toFixed(2)}x</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={2.5}
+                      step={0.01}
+                      value={partnerLogoPreviewScale}
+                      onChange={event => setPartnerLogoPreviewScale(Number(event.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-xs text-slate-700">
+                      <span>Horizontal</span>
+                      <span>{partnerLogoPreviewOffsetX}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={-50}
+                      max={50}
+                      step={0.1}
+                      value={partnerLogoPreviewOffsetX}
+                      onChange={event => setPartnerLogoPreviewOffsetX(Number(event.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-xs text-slate-700">
+                      <span>Vertical</span>
+                      <span>{partnerLogoPreviewOffsetY}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={-50}
+                      max={50}
+                      step={0.1}
+                      value={partnerLogoPreviewOffsetY}
+                      onChange={event => setPartnerLogoPreviewOffsetY(Number(event.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-xs text-slate-700">
+                      <span>Frame thickness</span>
+                      <span>{partnerLogoFramePadding}px ({Math.round(partnerLogoFramePaddingRatio * 100)}%)</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={24}
+                      step={1}
+                      value={partnerLogoFramePadding}
+                      onChange={event => setPartnerLogoFramePadding(Number(event.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs text-slate-700">Frame color</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPartnerLogoFrameColor("white")}
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition ${
+                          partnerLogoFrameColor === "white"
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-slate-300 bg-white/80 text-slate-700 hover:border-primary/60"
+                        }`}
+                      >
+                        <span className="h-2.5 w-2.5 rounded-full border border-slate-300 bg-white" />
+                        White
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPartnerLogoFrameColor("black")}
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition ${
+                          partnerLogoFrameColor === "black"
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-slate-300 bg-white/80 text-slate-700 hover:border-primary/60"
+                        }`}
+                      >
+                        <span className="h-2.5 w-2.5 rounded-full border border-slate-500 bg-black" />
+                        Black
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPartnerLogoFrameColor("custom")}
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition ${
+                          partnerLogoFrameColor === "custom"
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-slate-300 bg-white/80 text-slate-700 hover:border-primary/60"
+                        }`}
+                      >
+                        <span
+                          className="h-2.5 w-2.5 rounded-full border border-slate-400"
+                          style={{ backgroundColor: partnerLogoFrameCustomColor }}
+                        />
+                        Custom
+                      </button>
+                    </div>
+                    {partnerLogoFrameColor === "custom" && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={partnerLogoFrameCustomColor}
+                          onChange={event => setPartnerLogoFrameCustomColor(event.target.value)}
+                          className="h-8 w-10 cursor-pointer rounded border border-slate-300 bg-white p-0.5"
+                          aria-label="Choose custom partner frame color"
+                        />
+                        <input
+                          type="text"
+                          value={partnerLogoFrameCustomColor}
+                          onChange={event => setPartnerLogoFrameCustomColor(event.target.value)}
+                          className="h-8 w-28 rounded border border-slate-300 bg-white/90 px-2 text-xs text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          placeholder="#RRGGBB"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  {partnerLogoEditorError && <p className="text-xs text-destructive">{partnerLogoEditorError}</p>}
+                  <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={resetPartnerLogoPreviewAdjustments}
+                      disabled={partnerLogoProcessing}
+                      className="rounded-full border border-slate-300 bg-white/80 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Reset
+                    </button>
+                    <button
+                      type="button"
+                      onClick={applyPartnerLogoEdits}
+                      disabled={partnerLogoProcessing}
+                      className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {partnerLogoProcessing ? "Applying…" : "Apply"}
                     </button>
                   </div>
                 </div>

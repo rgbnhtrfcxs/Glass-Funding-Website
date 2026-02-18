@@ -162,7 +162,8 @@ export default function NewLab() {
   );
 
   const canUseLogo = true;
-  const canUsePartnerLogos = profileCaps.isAdmin || profileCaps.canManageMultipleLabs;
+  const initialLabStatus = "confirmed";
+  const canUsePartnerLogos = ["verified_passive", "verified_active", "verified", "premier"].includes(initialLabStatus);
   const maxPhotos = profileCaps.canManageMultipleLabs ? Number.POSITIVE_INFINITY : 2;
   const ercLabelByCode = useMemo(
     () => new Map(ercOptions.map(option => [option.code, `${option.code} - ${option.title}`])),
@@ -299,7 +300,7 @@ export default function NewLab() {
       const payload = {
         form,
         photos,
-        partnerLogos,
+        partnerLogos: canUsePartnerLogos ? partnerLogos : [],
         complianceDocs,
         activeTab,
       };
@@ -468,7 +469,7 @@ export default function NewLab() {
         linkedin: form.linkedin.trim() || null,
         compliance: form.complianceTags,
         complianceDocs,
-        labStatus: "confirmed",
+        labStatus: initialLabStatus,
         isVisible: true,
         equipment: form.equipmentTags,
         priorityEquipment: form.priorityEquipmentTags
@@ -483,7 +484,7 @@ export default function NewLab() {
         photos,
         logoUrl: form.logoUrl.trim() || null,
         siretNumber: form.siretNumber.trim() || null,
-        partnerLogos,
+        partnerLogos: canUsePartnerLogos ? partnerLogos : [],
         field: form.field.trim() || null,
         orgRole: form.orgRole || null,
         halStructureId: form.halStructureId.trim() || null,

@@ -98,23 +98,33 @@ export default function PaymentFlow() {
     setFormState(previous => ({ ...previous, [field]: event.target.value }));
   };
 
+  const getAuthedJsonHeaders = async () => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      throw new Error("Session expired. Please sign in again.");
+    }
+    return {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+  };
+
   const handleEnterpriseSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setStatus("loading");
     setErrorMessage(null);
     try {
-      const response = await fetch("/api/contact", {
+      const response = await fetch("/api/subscriptions/enterprise-interest", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await getAuthedJsonHeaders(),
         body: JSON.stringify({
-          name: formState.ownerName || formState.organization,
+          ownerName: formState.ownerName,
+          organization: formState.organization,
+          labsManaged: formState.labsManaged || undefined,
           email: formState.email,
-          message: [
-            `Organization: ${formState.organization}`,
-            `Labs managed: ${formState.labsManaged}`,
-            "",
-            formState.message || "No additional context provided.",
-          ].join("\n"),
+          phone: formState.phone,
+          message: formState.message || undefined,
         }),
       });
       if (!response.ok) {
@@ -133,17 +143,17 @@ export default function PaymentFlow() {
     setFreeStatus("loading");
     setFreeError(null);
     try {
-      const response = await fetch("/api/contact", {
+      const response = await fetch("/api/subscriptions/free-confirmation", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await getAuthedJsonHeaders(),
         body: JSON.stringify({
           name: formState.ownerName || metadataName || user?.email || "GLASS-Connect user",
           email: user?.email,
-          message: `Confirming free plan signup for ${user?.email || "unknown"} on GLASS-Connect.`,
         }),
       });
       if (!response.ok) {
-        throw new Error("Unable to send confirmation");
+        const payload = await response.json().catch(() => ({ message: "Unable to send confirmation" }));
+        throw new Error(payload?.message || "Unable to send confirmation");
       }
       setFreeStatus("success");
     } catch (error) {

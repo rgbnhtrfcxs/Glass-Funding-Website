@@ -21,6 +21,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useLabs } from "@/context/LabsContext";
+import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import {
   orgRoleOptions,
@@ -49,6 +50,7 @@ import { fetchErcDisciplineOptions } from "@/lib/ercDisciplines";
 type VerificationOption = "yes" | "no";
 type LabStatusOption = "listed" | "confirmed" | "verified_passive" | "verified_active" | "premier";
 const PHOTO_THUMB_CLASS = "h-24 w-full rounded object-cover transition duration-200 group-hover:brightness-110";
+const PARTNER_LOGO_THUMB_CLASS = "h-32 w-32 rounded-xl object-cover transition duration-200 group-hover:brightness-110";
 const BASICS_INPUT_CLASS =
   "w-full rounded-none border-0 border-b border-border bg-transparent px-0 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-0 focus-visible:border-primary";
 const BASICS_LABEL_CLASS = "text-xs font-semibold tracking-[0.02em] text-foreground/90";
@@ -266,6 +268,7 @@ const defaultCertificateFormState: CertificateFormState = {
 };
 
 export default function AdminLabs({ embedded = false }: { embedded?: boolean }) {
+  const { user } = useAuth();
   const {
     labs,
     addLab,
@@ -328,6 +331,32 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
   const [certificateSaving, setCertificateSaving] = useState(false);
   const [certificateError, setCertificateError] = useState<string | null>(null);
   const [certificateSuccess, setCertificateSuccess] = useState<string | null>(null);
+  const [adminOverride, setAdminOverride] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    async function loadAdminOverride() {
+      if (!user?.id) {
+        setAdminOverride(false);
+        return;
+      }
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("is_admin")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!active) return;
+      if (error) {
+        setAdminOverride(false);
+        return;
+      }
+      setAdminOverride(Boolean((data as any)?.is_admin));
+    }
+    loadAdminOverride();
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
 
   const selectedCertificateLab = useMemo(
     () => (certificateLabId ? labs.find(lab => lab.id === certificateLabId) ?? null : null),
@@ -672,7 +701,9 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
   const canUseLogo = ["verified_passive", "verified_active", "premier"].includes(
     (formState.labStatus || "listed").toLowerCase(),
   );
-  const canUsePartnerLogos = (formState.labStatus || "").toLowerCase() === "premier";
+  const canUsePartnerLogos =
+    adminOverride ||
+    ["verified_passive", "verified_active", "verified", "premier"].includes((formState.labStatus || "listed").toLowerCase());
   const logoPreviewTransform = `translate(${logoPreviewOffsetX}%, ${logoPreviewOffsetY}%) scale(${logoPreviewScale})`;
   const validatedCustomLogoFrameColor =
     /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(logoFrameCustomColor) ? logoFrameCustomColor : "#dbeafe";
@@ -1408,6 +1439,11 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                     Verified
                   </button>
                 </div>
+                <Link href="/admin/audit">
+                  <a className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary">
+                    Audit scheduler
+                  </a>
+                </Link>
                 <Link href="/lab-profile">
                   <a className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary">
                     Lab profile guide
@@ -2730,7 +2766,7 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                                 <p className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
                                   <span>Partner logos</span>
                                   <span className="rounded-full border border-emerald-300/60 bg-emerald-400/20 px-2 py-0.5 text-[10px] font-medium text-emerald-700 shadow-sm backdrop-blur-md">
-                                    premier or multi-lab feature
+                                    verified or premier feature
                                   </span>
                                 </p>
                                 <label className="inline-flex items-center">
@@ -2750,7 +2786,7 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                                   {partnerLogos.map(logo => (
                                     <div
                                       key={logo.url}
-                                      className="group relative flex w-[210px] flex-shrink-0 flex-col gap-2 rounded-xl border border-border bg-muted/40 p-2 transition hover:border-primary/60 hover:bg-background/80 hover:shadow-md"
+                                      className="group relative flex w-[236px] flex-shrink-0 flex-col gap-2 rounded-xl border border-border bg-muted/40 p-2 transition hover:border-primary/60 hover:bg-background/80 hover:shadow-md"
                                     >
                                       <button
                                         type="button"
@@ -2766,7 +2802,7 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                                           src={logo.url}
                                           alt={logo.name}
                                           draggable={false}
-                                          className={PHOTO_THUMB_CLASS}
+                                          className={PARTNER_LOGO_THUMB_CLASS}
                                         />
                                         <span className="absolute bottom-2 left-2 rounded-full border border-white/40 bg-white/25 px-1.5 py-0.5 text-[9px] font-medium text-white shadow-sm backdrop-blur-md">
                                           Partner logo
@@ -2787,7 +2823,7 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                             </div>
                           </div>
                         ) : (
-                          <p className="text-xs text-muted-foreground">Partner logos are available on the premier plan or multi-lab accounts.</p>
+                          <p className="text-xs text-muted-foreground">Partner logos are available on verified or premier labs.</p>
                         )}
 
                         <div className="rounded-2xl border border-border bg-card/50 p-3 overflow-hidden">
