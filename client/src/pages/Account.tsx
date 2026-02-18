@@ -10,7 +10,9 @@ import {
   Activity,
   ArrowLeft,
   Box,
+  CalendarDays,
   ClipboardList,
+  Clock3,
   FlaskConical,
   Heart,
   IdCard,
@@ -18,6 +20,7 @@ import {
   ShieldCheck,
   ShieldAlert,
   UserCog,
+  UsersRound,
   Users,
 } from "lucide-react";
 import ProfilePortal from "@/pages/ProfilePortal";
@@ -87,8 +90,29 @@ type LabVerificationCertificateRow = {
   updated_at?: string | null;
 };
 
+type AuditSlotOption = {
+  id: number;
+  startsAt: string | null;
+  endsAt: string | null;
+  timezone: string;
+  notes: string | null;
+  capacity: number;
+  bookedCount: number;
+  remainingCapacity: number;
+  label: string;
+};
+
+type AuditSlotDayGroup = {
+  key: string;
+  label: string;
+  subLabel: string;
+  sortTime: number;
+  slots: AuditSlotOption[];
+};
+
 type AccountTab = "overview" | "edit" | "requests" | "manageLab" | "manageTeams" | "adminLabs" | "favorites" | "legal";
 type OverviewTab = "overview" | "labs" | "equipment" | "team" | "activity";
+type VerifyModalTab = "slot" | "address" | "payment";
 
 const ACCOUNT_SECTION_STORAGE_KEY = "glass.account.section";
 const EMPTY_VERIFY_ADDRESS = {
@@ -114,6 +138,75 @@ const ACCOUNT_TABS: AccountTab[] = [
   "legal",
 ];
 const OVERVIEW_TABS: OverviewTab[] = ["overview", "labs", "equipment", "team", "activity"];
+const VERIFY_MODAL_TAB_ORDER: VerifyModalTab[] = ["slot", "address", "payment"];
+
+const getAuditSlotDayKey = (slot: Pick<AuditSlotOption, "startsAt" | "timezone">) => {
+  if (!slot.startsAt) return "unknown";
+  const startsAt = new Date(slot.startsAt);
+  if (Number.isNaN(startsAt.getTime())) return "unknown";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: slot.timezone || "Europe/Paris",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(startsAt);
+};
+
+const formatAuditSlotDayLabel = (slot: Pick<AuditSlotOption, "startsAt" | "timezone">) => {
+  if (!slot.startsAt) return "Date unavailable";
+  const startsAt = new Date(slot.startsAt);
+  if (Number.isNaN(startsAt.getTime())) return "Date unavailable";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: slot.timezone || "Europe/Paris",
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+  }).format(startsAt);
+};
+
+const formatAuditSlotDaySubLabel = (slot: Pick<AuditSlotOption, "startsAt" | "timezone">) => {
+  if (!slot.startsAt) return "No timezone";
+  const startsAt = new Date(slot.startsAt);
+  if (Number.isNaN(startsAt.getTime())) return slot.timezone || "No timezone";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: slot.timezone || "Europe/Paris",
+    year: "numeric",
+  }).format(startsAt);
+};
+
+const formatAuditSlotTimeRange = (slot: Pick<AuditSlotOption, "startsAt" | "endsAt" | "timezone">) => {
+  if (!slot.startsAt) return "Time unavailable";
+  const startsAt = new Date(slot.startsAt);
+  if (Number.isNaN(startsAt.getTime())) return "Time unavailable";
+  const timezone = slot.timezone || "Europe/Paris";
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const startLabel = formatter.format(startsAt);
+  if (!slot.endsAt) return `${startLabel} (${timezone})`;
+  const endsAt = new Date(slot.endsAt);
+  if (Number.isNaN(endsAt.getTime())) return `${startLabel} (${timezone})`;
+  const endLabel = formatter.format(endsAt);
+  return `${startLabel} - ${endLabel} (${timezone})`;
+};
+
+const formatAuditSlotTimeCompact = (slot: Pick<AuditSlotOption, "startsAt" | "endsAt" | "timezone">) => {
+  if (!slot.startsAt) return "N/A";
+  const startsAt = new Date(slot.startsAt);
+  if (Number.isNaN(startsAt.getTime())) return "N/A";
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: slot.timezone || "Europe/Paris",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const startLabel = formatter.format(startsAt);
+  if (!slot.endsAt) return startLabel;
+  const endsAt = new Date(slot.endsAt);
+  if (Number.isNaN(endsAt.getTime())) return startLabel;
+  return `${startLabel}-${formatter.format(endsAt)}`;
+};
 
 function readStoredAccountSection() {
   if (typeof window === "undefined") {
@@ -210,6 +303,12 @@ export default function Account() {
   const [verifySuccess, setVerifySuccess] = useState<string | null>(null);
   const [verifyAddress, setVerifyAddress] = useState(EMPTY_VERIFY_ADDRESS);
   const [verifyAuditDetails, setVerifyAuditDetails] = useState(EMPTY_VERIFY_AUDIT_DETAILS);
+  const [verifySlots, setVerifySlots] = useState<AuditSlotOption[]>([]);
+  const [verifySlotsLoading, setVerifySlotsLoading] = useState(false);
+  const [verifySlotsError, setVerifySlotsError] = useState<string | null>(null);
+  const [verifySelectedSlotId, setVerifySelectedSlotId] = useState<number | null>(null);
+  const [verifySelectedSlotDayKey, setVerifySelectedSlotDayKey] = useState<string | null>(null);
+  const [verifyModalTab, setVerifyModalTab] = useState<VerifyModalTab>("slot");
   const [legalTopic, setLegalTopic] = useState("");
   const [legalDetails, setLegalDetails] = useState("");
   const [legalLabId, setLegalLabId] = useState<number | null>(null);
@@ -659,6 +758,50 @@ export default function Account() {
     () => (verifyLabId ? ownedLabs.find(lab => lab.id === verifyLabId) ?? null : null),
     [ownedLabs, verifyLabId],
   );
+  const selectedVerifySlot = useMemo(
+    () => (verifySelectedSlotId ? verifySlots.find(slot => slot.id === verifySelectedSlotId) ?? null : null),
+    [verifySlots, verifySelectedSlotId],
+  );
+  const verifySlotDayGroups = useMemo<AuditSlotDayGroup[]>(() => {
+    const groups = new Map<string, AuditSlotDayGroup>();
+    verifySlots.forEach(slot => {
+      const key = getAuditSlotDayKey(slot);
+      const current = groups.get(key);
+      const sortTime = slot.startsAt ? new Date(slot.startsAt).getTime() : Number.MAX_SAFE_INTEGER;
+      if (!current) {
+        groups.set(key, {
+          key,
+          label: formatAuditSlotDayLabel(slot),
+          subLabel: formatAuditSlotDaySubLabel(slot),
+          sortTime,
+          slots: [slot],
+        });
+        return;
+      }
+      current.sortTime = Math.min(current.sortTime, sortTime);
+      current.slots.push(slot);
+    });
+    return Array.from(groups.values())
+      .map(group => ({
+        ...group,
+        slots: [...group.slots].sort((a, b) => {
+          const aTime = a.startsAt ? new Date(a.startsAt).getTime() : Number.MAX_SAFE_INTEGER;
+          const bTime = b.startsAt ? new Date(b.startsAt).getTime() : Number.MAX_SAFE_INTEGER;
+          return aTime - bTime;
+        }),
+      }))
+      .sort((a, b) => a.sortTime - b.sortTime);
+  }, [verifySlots]);
+  const activeVerifyDayGroup = useMemo(
+    () =>
+      verifySlotDayGroups.find(group => group.key === verifySelectedSlotDayKey) ??
+      verifySlotDayGroups[0] ??
+      null,
+    [verifySelectedSlotDayKey, verifySlotDayGroups],
+  );
+  const verifyModalTabIndex = VERIFY_MODAL_TAB_ORDER.indexOf(verifyModalTab);
+  const canGoVerifyPrev = verifyModalTabIndex > 0;
+  const canGoVerifyNext = verifyModalTabIndex < VERIFY_MODAL_TAB_ORDER.length - 1;
   const canManageLabs = toBool(profile?.can_create_lab);
   const emptyTeamForm: TeamMemberForm = {
     name: "",
@@ -700,6 +843,10 @@ export default function Account() {
       country: String((targetLab as any)?.country ?? ""),
     });
     setVerifyAuditDetails(EMPTY_VERIFY_AUDIT_DETAILS);
+    setVerifySelectedSlotId(null);
+    setVerifySelectedSlotDayKey(null);
+    setVerifyModalTab("slot");
+    setVerifySlotsError(null);
     setShowVerifyModal(true);
   };
 
@@ -707,6 +854,9 @@ export default function Account() {
     setShowVerifyModal(false);
     setVerifyError(null);
     setVerifySuccess(null);
+    setVerifySelectedSlotId(null);
+    setVerifySelectedSlotDayKey(null);
+    setVerifyModalTab("slot");
   };
 
   useEffect(() => {
@@ -714,6 +864,67 @@ export default function Account() {
     const fallbackId = ownedLabs[0]?.id ?? labStats[0]?.id ?? null;
     if (fallbackId) setNewsLabId(fallbackId);
   }, [ownedLabs, labStats, newsLabId]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadAuditSlots() {
+      if (!showVerifyModal || !user) {
+        if (active) {
+          setVerifySlots([]);
+          setVerifySlotsLoading(false);
+          setVerifySlotsError(null);
+        }
+        return;
+      }
+      setVerifySlotsLoading(true);
+      setVerifySlotsError(null);
+      try {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+        const headers = new Headers();
+        if (token) headers.set("Authorization", `Bearer ${token}`);
+        const res = await fetch("/api/verification/audit-slots", { headers });
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({ message: "Unable to load audit slots" }));
+          throw new Error(payload?.message || "Unable to load audit slots");
+        }
+        const payload = await res.json().catch(() => null);
+        const slots = Array.isArray(payload?.slots) ? payload.slots : [];
+        if (!active) return;
+        setVerifySlots(slots);
+        if (slots.length > 0 && !slots.some((slot: AuditSlotOption) => slot.id === verifySelectedSlotId)) {
+          setVerifySelectedSlotId(slots[0].id);
+          setVerifySelectedSlotDayKey(getAuditSlotDayKey(slots[0]));
+        }
+      } catch (err: any) {
+        if (!active) return;
+        setVerifySlots([]);
+        setVerifySelectedSlotId(null);
+        setVerifySelectedSlotDayKey(null);
+        setVerifySlotsError(err?.message || "Unable to load audit slots");
+      } finally {
+        if (active) setVerifySlotsLoading(false);
+      }
+    }
+    void loadAuditSlots();
+    return () => {
+      active = false;
+    };
+  }, [showVerifyModal, user?.id]);
+
+  useEffect(() => {
+    if (!showVerifyModal) return;
+    if (verifySlotDayGroups.length === 0) {
+      if (verifySelectedSlotDayKey !== null) setVerifySelectedSlotDayKey(null);
+      return;
+    }
+    const currentDayStillExists = verifySelectedSlotDayKey
+      ? verifySlotDayGroups.some(group => group.key === verifySelectedSlotDayKey)
+      : false;
+    if (!currentDayStillExists) {
+      setVerifySelectedSlotDayKey(verifySlotDayGroups[0].key);
+    }
+  }, [showVerifyModal, verifySelectedSlotDayKey, verifySlotDayGroups]);
 
   useEffect(() => {
     let active = true;
@@ -1105,8 +1316,9 @@ export default function Account() {
       setVerifyError("Select a lab to verify.");
       return;
     }
-    if (!verifyAuditDetails.availability.trim()) {
-      setVerifyError("Availability is required.");
+    const availabilityNote = verifyAuditDetails.availability.trim();
+    if (!verifySelectedSlotId && !availabilityNote) {
+      setVerifyError("Select an audit slot or provide availability details.");
       return;
     }
     if (!verifyAuditDetails.payment.trim()) {
@@ -1138,8 +1350,9 @@ export default function Account() {
         body: JSON.stringify({
           labId: verifyLabId,
           ...verifyAddress,
-          availability: verifyAuditDetails.availability.trim(),
+          availability: availabilityNote || undefined,
           payment: verifyAuditDetails.payment.trim(),
+          preferredSlotId: verifySelectedSlotId || undefined,
         }),
       });
       if (!res.ok) {
@@ -1165,9 +1378,7 @@ export default function Account() {
           | null;
         const quotedAmount = payload?.quote?.amountEur;
         if (typeof quotedAmount === "number" && Number.isFinite(quotedAmount)) {
-          const quotedTier = payload?.quote?.tier || "T?";
-          const quotedLabel = payload?.quote?.label || "audit zone";
-          quotedPriceSuffix = ` Estimated fee: €${quotedAmount} (${quotedTier} - ${quotedLabel}).`;
+          quotedPriceSuffix = ` Estimated fee: €${quotedAmount}.`;
         }
       }
       const successMessage =
@@ -1180,6 +1391,8 @@ export default function Account() {
       setShowVerifyModal(false);
       setVerifyAddress(EMPTY_VERIFY_ADDRESS);
       setVerifyAuditDetails(EMPTY_VERIFY_AUDIT_DETAILS);
+      setVerifySelectedSlotId(null);
+      setVerifyModalTab("slot");
     } catch (err: any) {
       setVerifyError(err?.message || "Unable to submit verification request");
     } finally {
@@ -1519,7 +1732,7 @@ export default function Account() {
 
         {showVerifyModal && (
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4 py-10">
-            <div className="relative w-full max-w-2xl rounded-3xl border border-border bg-card p-6 shadow-2xl">
+            <div className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-border bg-card p-6 shadow-2xl">
               <button
                 type="button"
                 className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"
@@ -1533,7 +1746,7 @@ export default function Account() {
                 Share your lab address so GLASS can follow up for on-site verification scheduling.
               </p>
 
-              <div className="mt-4 grid gap-4">
+              <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4">
                 <div className="grid gap-1">
                   <label className="text-sm font-medium text-foreground">Lab</label>
                   <select
@@ -1567,104 +1780,279 @@ export default function Account() {
                   </p>
                 )}
 
-                <div className="grid gap-1">
-                  <label className="text-sm font-medium text-foreground">Address line 1</label>
-                  <input
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                    value={verifyAddress.addressLine1}
-                    onChange={event =>
-                      setVerifyAddress(prev => ({ ...prev, addressLine1: event.target.value }))
-                    }
-                    placeholder="Street + number"
-                  />
+                <div className="inline-flex w-full gap-2 overflow-x-auto rounded-xl border border-border/60 bg-muted/30 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setVerifyModalTab("slot")}
+                    className={`rounded-lg px-3 py-1.5 text-sm transition ${
+                      verifyModalTab === "slot"
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-background hover:text-foreground"
+                    }`}
+                  >
+                    Slot
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVerifyModalTab("address")}
+                    className={`rounded-lg px-3 py-1.5 text-sm transition ${
+                      verifyModalTab === "address"
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-background hover:text-foreground"
+                    }`}
+                  >
+                    Address
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVerifyModalTab("payment")}
+                    className={`rounded-lg px-3 py-1.5 text-sm transition ${
+                      verifyModalTab === "payment"
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-background hover:text-foreground"
+                    }`}
+                  >
+                    Payment
+                  </button>
                 </div>
 
-                <div className="grid gap-1">
-                  <label className="text-sm font-medium text-foreground">Address line 2</label>
-                  <input
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                    value={verifyAddress.addressLine2}
-                    onChange={event =>
-                      setVerifyAddress(prev => ({ ...prev, addressLine2: event.target.value }))
-                    }
-                    placeholder="Building, floor, unit (optional)"
-                  />
-                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                  {verifyModalTab === "slot" && (
+                    <div className="grid gap-4">
+                      <div className="grid gap-1">
+                        <label className="text-sm font-medium text-foreground">Preferred audit slot</label>
+                        {verifySlotsLoading ? (
+                          <p className="text-xs text-muted-foreground">Loading available slots...</p>
+                        ) : verifySlotsError ? (
+                          <p className="text-xs text-destructive">{verifySlotsError}</p>
+                        ) : verifySlots.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">
+                            No predefined slots available yet. Enter your availability below and we will schedule manually.
+                          </p>
+                        ) : (
+                          <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-sky-50/60 via-cyan-50/35 to-white p-3">
+                            <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
+                              <CalendarDays className="h-3.5 w-3.5" />
+                              <span>Select a day, then a time slot.</span>
+                            </div>
+                            <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+                              {verifySlotDayGroups.map(group => {
+                                const isDayActive = activeVerifyDayGroup?.key === group.key;
+                                return (
+                                  <button
+                                    key={group.key}
+                                    type="button"
+                                    onClick={() => {
+                                      setVerifySelectedSlotDayKey(group.key);
+                                      if (!group.slots.some(slot => slot.id === verifySelectedSlotId)) {
+                                        setVerifySelectedSlotId(group.slots[0]?.id ?? null);
+                                      }
+                                    }}
+                                    className={`min-w-[112px] rounded-lg border px-2.5 py-1.5 text-left transition ${
+                                      isDayActive
+                                        ? "border-primary bg-primary/10 text-primary"
+                                        : "border-border bg-white/80 text-foreground hover:border-primary/40"
+                                    }`}
+                                  >
+                                    <p className="text-xs font-medium">{group.label}</p>
+                                    <p className="text-[10px] text-muted-foreground">
+                                      {group.subLabel} • {group.slots.length} slot{group.slots.length === 1 ? "" : "s"}
+                                    </p>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div className="grid gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(96px,1fr))]">
+                              {(activeVerifyDayGroup?.slots ?? []).map(slot => {
+                                const isSelected = verifySelectedSlotId === slot.id;
+                                return (
+                                  <button
+                                    key={slot.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setVerifySelectedSlotId(slot.id);
+                                      setVerifySelectedSlotDayKey(getAuditSlotDayKey(slot));
+                                    }}
+                                    className={`rounded-md border px-2 py-1 text-left text-[11px] leading-tight transition ${
+                                      isSelected
+                                        ? "border-primary bg-primary/10 text-primary shadow-sm"
+                                        : "border-border bg-white/80 text-foreground hover:border-primary/40"
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-1">
+                                      <Clock3 className="h-2.5 w-2.5 shrink-0" />
+                                      <p className="font-semibold tracking-tight">{formatAuditSlotTimeCompact(slot)}</p>
+                                    </div>
+                                    <p className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                      <UsersRound className="h-2.5 w-2.5 shrink-0" />
+                                      {slot.remainingCapacity} left
+                                    </p>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        {selectedVerifySlot && (
+                          <div className="space-y-0.5 text-xs text-muted-foreground">
+                            <p>Selected slot: {selectedVerifySlot.label}</p>
+                            {selectedVerifySlot.notes ? <p>Note: {selectedVerifySlot.notes}</p> : null}
+                          </div>
+                        )}
+                      </div>
+                      <div className="grid gap-1">
+                        <label className="text-sm font-medium text-foreground">
+                          {verifySlots.length > 0 ? "Availability note (optional)" : "Availability for audit"}
+                        </label>
+                        <textarea
+                          className="min-h-[90px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                          value={verifyAuditDetails.availability}
+                          onChange={event =>
+                            setVerifyAuditDetails(prev => ({ ...prev, availability: event.target.value }))
+                          }
+                          placeholder={
+                            verifySlots.length > 0
+                              ? "Optional note about this preferred slot (attendees, access constraints, etc.)."
+                              : "Preferred days/times for on-site audit and who should be present."
+                          }
+                        />
+                      </div>
+                    </div>
+                  )}
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="grid gap-1">
-                    <label className="text-sm font-medium text-foreground">City</label>
-                    <input
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                      value={verifyAddress.city}
-                      onChange={event =>
-                        setVerifyAddress(prev => ({ ...prev, city: event.target.value }))
-                      }
-                    />
-                  </div>
-                  <div className="grid gap-1">
-                    <label className="text-sm font-medium text-foreground">State/Region</label>
-                    <input
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                      value={verifyAddress.state}
-                      onChange={event =>
-                        setVerifyAddress(prev => ({ ...prev, state: event.target.value }))
-                      }
-                    />
-                  </div>
-                </div>
+                  {verifyModalTab === "address" && (
+                    <div className="grid gap-4">
+                      <div className="grid gap-1">
+                        <label className="text-sm font-medium text-foreground">Address line 1</label>
+                        <input
+                          className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                          value={verifyAddress.addressLine1}
+                          onChange={event =>
+                            setVerifyAddress(prev => ({ ...prev, addressLine1: event.target.value }))
+                          }
+                          placeholder="Street + number"
+                        />
+                      </div>
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="grid gap-1">
-                    <label className="text-sm font-medium text-foreground">Postal code</label>
-                    <input
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                      value={verifyAddress.postalCode}
-                      onChange={event =>
-                        setVerifyAddress(prev => ({ ...prev, postalCode: event.target.value }))
-                      }
-                    />
-                  </div>
-                  <div className="grid gap-1">
-                    <label className="text-sm font-medium text-foreground">Country</label>
-                    <input
-                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                      value={verifyAddress.country}
-                      onChange={event =>
-                        setVerifyAddress(prev => ({ ...prev, country: event.target.value }))
-                      }
-                    />
-                  </div>
-                </div>
+                      <div className="grid gap-1">
+                        <label className="text-sm font-medium text-foreground">Address line 2</label>
+                        <input
+                          className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                          value={verifyAddress.addressLine2}
+                          onChange={event =>
+                            setVerifyAddress(prev => ({ ...prev, addressLine2: event.target.value }))
+                          }
+                          placeholder="Building, floor, unit (optional)"
+                        />
+                      </div>
 
-                <div className="grid gap-1">
-                  <label className="text-sm font-medium text-foreground">Availability for audit</label>
-                  <textarea
-                    className="min-h-[90px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                    value={verifyAuditDetails.availability}
-                    onChange={event =>
-                      setVerifyAuditDetails(prev => ({ ...prev, availability: event.target.value }))
-                    }
-                    placeholder="Preferred days/times for on-site audit and who should be present."
-                  />
-                </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="grid gap-1">
+                          <label className="text-sm font-medium text-foreground">City</label>
+                          <input
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                            value={verifyAddress.city}
+                            onChange={event =>
+                              setVerifyAddress(prev => ({ ...prev, city: event.target.value }))
+                            }
+                          />
+                        </div>
+                        <div className="grid gap-1">
+                          <label className="text-sm font-medium text-foreground">State/Region</label>
+                          <input
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                            value={verifyAddress.state}
+                            onChange={event =>
+                              setVerifyAddress(prev => ({ ...prev, state: event.target.value }))
+                            }
+                          />
+                        </div>
+                      </div>
 
-                <div className="grid gap-1">
-                  <label className="text-sm font-medium text-foreground">Payment details</label>
-                  <textarea
-                    className="min-h-[90px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                    value={verifyAuditDetails.payment}
-                    onChange={event =>
-                      setVerifyAuditDetails(prev => ({ ...prev, payment: event.target.value }))
-                    }
-                    placeholder="Billing contact, PO process, and payment method for audit fees."
-                  />
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="grid gap-1">
+                          <label className="text-sm font-medium text-foreground">Postal code</label>
+                          <input
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                            value={verifyAddress.postalCode}
+                            onChange={event =>
+                              setVerifyAddress(prev => ({ ...prev, postalCode: event.target.value }))
+                            }
+                          />
+                        </div>
+                        <div className="grid gap-1">
+                          <label className="text-sm font-medium text-foreground">Country</label>
+                          <input
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                            value={verifyAddress.country}
+                            onChange={event =>
+                              setVerifyAddress(prev => ({ ...prev, country: event.target.value }))
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {verifyModalTab === "payment" && (
+                    <div className="grid gap-4">
+                      <div className="grid gap-1">
+                        <label className="text-sm font-medium text-foreground">Payment details</label>
+                        <textarea
+                          className="min-h-[110px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                          value={verifyAuditDetails.payment}
+                          onChange={event =>
+                            setVerifyAuditDetails(prev => ({ ...prev, payment: event.target.value }))
+                          }
+                          placeholder="Billing contact, PO process, and payment method for audit fees."
+                        />
+                      </div>
+                      <div className="rounded-xl border border-border/70 bg-muted/30 p-3 text-xs text-muted-foreground">
+                        <p className="font-medium text-foreground">Summary</p>
+                        <p>Slot: {selectedVerifySlot?.label || "Manual availability"}</p>
+                        <p>
+                          Address:{" "}
+                          {[verifyAddress.addressLine1, verifyAddress.city, verifyAddress.country]
+                            .filter(Boolean)
+                            .join(", ") || "Not fully filled"}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {verifyError && <p className="text-sm text-destructive">{verifyError}</p>}
                 {verifySuccess && <p className="text-sm text-emerald-600">{verifySuccess}</p>}
 
-                <div className="flex items-center justify-end gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary disabled:opacity-50"
+                      disabled={!canGoVerifyPrev || verifySubmitting}
+                      onClick={() =>
+                        setVerifyModalTab(VERIFY_MODAL_TAB_ORDER[Math.max(0, verifyModalTabIndex - 1)])
+                      }
+                    >
+                      Back
+                    </button>
+                    {canGoVerifyNext && (
+                      <button
+                        type="button"
+                        className="rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary disabled:opacity-50"
+                        disabled={verifySubmitting}
+                        onClick={() =>
+                          setVerifyModalTab(
+                            VERIFY_MODAL_TAB_ORDER[
+                              Math.min(VERIFY_MODAL_TAB_ORDER.length - 1, verifyModalTabIndex + 1)
+                            ],
+                          )
+                        }
+                      >
+                        Next
+                      </button>
+                    )}
+                  </div>
                   <button
                     type="button"
                     className="rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary"
@@ -1673,14 +2061,16 @@ export default function Account() {
                   >
                     Cancel
                   </button>
-                  <button
-                    type="button"
-                    onClick={submitVerificationRequest}
-                    className="rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-70"
-                    disabled={verifySubmitting || ownedLabsNeedingAudit.length === 0}
-                  >
-                    {verifySubmitting ? "Submitting…" : "Submit request"}
-                  </button>
+                  {!canGoVerifyNext && (
+                    <button
+                      type="button"
+                      onClick={submitVerificationRequest}
+                      className="rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-70"
+                      disabled={verifySubmitting || ownedLabsNeedingAudit.length === 0}
+                    >
+                      {verifySubmitting ? "Submitting…" : "Submit request"}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

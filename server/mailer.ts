@@ -6,6 +6,11 @@ type MailArgs = {
   from?: string;
   templateId?: number;
   params?: Record<string, unknown>;
+  attachments?: Array<{
+    filename: string;
+    contentBase64: string;
+    contentType?: string;
+  }>;
 };
 
 function stripQuotes(value: string) {
@@ -43,7 +48,7 @@ function resolveSender(from?: string) {
  * Best-effort mailer. If nodemailer is not installed or SMTP env is missing,
  * we just log to console so requests are not blocked.
  */
-export async function sendMail({ to, subject, text, html, from, templateId, params }: MailArgs) {
+export async function sendMail({ to, subject, text, html, from, templateId, params, attachments }: MailArgs) {
   const brevoKey = process.env.BREVO_API_KEY?.trim();
   if (brevoKey) {
     try {
@@ -56,13 +61,21 @@ export async function sendMail({ to, subject, text, html, from, templateId, para
       if (!sender.email) {
         console.warn("[mailer] Sender email missing; letting Brevo template default apply");
       }
+      const brevoAttachments =
+        attachments?.length
+          ? attachments.map(item => ({
+              name: item.filename,
+              content: item.contentBase64,
+            }))
+          : undefined;
       const body = templateId
-        ? { to: [{ email: to }], templateId, params, ...senderPayload }
+        ? { to: [{ email: to }], templateId, params, attachment: brevoAttachments, ...senderPayload }
         : {
             to: [{ email: to }],
             subject,
             text,
             html,
+            attachment: brevoAttachments,
             ...senderPayload,
           };
       const brevoRes = await fetch("https://api.brevo.com/v3/smtp/email", {
@@ -133,6 +146,12 @@ export async function sendMail({ to, subject, text, html, from, templateId, para
       subject,
       text,
       html,
+      attachments:
+        attachments?.map(item => ({
+          filename: item.filename,
+          content: Buffer.from(item.contentBase64, "base64"),
+          contentType: item.contentType || "application/octet-stream",
+        })) ?? [],
     });
     console.log("[mailer] SMTP send ok", { to });
   } catch (error) {

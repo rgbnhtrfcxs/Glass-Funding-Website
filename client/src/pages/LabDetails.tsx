@@ -78,8 +78,6 @@ export default function LabDetails({ params }: LabDetailsProps) {
   })();
   const [backLabel, setBackLabel] = useState("Back to labs");
   const [profileCanCollaborate, setProfileCanCollaborate] = useState(false);
-  const [currentUserIsAdmin, setCurrentUserIsAdmin] = useState(false);
-  const [currentUserCanManageMultipleLabs, setCurrentUserCanManageMultipleLabs] = useState(false);
   const [currentUserCanBrokerRequests, setCurrentUserCanBrokerRequests] = useState(false);
   const [defaultProfileName, setDefaultProfileName] = useState("");
   useEffect(() => {
@@ -87,8 +85,6 @@ export default function LabDetails({ params }: LabDetailsProps) {
     async function checkRole() {
       if (!user) {
         setProfileCanCollaborate(false);
-        setCurrentUserIsAdmin(false);
-        setCurrentUserCanManageMultipleLabs(false);
         setCurrentUserCanBrokerRequests(false);
         setDefaultProfileName("");
         return;
@@ -101,8 +97,6 @@ export default function LabDetails({ params }: LabDetailsProps) {
       if (!mounted) return;
       if (error) {
         setProfileCanCollaborate(false);
-        setCurrentUserIsAdmin(false);
-        setCurrentUserCanManageMultipleLabs(false);
         setCurrentUserCanBrokerRequests(false);
         setDefaultProfileName(resolveProfileName(null, user as any));
         return;
@@ -112,8 +106,6 @@ export default function LabDetails({ params }: LabDetailsProps) {
       const canManageMultipleLabs = Boolean((data as any)?.can_manage_multiple_labs);
       const canBrokerRequests = Boolean((data as any)?.can_broker_requests);
       setProfileCanCollaborate(isAdmin || canCreateLab || canManageMultipleLabs);
-      setCurrentUserIsAdmin(isAdmin);
-      setCurrentUserCanManageMultipleLabs(canManageMultipleLabs);
       setCurrentUserCanBrokerRequests(canBrokerRequests);
       setDefaultProfileName(resolveProfileName(data, user as any));
     }
@@ -480,8 +472,9 @@ export default function LabDetails({ params }: LabDetailsProps) {
     }
     return "listed";
   })();
-  const canRequestLab = status === "verified" || status === "premier";
+  const canShowPartnerLogos = ["verified_active", "verified_passive", "verified", "premier"].includes(labStatus);
   const offersLabSpace = Boolean(lab.offersLabSpace);
+  const canRequestLab = offersLabSpace && (status === "verified" || status === "premier");
   const teamGroups = (() => {
     const groups = new Map<string, typeof lab.teamMembers>();
     for (const member of lab.teamMembers) {
@@ -1165,17 +1158,14 @@ export default function LabDetails({ params }: LabDetailsProps) {
             </section>
           )}
 
-          {(partnerLogos.length > 0 &&
-            (isPremier ||
-              currentUserIsAdmin ||
-              (currentUserCanManageMultipleLabs && lab.ownerUserId && lab.ownerUserId === user?.id))) && (
+          {partnerLogos.length > 0 && canShowPartnerLogos && (
             <div className="mt-8 rounded-2xl border border-primary/40 bg-primary/5 p-4">
               <h3 className="text-sm font-semibold text-foreground mb-3">Featured partners</h3>
               <div className="flex gap-3 overflow-x-auto pb-2">
                 {partnerLogos.map((logo, idx) => {
                   const card = (
                     <div
-                      className="h-20 w-32 overflow-hidden rounded-xl border border-primary/40 bg-background flex-shrink-0"
+                      className="h-28 w-28 overflow-hidden rounded-xl border border-primary/40 bg-background flex-shrink-0"
                       title={logo.name}
                     >
                       <img src={logo.url} alt={logo.name} className="h-full w-full object-cover" />
@@ -1647,7 +1637,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
             </div>
           )}
 
-          {showRequest && (
+          {showRequest && canRequestLab && (
             <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4 py-8">
               <div className="relative w-full max-w-2xl rounded-2xl border border-border bg-card p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
                 <button

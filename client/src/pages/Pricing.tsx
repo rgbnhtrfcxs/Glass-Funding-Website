@@ -414,6 +414,28 @@ export default function Pricing() {
           })}
         </motion.div>
 
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.05 }}
+          className="rounded-[28px] border border-border bg-card/90 p-7 shadow-sm"
+        >
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1">
+              <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Enterprise</p>
+              <h2 className="text-xl font-semibold text-foreground">Need multi-lab procurement and custom terms?</h2>
+              <p className="text-sm text-muted-foreground">
+                Submit an enterprise intake request for custom billing, procurement support, and rollout across multiple labs.
+              </p>
+            </div>
+            <Link href="/payments?plan=enterprise">
+              <a className="inline-flex items-center justify-center rounded-full bg-foreground px-5 py-2 text-sm font-medium text-background transition hover:bg-foreground/90">
+                Request Enterprise
+              </a>
+            </Link>
+          </div>
+        </motion.div>
+
         <div className="flex flex-wrap gap-3">
           <Link href="/contact">
             <a className="inline-flex items-center justify-center rounded-full border border-border px-5 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary">
