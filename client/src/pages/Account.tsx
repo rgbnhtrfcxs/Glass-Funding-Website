@@ -91,6 +91,18 @@ type AccountTab = "overview" | "edit" | "requests" | "manageLab" | "manageTeams"
 type OverviewTab = "overview" | "labs" | "equipment" | "team" | "activity";
 
 const ACCOUNT_SECTION_STORAGE_KEY = "glass.account.section";
+const EMPTY_VERIFY_ADDRESS = {
+  addressLine1: "",
+  addressLine2: "",
+  city: "",
+  state: "",
+  postalCode: "",
+  country: "",
+};
+const EMPTY_VERIFY_AUDIT_DETAILS = {
+  availability: "",
+  payment: "",
+};
 const ACCOUNT_TABS: AccountTab[] = [
   "overview",
   "edit",
@@ -196,14 +208,8 @@ export default function Account() {
   const [verifySubmitting, setVerifySubmitting] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [verifySuccess, setVerifySuccess] = useState<string | null>(null);
-  const [verifyAddress, setVerifyAddress] = useState({
-    addressLine1: "",
-    addressLine2: "",
-    city: "",
-    state: "",
-    postalCode: "",
-    country: "",
-  });
+  const [verifyAddress, setVerifyAddress] = useState(EMPTY_VERIFY_ADDRESS);
+  const [verifyAuditDetails, setVerifyAuditDetails] = useState(EMPTY_VERIFY_AUDIT_DETAILS);
   const [legalTopic, setLegalTopic] = useState("");
   const [legalDetails, setLegalDetails] = useState("");
   const [legalLabId, setLegalLabId] = useState<number | null>(null);
@@ -599,6 +605,11 @@ export default function Account() {
     const statusFromAll = fromAll?.labStatus ?? fromAll?.lab_status;
     return ["verified_passive", "verified_active", "premier"].includes(statusFromAll);
   };
+  const hasLabPassedAudit = (labId: number) => {
+    const fromAll = allLabs.find(l => l.id === labId) as any;
+    if (!fromAll) return false;
+    return toBool(fromAll?.auditPassed ?? fromAll?.audit_passed);
+  };
   const premierLabs = useMemo(
     () => labStats.filter(isPremierLab),
     [labStats],
@@ -634,7 +645,20 @@ export default function Account() {
       issuedAt: selectedGlassRecord?.issued_at ?? null,
     };
   }, [isLabVerified, selectedGlassLab, selectedGlassRecord]);
-  const ownedUnverifiedLabs = useMemo(() => ownedLabs.filter(l => !isLabVerified(l.id)), [ownedLabs]);
+  const ownedLabsNeedingAudit = useMemo(
+    () =>
+      ownedLabs.filter(lab => {
+        const status = labStatusValue(lab as any);
+        const isVerifiedStatus = ["verified_passive", "verified_active", "premier"].includes(status);
+        const auditPassed = hasLabPassedAudit(lab.id);
+        return !isVerifiedStatus || !auditPassed;
+      }),
+    [ownedLabs, allLabs],
+  );
+  const selectedVerifyLab = useMemo(
+    () => (verifyLabId ? ownedLabs.find(lab => lab.id === verifyLabId) ?? null : null),
+    [ownedLabs, verifyLabId],
+  );
   const canManageLabs = toBool(profile?.can_create_lab);
   const emptyTeamForm: TeamMemberForm = {
     name: "",
@@ -660,6 +684,29 @@ export default function Account() {
   const closeGlassIdModal = () => {
     setShowGlassIdModal(false);
     setGlassIdModalLabId(null);
+  };
+
+  const openVerifyModal = (labId: number | null) => {
+    const targetLab = labId ? ownedLabs.find(lab => lab.id === labId) ?? null : null;
+    setVerifyLabId(labId);
+    setVerifyError(null);
+    setVerifySuccess(null);
+    setVerifyAddress({
+      addressLine1: String((targetLab as any)?.addressLine1 ?? ""),
+      addressLine2: String((targetLab as any)?.addressLine2 ?? ""),
+      city: String((targetLab as any)?.city ?? ""),
+      state: String((targetLab as any)?.state ?? ""),
+      postalCode: String((targetLab as any)?.postalCode ?? ""),
+      country: String((targetLab as any)?.country ?? ""),
+    });
+    setVerifyAuditDetails(EMPTY_VERIFY_AUDIT_DETAILS);
+    setShowVerifyModal(true);
+  };
+
+  const closeVerifyModal = () => {
+    setShowVerifyModal(false);
+    setVerifyError(null);
+    setVerifySuccess(null);
   };
 
   useEffect(() => {
@@ -1058,11 +1105,20 @@ export default function Account() {
       setVerifyError("Select a lab to verify.");
       return;
     }
-    if (isLabVerified(verifyLabId)) {
+    if (!verifyAuditDetails.availability.trim()) {
+      setVerifyError("Availability is required.");
+      return;
+    }
+    if (!verifyAuditDetails.payment.trim()) {
+      setVerifyError("Payment details are required.");
+      return;
+    }
+    const isFullyVerified = isLabVerified(verifyLabId) && hasLabPassedAudit(verifyLabId);
+    if (isFullyVerified) {
       setVerifySubmitting(false);
-      setVerifyError("This lab is already verified by GLASS.");
+      setVerifyError("This lab already passed audit and is fully verified.");
       if (typeof window !== "undefined") {
-        alert("This lab is already verified by GLASS.");
+        alert("This lab already passed audit and is fully verified.");
       }
       return;
     }
@@ -1082,22 +1138,48 @@ export default function Account() {
         body: JSON.stringify({
           labId: verifyLabId,
           ...verifyAddress,
+          availability: verifyAuditDetails.availability.trim(),
+          payment: verifyAuditDetails.payment.trim(),
         }),
       });
       if (!res.ok) {
+        const contentType = res.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const payload = await res.json().catch(() => null);
+          throw new Error(payload?.message || "Unable to submit verification request");
+        }
         const txt = await res.text();
         throw new Error(txt || "Unable to submit verification request");
       }
-      setVerifySuccess("Request received! We will reach out to schedule verification (additional cost applies).");
-      setShowVerifyModal(false);
-      setVerifyAddress({
-        addressLine1: "",
-        addressLine2: "",
-        city: "",
-        state: "",
-        postalCode: "",
-        country: "",
+      let quotedPriceSuffix = "";
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const payload = (await res.json().catch(() => null)) as
+          | {
+              quote?: {
+                tier?: string;
+                amountEur?: number;
+                label?: string;
+              };
+            }
+          | null;
+        const quotedAmount = payload?.quote?.amountEur;
+        if (typeof quotedAmount === "number" && Number.isFinite(quotedAmount)) {
+          const quotedTier = payload?.quote?.tier || "T?";
+          const quotedLabel = payload?.quote?.label || "audit zone";
+          quotedPriceSuffix = ` Estimated fee: €${quotedAmount} (${quotedTier} - ${quotedLabel}).`;
+        }
+      }
+      const successMessage =
+        `Request received! We will reach out to schedule verification (additional cost applies).${quotedPriceSuffix}`.trim();
+      setVerifySuccess(successMessage);
+      toast({
+        title: "Verification request sent",
+        description: successMessage,
       });
+      setShowVerifyModal(false);
+      setVerifyAddress(EMPTY_VERIFY_ADDRESS);
+      setVerifyAuditDetails(EMPTY_VERIFY_AUDIT_DETAILS);
     } catch (err: any) {
       setVerifyError(err?.message || "Unable to submit verification request");
     } finally {
@@ -1305,19 +1387,6 @@ export default function Account() {
             >
               <Heart className="h-5 w-5" />
             </button>
-            {ownedUnverifiedLabs.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  setVerifyLabId(ownedUnverifiedLabs[0]?.id ?? null);
-                  setShowVerifyModal(true);
-                  setVerifyError(null);
-                }}
-                className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
-              >
-                Get Verified by GLASS
-              </button>
-            )}
           </div>
         </div>
 
@@ -1441,6 +1510,176 @@ export default function Account() {
                     disabled={newsSubmitting}
                   >
                     {newsSubmitting ? "Posting…" : "Post update"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showVerifyModal && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4 py-10">
+            <div className="relative w-full max-w-2xl rounded-3xl border border-border bg-card p-6 shadow-2xl">
+              <button
+                type="button"
+                className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"
+                onClick={closeVerifyModal}
+                aria-label="Close audit request modal"
+              >
+                ✕
+              </button>
+              <h3 className="text-lg font-semibold text-foreground">Request Audit</h3>
+              <p className="text-sm text-muted-foreground">
+                Share your lab address so GLASS can follow up for on-site verification scheduling.
+              </p>
+
+              <div className="mt-4 grid gap-4">
+                <div className="grid gap-1">
+                  <label className="text-sm font-medium text-foreground">Lab</label>
+                  <select
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                    value={verifyLabId ?? ""}
+                    onChange={event => {
+                      const nextLabId = Number(event.target.value);
+                      setVerifyLabId(nextLabId);
+                      const nextLab = ownedLabs.find(lab => lab.id === nextLabId) ?? null;
+                      setVerifyAddress({
+                        addressLine1: String((nextLab as any)?.addressLine1 ?? ""),
+                        addressLine2: String((nextLab as any)?.addressLine2 ?? ""),
+                        city: String((nextLab as any)?.city ?? ""),
+                        state: String((nextLab as any)?.state ?? ""),
+                        postalCode: String((nextLab as any)?.postalCode ?? ""),
+                        country: String((nextLab as any)?.country ?? ""),
+                      });
+                    }}
+                  >
+                    {ownedLabsNeedingAudit.map(lab => (
+                      <option key={lab.id} value={lab.id}>
+                        {lab.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {selectedVerifyLab && (
+                  <p className="text-xs text-muted-foreground">
+                    Selected: {selectedVerifyLab.name}
+                  </p>
+                )}
+
+                <div className="grid gap-1">
+                  <label className="text-sm font-medium text-foreground">Address line 1</label>
+                  <input
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                    value={verifyAddress.addressLine1}
+                    onChange={event =>
+                      setVerifyAddress(prev => ({ ...prev, addressLine1: event.target.value }))
+                    }
+                    placeholder="Street + number"
+                  />
+                </div>
+
+                <div className="grid gap-1">
+                  <label className="text-sm font-medium text-foreground">Address line 2</label>
+                  <input
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                    value={verifyAddress.addressLine2}
+                    onChange={event =>
+                      setVerifyAddress(prev => ({ ...prev, addressLine2: event.target.value }))
+                    }
+                    placeholder="Building, floor, unit (optional)"
+                  />
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">City</label>
+                    <input
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      value={verifyAddress.city}
+                      onChange={event =>
+                        setVerifyAddress(prev => ({ ...prev, city: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">State/Region</label>
+                    <input
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      value={verifyAddress.state}
+                      onChange={event =>
+                        setVerifyAddress(prev => ({ ...prev, state: event.target.value }))
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">Postal code</label>
+                    <input
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      value={verifyAddress.postalCode}
+                      onChange={event =>
+                        setVerifyAddress(prev => ({ ...prev, postalCode: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <label className="text-sm font-medium text-foreground">Country</label>
+                    <input
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                      value={verifyAddress.country}
+                      onChange={event =>
+                        setVerifyAddress(prev => ({ ...prev, country: event.target.value }))
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-1">
+                  <label className="text-sm font-medium text-foreground">Availability for audit</label>
+                  <textarea
+                    className="min-h-[90px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                    value={verifyAuditDetails.availability}
+                    onChange={event =>
+                      setVerifyAuditDetails(prev => ({ ...prev, availability: event.target.value }))
+                    }
+                    placeholder="Preferred days/times for on-site audit and who should be present."
+                  />
+                </div>
+
+                <div className="grid gap-1">
+                  <label className="text-sm font-medium text-foreground">Payment details</label>
+                  <textarea
+                    className="min-h-[90px] w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                    value={verifyAuditDetails.payment}
+                    onChange={event =>
+                      setVerifyAuditDetails(prev => ({ ...prev, payment: event.target.value }))
+                    }
+                    placeholder="Billing contact, PO process, and payment method for audit fees."
+                  />
+                </div>
+
+                {verifyError && <p className="text-sm text-destructive">{verifyError}</p>}
+                {verifySuccess && <p className="text-sm text-emerald-600">{verifySuccess}</p>}
+
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    className="rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary"
+                    onClick={closeVerifyModal}
+                    disabled={verifySubmitting}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={submitVerificationRequest}
+                    className="rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-70"
+                    disabled={verifySubmitting || ownedLabsNeedingAudit.length === 0}
+                  >
+                    {verifySubmitting ? "Submitting…" : "Submit request"}
                   </button>
                 </div>
               </div>
@@ -1583,21 +1822,6 @@ export default function Account() {
           </aside>
 
           <div className="space-y-8">
-            {ownedUnverifiedLabs.length > 0 && (
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setVerifyLabId(ownedUnverifiedLabs[0]?.id ?? null);
-                    setShowVerifyModal(true);
-                    setVerifyError(null);
-                  }}
-                  className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
-                >
-                  Get Verified by GLASS
-                </button>
-              </div>
-            )}
           {activeTab === "overview" && (
             <>
               {overviewTab === "overview" && (
@@ -1725,7 +1949,7 @@ export default function Account() {
                   transition={{ duration: 0.4 }}
                   className="space-y-6"
                 >
-                  <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm">
+                  <div className="rounded-3xl border border-border bg-gradient-to-br from-primary/5 via-background to-primary/10 p-6 shadow-sm">
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <h3 className="flex items-center gap-2 text-xl font-semibold text-foreground">
@@ -1736,21 +1960,32 @@ export default function Account() {
                           A structured snapshot of your linked labs, visibility, and equipment.
                         </p>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setOverviewTab("equipment")}
-                          className="inline-flex items-center justify-center rounded-full border border-border bg-background px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                        >
-                          Add equipments
-                        </button>
+                      <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
                         <button
                           type="button"
                           onClick={() => setActiveTab("manageLab")}
-                          className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90"
+                          className="inline-flex w-full items-center justify-center rounded-full bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 sm:w-auto"
                         >
                           Open workspace
                         </button>
+                        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                          <button
+                            type="button"
+                            onClick={() => setOverviewTab("equipment")}
+                            className="inline-flex items-center justify-center rounded-full border border-border bg-background px-4 py-2 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                          >
+                            Edit equipment
+                          </button>
+                          {ownedLabsNeedingAudit.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => openVerifyModal(ownedLabsNeedingAudit[0]?.id ?? null)}
+                              className="inline-flex items-center justify-center rounded-full border border-primary/40 bg-primary/10 px-4 py-2 text-xs font-medium text-primary transition hover:bg-primary/15"
+                            >
+                              Request Audit
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -2117,7 +2352,7 @@ export default function Account() {
 
           {activeTab === "manageLab" && (
             <div className="space-y-5">
-              <div className="rounded-3xl border border-border bg-card/80 p-5 shadow-sm">
+              <div className="rounded-3xl border border-border bg-gradient-to-br from-primary/5 via-background to-primary/10 p-5 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Lab workspace</p>
@@ -2138,21 +2373,12 @@ export default function Account() {
                       <ArrowLeft className="h-3 w-3" />
                       Back to overview
                     </button>
-                    {profile && toBool(profile.is_admin) && (
-                      <button
-                        type="button"
-                        onClick={() => setActiveTab("adminLabs")}
-                        className="inline-flex items-center gap-2 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:bg-primary/90"
-                      >
-                        Open labs admin
-                      </button>
-                    )}
                   </div>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
                   <InfoTile label="Linked labs" value={ownedLabs.length.toString()} />
                   <InfoTile label="Visible" value={ownedLabs.filter(lab => (lab as any).isVisible !== false).length.toString()} />
-                  <InfoTile label="Need verification" value={ownedUnverifiedLabs.length.toString()} />
+                  <InfoTile label="Need audit" value={ownedLabsNeedingAudit.length.toString()} />
                 </div>
               </div>
               <ManageSelect embedded />

@@ -516,6 +516,209 @@ const toCountryCode = (countryValue?: string | null) => {
   return "GL";
 };
 
+type AuditPricingTierCode = "T1" | "T2" | "T3" | "T4" | "T5";
+type AuditPricingQuote = {
+  tier: AuditPricingTierCode;
+  amountEur: number;
+  currency: "EUR";
+  label: string;
+  basis: string;
+  distanceKm: number | null;
+  countryCode: string | null;
+};
+
+const STRASBOURG_COORDS = { lat: 48.5734, lng: 7.7521 } as const;
+const T3_COUNTRY_CODES = new Set(["FR", "DE", "CH"]);
+const EUROPE_COUNTRY_CODES = new Set([
+  "AL", "AD", "AM", "AT", "AZ", "BY", "BE", "BA", "BG", "HR", "CY", "CZ",
+  "DK", "EE", "FI", "FR", "GE", "DE", "GR", "HU", "IS", "IE", "IT", "XK",
+  "LV", "LI", "LT", "LU", "MT", "MD", "MC", "ME", "NL", "MK", "NO", "PL",
+  "PT", "RO", "RU", "SM", "RS", "SK", "SI", "ES", "SE", "CH", "TR", "UA",
+  "GB", "VA",
+]);
+const COUNTRY_NAME_TO_ISO2: Record<string, string> = {
+  france: "FR",
+  german: "DE",
+  germany: "DE",
+  deutschland: "DE",
+  schweiz: "CH",
+  suisse: "CH",
+  svizzera: "CH",
+  switzerland: "CH",
+  royaumeuni: "GB",
+  "unitedkingdom": "GB",
+  uk: "GB",
+};
+
+const normalizeCountryToIso2 = (countryValue?: string | null) => {
+  const raw = (countryValue || "").trim();
+  if (!raw) return null;
+  if (/^[A-Za-z]{2}$/.test(raw)) return raw.toUpperCase();
+  const canonical = raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
+  return COUNTRY_NAME_TO_ISO2[canonical] || null;
+};
+
+const formatVerificationAddress = (address: {
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+}) =>
+  [
+    address.addressLine1,
+    address.addressLine2,
+    address.city,
+    address.state,
+    address.postalCode,
+    address.country,
+  ]
+    .map(value => (value || "").trim())
+    .filter(Boolean)
+    .join(", ");
+
+const isLikelyAlsaceLocation = (state?: string | null, postalCode?: string | null) => {
+  const normalizedState = (state || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const normalizedPostal = (postalCode || "").replace(/\s+/g, "");
+  if (normalizedState.includes("alsace")) return true;
+  return normalizedPostal.startsWith("67") || normalizedPostal.startsWith("68");
+};
+
+const haversineKm = (from: { lat: number; lng: number }, to: { lat: number; lng: number }) => {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRad(to.lat - from.lat);
+  const dLng = toRad(to.lng - from.lng);
+  const lat1 = toRad(from.lat);
+  const lat2 = toRad(to.lat);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadiusKm * c;
+};
+
+const getServerMapboxToken = () =>
+  process.env.MAPBOX_TOKEN?.trim() ||
+  process.env.VITE_MAPBOX_TOKEN?.trim() ||
+  process.env.MAPBOX_PUBLIC_TOKEN?.trim() ||
+  null;
+
+const geocodeForAuditPricing = async (query: string) => {
+  const token = getServerMapboxToken();
+  if (!token || !query.trim()) return null;
+  try {
+    const url = new URL(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json`,
+    );
+    url.searchParams.set("access_token", token);
+    url.searchParams.set("limit", "1");
+    url.searchParams.set("types", "address,place,postcode,locality,neighborhood");
+    const response = await fetch(url.toString());
+    if (!response.ok) return null;
+    const payload = (await response.json()) as {
+      features?: Array<{ center?: [number, number] }>;
+    };
+    const center = payload.features?.[0]?.center;
+    if (!center || center.length < 2) return null;
+    const [lng, lat] = center;
+    if (typeof lat !== "number" || typeof lng !== "number") return null;
+    return { lat, lng };
+  } catch {
+    return null;
+  }
+};
+
+const computeAuditPricingQuote = async (address: {
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+}): Promise<AuditPricingQuote> => {
+  const countryCode = normalizeCountryToIso2(address.country);
+  const formattedAddress = formatVerificationAddress(address);
+  let distanceKm: number | null = null;
+
+  if (formattedAddress) {
+    const point = await geocodeForAuditPricing(formattedAddress);
+    if (point) {
+      distanceKm = haversineKm(STRASBOURG_COORDS, point);
+    }
+  }
+
+  const t1Eligible = distanceKm !== null && distanceKm <= 20;
+  const t2DistanceEligible = distanceKm !== null && distanceKm <= 200;
+  const t2AlsaceFallback =
+    countryCode === "FR" && isLikelyAlsaceLocation(address.state, address.postalCode);
+
+  if (t1Eligible) {
+    return {
+      tier: "T1",
+      amountEur: 290,
+      currency: "EUR",
+      label: "Strasbourg radius (<=20 km)",
+      basis: `${distanceKm!.toFixed(1)} km from Strasbourg`,
+      distanceKm,
+      countryCode,
+    };
+  }
+  if (countryCode === "FR" && (t2DistanceEligible || t2AlsaceFallback)) {
+    return {
+      tier: "T2",
+      amountEur: 490,
+      currency: "EUR",
+      label: "Alsace / regional France (<=200 km)",
+      basis:
+        distanceKm !== null
+          ? `${distanceKm.toFixed(1)} km from Strasbourg`
+          : "Alsace fallback by state/postal code",
+      distanceKm,
+      countryCode,
+    };
+  }
+  if (countryCode && T3_COUNTRY_CODES.has(countryCode)) {
+    return {
+      tier: "T3",
+      amountEur: 690,
+      currency: "EUR",
+      label: "France, Germany, or Switzerland",
+      basis: countryCode,
+      distanceKm,
+      countryCode,
+    };
+  }
+  if (countryCode && EUROPE_COUNTRY_CODES.has(countryCode)) {
+    return {
+      tier: "T4",
+      amountEur: 890,
+      currency: "EUR",
+      label: "Rest of Europe",
+      basis: countryCode,
+      distanceKm,
+      countryCode,
+    };
+  }
+  return {
+    tier: "T5",
+    amountEur: 1290,
+    currency: "EUR",
+    label: "International",
+    basis: countryCode || "Unknown country",
+    distanceKm,
+    countryCode,
+  };
+};
+
 const makeGlassId = (countryCode: string) => {
   const ts = Date.now().toString(36).toUpperCase();
   const random = Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -1397,6 +1600,8 @@ const insertVerificationRequestSchema = z.object({
   state: z.string().optional(),
   postalCode: z.string().optional(),
   country: z.string().optional(),
+  availability: z.string().trim().min(3, "Availability is required"),
+  payment: z.string().trim().min(3, "Payment details are required"),
 });
 
 const insertInvestorRequestSchema = z.object({
@@ -3988,6 +4193,17 @@ app.get("/api/profile", (_req, res) => {
         return res.status(403).json({ message: "You cannot request verification for this lab" });
       }
 
+      const resolvedAddress = {
+        addressLine1: payload.addressLine1 || lab.addressLine1 || null,
+        addressLine2: payload.addressLine2 || lab.addressLine2 || null,
+        city: payload.city || lab.city || null,
+        state: payload.state || lab.state || null,
+        postalCode: payload.postalCode || lab.postalCode || null,
+        country: payload.country || lab.country || null,
+      };
+      const quote = await computeAuditPricingQuote(resolvedAddress);
+      const quoteText = `Estimated audit fee: €${quote.amountEur} (${quote.tier} - ${quote.label})`;
+
       // Update address if provided
       const addressUpdate = {
         address_line1: payload.addressLine1 || null,
@@ -4004,8 +4220,9 @@ app.get("/api/profile", (_req, res) => {
           .upsert({ lab_id: payload.labId, ...addressUpdate }, { onConflict: "lab_id" });
       }
 
-      // Store request (requires table to exist)
-      await supabase.from("lab_verification_requests").insert({
+      // Store request (requires table to exist). Try storing audit details when columns exist,
+      // otherwise gracefully fall back to the legacy column set.
+      const verificationRequestBaseInsert = {
         lab_id: payload.labId,
         requested_by: req.user.id,
         address_line1: payload.addressLine1 || null,
@@ -4015,7 +4232,55 @@ app.get("/api/profile", (_req, res) => {
         postal_code: payload.postalCode || null,
         country: payload.country || null,
         status: "received",
-      });
+      };
+      const verificationInsertAttempts: Array<Record<string, unknown>> = [
+        {
+          ...verificationRequestBaseInsert,
+          availability: payload.availability,
+          payment: payload.payment,
+          audit_price_tier: quote.tier,
+          audit_price_eur: quote.amountEur,
+          audit_price_currency: quote.currency,
+          audit_price_basis: quote.basis,
+          audit_distance_km: quote.distanceKm !== null ? Number(quote.distanceKm.toFixed(2)) : null,
+        },
+        {
+          ...verificationRequestBaseInsert,
+          availability: payload.availability,
+          payment: payload.payment,
+        },
+        verificationRequestBaseInsert,
+      ];
+      let inserted = false;
+      let lastInsertError: any = null;
+      let skippedPersistence = false;
+      for (const candidate of verificationInsertAttempts) {
+        const { error: insertError } = await supabase.from("lab_verification_requests").insert(candidate);
+        if (!insertError) {
+          inserted = true;
+          break;
+        }
+        if (isMissingRelationError(insertError)) {
+          skippedPersistence = true;
+          lastInsertError = null;
+          console.warn("[verification-requests] table missing, skipping persistence and continuing with email flow", {
+            labId: payload.labId,
+            message: insertError.message,
+            code: (insertError as any)?.code,
+          });
+          break;
+        }
+        lastInsertError = insertError;
+        console.warn("[verification-requests] insert attempt failed; trying fallback payload", {
+          labId: payload.labId,
+          keys: Object.keys(candidate),
+          message: insertError.message,
+          code: (insertError as any)?.code,
+        });
+      }
+      if (!inserted && !skippedPersistence && lastInsertError) {
+        throw lastInsertError;
+      }
 
       const adminInbox = process.env.ADMIN_INBOX ?? "contact@glass-funding.com";
       const userEmail = req.user.email || lab.contactEmail || null;
@@ -4028,12 +4293,15 @@ app.get("/api/profile", (_req, res) => {
         text: [
           `Lab: ${lab.name} (id: ${payload.labId})`,
           `Requested by user: ${req.user.id}`,
-          `Address line1: ${payload.addressLine1 || lab.addressLine1 || "N/A"}`,
-          `Address line2: ${payload.addressLine2 || lab.addressLine2 || "N/A"}`,
-          `City: ${payload.city || lab.city || "N/A"}`,
-          `State: ${payload.state || lab.state || "N/A"}`,
-          `Postal code: ${payload.postalCode || lab.postalCode || "N/A"}`,
-          `Country: ${payload.country || lab.country || "N/A"}`,
+          `Address line1: ${resolvedAddress.addressLine1 || "N/A"}`,
+          `Address line2: ${resolvedAddress.addressLine2 || "N/A"}`,
+          `City: ${resolvedAddress.city || "N/A"}`,
+          `State: ${resolvedAddress.state || "N/A"}`,
+          `Postal code: ${resolvedAddress.postalCode || "N/A"}`,
+          `Country: ${resolvedAddress.country || "N/A"}`,
+          `Availability: ${payload.availability || "N/A"}`,
+          `Payment details: ${payload.payment || "N/A"}`,
+          `${quoteText}${quote.distanceKm !== null ? `, distance ${quote.distanceKm.toFixed(1)} km` : ""}`,
           `Note: On-site verification requested; please follow up for scheduling and costs.`,
         ].join("\n"),
         templateId: process.env.BREVO_TEMPLATE_VERIFY_ADMIN
@@ -4043,15 +4311,22 @@ app.get("/api/profile", (_req, res) => {
           labName: lab.name,
           requester: req.user.id,
           address: [
-            payload.addressLine1 || lab.addressLine1 || "",
-            payload.addressLine2 || lab.addressLine2 || "",
-            payload.city || lab.city || "",
-            payload.state || lab.state || "",
-            payload.postalCode || lab.postalCode || "",
-            payload.country || lab.country || "",
+            resolvedAddress.addressLine1 || "",
+            resolvedAddress.addressLine2 || "",
+            resolvedAddress.city || "",
+            resolvedAddress.state || "",
+            resolvedAddress.postalCode || "",
+            resolvedAddress.country || "",
           ]
             .filter(Boolean)
             .join(", "),
+          availability: payload.availability,
+          payment: payload.payment,
+          quoteTier: quote.tier,
+          quoteAmountEur: quote.amountEur,
+          quoteLabel: quote.label,
+          quoteBasis: quote.basis,
+          quoteDistanceKm: quote.distanceKm !== null ? Number(quote.distanceKm.toFixed(1)) : null,
           logoUrl: process.env.MAIL_LOGO_URL || undefined,
         },
       });
@@ -4063,30 +4338,45 @@ app.get("/api/profile", (_req, res) => {
           from: process.env.MAIL_FROM_USER || process.env.MAIL_FROM,
           subject: `We received your verification request for ${lab.name}`,
           text: `Thanks! We received your request to verify ${lab.name}. Our team will reach out to schedule an on-site visit (additional cost applies).\nAddress: ${
-            payload.addressLine1 || lab.addressLine1 || ""
-          } ${payload.city || lab.city || ""} ${payload.country || lab.country || ""}`.trim(),
+            resolvedAddress.addressLine1 || ""
+          } ${resolvedAddress.city || ""} ${resolvedAddress.country || ""}\nAvailability: ${
+            payload.availability || "N/A"
+          }\nPayment details: ${payload.payment || "N/A"}\n${quoteText}${
+            quote.distanceKm !== null ? `, distance ${quote.distanceKm.toFixed(1)} km` : ""
+          }`.trim(),
           templateId: process.env.BREVO_TEMPLATE_VERIFY_USER
             ? Number(process.env.BREVO_TEMPLATE_VERIFY_USER)
             : 9,
           params: {
             labName: lab.name,
             address: [
-              payload.addressLine1 || lab.addressLine1 || "",
-              payload.addressLine2 || lab.addressLine2 || "",
-              payload.city || lab.city || "",
-              payload.state || lab.state || "",
-              payload.postalCode || lab.postalCode || "",
-              payload.country || lab.country || "",
+              resolvedAddress.addressLine1 || "",
+              resolvedAddress.addressLine2 || "",
+              resolvedAddress.city || "",
+              resolvedAddress.state || "",
+              resolvedAddress.postalCode || "",
+              resolvedAddress.country || "",
             ]
               .filter(Boolean)
               .join(", "),
+            availability: payload.availability,
+            payment: payload.payment,
+            quoteTier: quote.tier,
+            quoteAmountEur: quote.amountEur,
+            quoteLabel: quote.label,
+            quoteBasis: quote.basis,
+            quoteDistanceKm: quote.distanceKm !== null ? Number(quote.distanceKm.toFixed(1)) : null,
             logoUrl: process.env.MAIL_LOGO_URL || undefined,
           },
         });
       }
 
-      res.status(201).json({ ok: true });
+      res.status(201).json({ ok: true, quote, persisted: inserted });
     } catch (error) {
+      console.error("[verification-requests] failed", {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       if (error instanceof ZodError) {
         const issue = error.issues[0];
         return res.status(400).json({ message: issue?.message ?? "Invalid verification request" });
