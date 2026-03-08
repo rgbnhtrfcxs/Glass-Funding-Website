@@ -76,19 +76,36 @@ export const organizationStore = {
   },
 
   async listForUser(userId: string) {
-    const { data, error } = await supabase
+    // Orgs where the user is an explicit member
+    const { data: memberRows, error: memberError } = await supabase
       .from("org_members")
-      .select(`
-        org_id,
-        org_role,
-        organizations (${ORG_SELECT})
-      `)
+      .select(`org_id, org_role, organizations (${ORG_SELECT})`)
       .eq("user_id", userId);
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((row: any) => ({
-      ...(row.organizations ?? {}),
-      myRole: row.org_role,
-    }));
+    if (memberError) throw new Error(memberError.message);
+
+    // Orgs where the user is the owner_user_id but may not have an org_members row
+    const { data: ownedRows, error: ownedError } = await supabase
+      .from("organizations")
+      .select(ORG_SELECT)
+      .eq("owner_user_id", userId);
+    if (ownedError) throw new Error(ownedError.message);
+
+    const seen = new Set<number>();
+    const results: any[] = [];
+
+    for (const row of memberRows ?? []) {
+      const org = row.organizations as any;
+      if (!org) continue;
+      seen.add(org.id);
+      results.push({ ...org, myRole: row.org_role });
+    }
+
+    for (const org of ownedRows ?? []) {
+      if (seen.has(org.id)) continue;
+      results.push({ ...org, myRole: "owner" });
+    }
+
+    return results;
   },
 
   async create(payload: InsertOrganization, ownerUserId: string) {
