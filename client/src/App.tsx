@@ -60,6 +60,7 @@ import AdminRoute from "@/components/AdminRoute";
 import AuditorRoute from "@/components/AuditorRoute";
 import OrgProfile from "@/pages/OrgProfile";
 import OrgEditor from "@/pages/OrgEditor";
+import Orgs from "@/pages/Orgs";
 import AuditorPortal from "@/pages/AuditorPortal";
 import StripeCheckout from "@/pages/StripeCheckout";
 import { Footer } from "@/components/sections/footer";
@@ -138,6 +139,7 @@ function Router() {
       <AdminRoute path="/admin/audit" component={AdminAudit} />
       <AdminRoute path="/certificate-template-preview" component={CertificateTemplatePreview} />
       <AuditorRoute path="/auditor-portal" component={AuditorPortal} />
+      <Route path="/orgs" component={Orgs} />
       <Route path="/orgs/:slug" component={OrgProfile} />
       <ProtectedRoute path="/org/manage" component={OrgEditor} />
       <ProtectedRoute path="/org/manage/new" component={OrgEditor} />
