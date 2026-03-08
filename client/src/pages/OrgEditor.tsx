@@ -48,7 +48,10 @@ interface OrgEditorProps {
 }
 
 export default function OrgEditor({ params }: OrgEditorProps) {
+  const [location] = useLocation();
+  const isCreateNew = location === "/org/manage/new";
   const orgId = params?.id ? Number(params.id) : null;
+  // isNew = true only when explicitly creating (/org/manage/new) or bare /org/manage with no orgs
   const isNew = !orgId;
   const { user } = useAuth();
   const [, navigate] = useLocation();
@@ -56,7 +59,8 @@ export default function OrgEditor({ params }: OrgEditorProps) {
   const [tab, setTab] = useState<Tab>("details");
   const [org, setOrg] = useState<Organization | null>(null);
   const [labs, setLabs] = useState<OrgLab[]>([]);
-  const [loading, setLoading] = useState(!isNew);
+  const [myOrgs, setMyOrgs] = useState<Organization[] | null>(null);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,12 +88,36 @@ export default function OrgEditor({ params }: OrgEditorProps) {
   };
 
   useEffect(() => {
-    if (isNew) return;
     let active = true;
     async function load() {
       setLoading(true);
       try {
         const headers = await authHeader();
+
+        // Bare /org/manage — redirect to existing org or show create form
+        if (!orgId && !isCreateNew) {
+          const res = await fetch("/api/my-organizations", { headers: headers as any });
+          if (res.ok && active) {
+            const data: Organization[] = await res.json();
+            if (data.length === 1) {
+              navigate(`/org/manage/${data[0].id}`);
+              return;
+            }
+            setMyOrgs(data);
+          } else {
+            setMyOrgs([]);
+          }
+          setLoading(false);
+          return;
+        }
+
+        // /org/manage/new — just show empty create form
+        if (!orgId) {
+          setLoading(false);
+          return;
+        }
+
+        // /org/manage/:id — load existing org
         const res = await fetch(`/api/organizations/${orgId}`, { headers: headers as any });
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? "Not found");
         const data: Organization = await res.json();
@@ -117,7 +145,7 @@ export default function OrgEditor({ params }: OrgEditorProps) {
     }
     load();
     return () => { active = false; };
-  }, [orgId]);
+  }, [orgId, isCreateNew]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -188,6 +216,59 @@ export default function OrgEditor({ params }: OrgEditorProps) {
     );
   }
 
+  // Bare /org/manage with multiple orgs — show picker
+  if (!orgId && !isCreateNew && myOrgs !== null) {
+    return (
+      <section className="bg-background min-h-screen">
+        <div className="container mx-auto px-4 py-12 lg:py-16 max-w-3xl">
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+            <div className="flex items-center justify-between mb-8">
+              <h1 className="text-xl font-semibold">My Organizations</h1>
+              <Link href="/org/manage/new">
+                <button className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity">
+                  <Plus className="h-4 w-4" /> New Organization
+                </button>
+              </Link>
+            </div>
+            {error && (
+              <div className="mb-6 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">{error}</div>
+            )}
+            {myOrgs.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-border bg-card/70 p-10 text-center text-muted-foreground">
+                <p className="mb-4">You don't manage any organizations yet.</p>
+                <Link href="/org/manage/new">
+                  <button className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity">
+                    <Plus className="h-4 w-4" /> Create your first organization
+                  </button>
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {myOrgs.map(o => (
+                  <Link key={o.id} href={`/org/manage/${o.id}`}>
+                    <div className="flex items-center gap-4 p-4 border border-border rounded-xl hover:border-foreground/30 cursor-pointer transition-colors">
+                      <div className="h-10 w-10 rounded-lg border border-border bg-muted flex items-center justify-center flex-shrink-0">
+                        {o.logo_url ? (
+                          <img src={o.logo_url} alt={o.name} className="h-full w-full rounded-lg object-cover" />
+                        ) : (
+                          <Building2 className="h-5 w-5 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{o.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">/orgs/{o.slug}</p>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        </div>
+      </section>
+    );
+  }
+
   const tabs: { key: Tab; label: string }[] = [
     { key: "details", label: "Details" },
     { key: "labs", label: `Labs (${labs.length})` },
@@ -198,7 +279,7 @@ export default function OrgEditor({ params }: OrgEditorProps) {
     <section className="bg-background min-h-screen">
       <div className="container mx-auto px-4 py-12 lg:py-16 max-w-3xl">
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
-          <Link href="/org/manage" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-8">
+          <Link href="/org/manage" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-8" onClick={() => setMyOrgs(null)}>
             <ArrowLeft className="h-4 w-4" /> My Organizations
           </Link>
 
