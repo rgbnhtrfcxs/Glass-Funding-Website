@@ -10,6 +10,7 @@ import {
   Activity,
   ArrowLeft,
   Box,
+  Building2,
   CalendarDays,
   ClipboardList,
   Clock3,
@@ -38,6 +39,7 @@ type Profile = {
   display_name: string | null;
   name: string | null;
   is_admin?: boolean | null;
+  role?: string | null;
   can_create_lab?: boolean | null;
   can_manage_multiple_labs?: boolean | null;
   can_manage_teams?: boolean | null;
@@ -111,7 +113,7 @@ type AuditSlotDayGroup = {
 };
 
 type AccountTab = "overview" | "edit" | "requests" | "manageLab" | "manageTeams" | "adminLabs" | "favorites" | "legal";
-type OverviewTab = "overview" | "labs" | "equipment" | "team" | "activity";
+type OverviewTab = "overview" | "labs" | "equipment" | "team" | "activity" | "org";
 type VerifyModalTab = "slot" | "address" | "payment";
 
 const ACCOUNT_SECTION_STORAGE_KEY = "glass.account.section";
@@ -137,7 +139,7 @@ const ACCOUNT_TABS: AccountTab[] = [
   "favorites",
   "legal",
 ];
-const OVERVIEW_TABS: OverviewTab[] = ["overview", "labs", "equipment", "team", "activity"];
+const OVERVIEW_TABS: OverviewTab[] = ["overview", "labs", "equipment", "team", "activity", "org"];
 const VERIFY_MODAL_TAB_ORDER: VerifyModalTab[] = ["slot", "address", "payment"];
 
 const getAuditSlotDayKey = (slot: Pick<AuditSlotOption, "startsAt" | "timezone">) => {
@@ -329,6 +331,7 @@ export default function Account() {
   const [managedTeams, setManagedTeams] = useState<Team[]>([]);
   const [managedTeamsLoading, setManagedTeamsLoading] = useState(false);
   const [managedTeamsError, setManagedTeamsError] = useState<string | null>(null);
+  const [myOrgs, setMyOrgs] = useState<{ id: number; name: string; slug: string }[]>([]);
   const [resettingPassword, setResettingPassword] = useState(false);
   const [glassIdsByLab, setGlassIdsByLab] = useState<Record<number, LabGlassIdRow>>({});
   const [certificatesByLab, setCertificatesByLab] = useState<Record<number, LabVerificationCertificateRow>>({});
@@ -513,6 +516,7 @@ export default function Account() {
             "display_name",
             "name",
             "is_admin",
+            "role",
             "can_create_lab",
             "can_manage_multiple_labs",
             "can_manage_teams",
@@ -567,6 +571,17 @@ export default function Account() {
           }
         } catch {
           // ignore request count errors; not critical for dashboard
+        }
+
+        // Orgs (to conditionally show Org tab)
+        try {
+          const orgsRes = await fetchAuthed("/api/my-organizations");
+          if (orgsRes.ok) {
+            const orgsData = await orgsRes.json();
+            setMyOrgs(Array.isArray(orgsData) ? orgsData : []);
+          }
+        } catch {
+          // non-critical
         }
 
         // Favorites
@@ -1507,12 +1522,15 @@ export default function Account() {
     { id: "legal", label: "Legal assistance", hidden: !(profile && (toBool(profile.can_create_lab) || toBool(profile.can_manage_teams))) },
   ];
 
+  const isAuditorRole = toBool(profile?.is_admin) || ["admin", "auditor", "audit_manager"].includes(profile?.role ?? "");
+
   const overviewTabs = [
-    { id: "overview", label: "Dashboard", icon: Activity },
-    { id: "labs", label: "Labs", icon: FlaskConical },
-    { id: "team", label: "Team", icon: Users },
-    { id: "activity", label: "Activity", icon: ClipboardList },
-  ] as const;
+    { id: "overview" as const, label: "Dashboard", icon: Activity },
+    { id: "labs" as const, label: "Labs", icon: FlaskConical },
+    { id: "team" as const, label: "Team", icon: Users },
+    { id: "activity" as const, label: "Activity", icon: ClipboardList },
+    ...(myOrgs.length > 0 ? [{ id: "org" as const, label: "Organization", icon: Building2 }] : []),
+  ];
 
 
   return (
@@ -2207,6 +2225,19 @@ export default function Account() {
                     </span>
                   </button>
                 )}
+                {isAuditorRole && (
+                  <Link href="/auditor-portal">
+                    <button
+                      type="button"
+                      className="w-full rounded-xl border border-transparent px-3 py-2 text-left text-sm font-medium text-muted-foreground transition hover:border-border hover:bg-muted/60 hover:text-foreground"
+                    >
+                      <span className="flex items-center gap-2">
+                        <ShieldCheck className="h-4 w-4" />
+                        Audit console
+                      </span>
+                    </button>
+                  </Link>
+                )}
               </div>
             </div>
           </aside>
@@ -2732,6 +2763,41 @@ export default function Account() {
                       News updates are available for premier and multi-lab accounts.
                     </div>
                   )}
+                </motion.div>
+              )}
+            </>
+          )}
+              {overviewTab === "org" && myOrgs.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4 }}
+                  className="space-y-4"
+                >
+                  <div className="rounded-3xl border border-border bg-card/80 p-6 shadow-sm">
+                    <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Organizations</p>
+                    <h3 className="mt-1 text-lg font-semibold text-foreground">Your organizations</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Manage your organization profiles and members.</p>
+                    <div className="mt-4 space-y-2">
+                      {myOrgs.map(org => (
+                        <Link key={org.id} href={`/org/manage/${org.id}`}>
+                          <div className="flex items-center gap-3 rounded-xl border border-border px-4 py-3 hover:border-primary/40 cursor-pointer transition-colors">
+                            <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{org.name}</p>
+                              <p className="text-xs text-muted-foreground">/orgs/{org.slug}</p>
+                            </div>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                    <Link href="/org/manage">
+                      <button type="button" className="mt-4 inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary">
+                        <Building2 className="h-4 w-4" />
+                        Manage organizations
+                      </button>
+                    </Link>
+                  </div>
                 </motion.div>
               )}
             </>
