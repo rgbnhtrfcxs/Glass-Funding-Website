@@ -269,8 +269,13 @@ export default function OrgEditor({ params }: OrgEditorProps) {
     );
   }
 
+  const isOwner = !org || org.owner_user_id === user?.id;
+
+  // If a non-owner somehow lands on the details tab, switch to labs
+  if (!isOwner && tab === "details") setTab("labs");
+
   const tabs: { key: Tab; label: string }[] = [
-    { key: "details", label: "Details" },
+    ...(isOwner ? [{ key: "details" as Tab, label: "Details" }] : []),
     { key: "labs", label: `Labs (${labs.length})` },
     { key: "members", label: `Members (${org?.org_members.length ?? 0})` },
   ];

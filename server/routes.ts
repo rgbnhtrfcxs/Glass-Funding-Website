@@ -6635,7 +6635,7 @@ app.get("/api/profile", (_req, res) => {
       if (isNaN(orgId)) return res.status(400).json({ message: "Invalid organization ID." });
 
       const profile = await fetchProfileCapabilities(userId);
-      const canEdit = profile?.isAdmin || (await organizationStore.isManagerOrOwner(orgId, userId));
+      const canEdit = profile?.isAdmin || (await organizationStore.isOwner(orgId, userId));
       if (!canEdit) return res.status(403).json({ message: "Not authorized to edit this organization." });
 
       const parsed = updateOrganizationSchema.safeParse(req.body);

@@ -203,4 +203,9 @@ export const organizationStore = {
     );
     return !!member;
   },
+
+  async isOwner(orgId: number, userId: string): Promise<boolean> {
+    const org = await this.findById(orgId);
+    return (org as any)?.owner_user_id === userId;
+  },
 };
