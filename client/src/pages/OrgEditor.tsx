@@ -1,8 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, Plus, Trash2, Building2, Beaker, Users } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Building2, Beaker, Users, X } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/lib/supabaseClient";
+import { LogoCropModal } from "@/components/LogoCropModal";
+import {
+  renderAndUploadFramedLogoAsset,
+  type LogoCropParams,
+  DEFAULT_CROP_PARAMS,
+} from "@/lib/logoUtils";
 
 type OrgMember = {
   id: number;
@@ -77,6 +84,13 @@ export default function OrgEditor({ params }: OrgEditorProps) {
     isVisible: true,
   });
 
+  // Logo upload + crop
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
+  const [logoCropOpen, setLogoCropOpen] = useState(false);
+  const [logoCropParams, setLogoCropParams] = useState<LogoCropParams>(DEFAULT_CROP_PARAMS);
+  const [logoProcessing, setLogoProcessing] = useState(false);
+
   // Member management
   const [memberUserId, setMemberUserId] = useState("");
   const [memberRole, setMemberRole] = useState<"member" | "manager">("member");
@@ -147,14 +161,67 @@ export default function OrgEditor({ params }: OrgEditorProps) {
     return () => { active = false; };
   }, [orgId, isCreateNew]);
 
+  async function handleLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setLogoError(null);
+    setLogoUploading(true);
+    try {
+      const ext = file.name.split(".").pop() || "png";
+      const filename =
+        (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`) + `.${ext}`;
+      const filePath = `orgs/${filename}`;
+      const { error: uploadError } = await supabase.storage
+        .from("lab-logos")
+        .upload(filePath, file, { upsert: true, contentType: file.type });
+      if (uploadError) throw uploadError;
+      const { data } = supabase.storage.from("lab-logos").getPublicUrl(filePath);
+      setForm(prev => ({ ...prev, logoUrl: data.publicUrl }));
+      setLogoCropParams(DEFAULT_CROP_PARAMS);
+    } catch (err: any) {
+      setLogoError(err?.message || "Unable to upload logo");
+    } finally {
+      setLogoUploading(false);
+      if (event.target) event.target.value = "";
+    }
+  }
+
   const handleSave = async () => {
     setSaving(true);
     setError(null);
     try {
+      let logoUrlForSave = form.logoUrl;
+      if (form.logoUrl) {
+        setLogoProcessing(true);
+        try {
+          const id = orgId ?? Date.now();
+          const filename = `orgs/${id}-logo-v2-${Date.now()}.png`;
+          logoUrlForSave = await renderAndUploadFramedLogoAsset({
+            sourceUrl: form.logoUrl,
+            filePath: filename,
+            previewScale: logoCropParams.scale,
+            previewOffsetX: logoCropParams.offsetX,
+            previewOffsetY: logoCropParams.offsetY,
+            framePadding: logoCropParams.framePadding,
+            frameColor: logoCropParams.frameColor,
+            frameCustomColor: logoCropParams.frameCustomColor,
+            fitMode: "cover",
+          });
+          setForm(prev => ({ ...prev, logoUrl: logoUrlForSave }));
+        } catch {
+          // Non-fatal: use original URL if render fails
+        } finally {
+          setLogoProcessing(false);
+        }
+      }
       const headers = { ...(await authHeader()), "Content-Type": "application/json" };
       const url = isNew ? "/api/organizations" : `/api/organizations/${orgId}`;
       const method = isNew ? "POST" : "PUT";
-      const res = await fetch(url, { method, headers: headers as any, body: JSON.stringify(form) });
+      const res = await fetch(url, {
+        method,
+        headers: headers as any,
+        body: JSON.stringify({ ...form, logoUrl: logoUrlForSave }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message ?? "Failed to save");
       if (isNew) navigate(`/org/manage/${data.id}`);
@@ -163,6 +230,7 @@ export default function OrgEditor({ params }: OrgEditorProps) {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setSaving(false);
+      setLogoProcessing(false);
     }
   };
 
@@ -378,16 +446,61 @@ export default function OrgEditor({ params }: OrgEditorProps) {
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1">Logo URL</label>
-                  <input
-                    className="w-full text-sm border border-border rounded-md px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-foreground/30"
-                    value={form.logoUrl}
-                    onChange={(e) => setForm((f) => ({ ...f, logoUrl: e.target.value }))}
-                    placeholder="https://..."
-                  />
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Logo</label>
+                <div className="rounded-xl border border-border bg-card/50 p-3">
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    {form.logoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setLogoCropOpen(true)}
+                        className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                      >
+                        Adjust crop
+                      </button>
+                    )}
+                    <label className="inline-flex items-center cursor-pointer">
+                      <span className="rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:bg-primary/90">
+                        {form.logoUrl ? "Replace" : "Upload logo"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLogoUpload}
+                          className="hidden"
+                        />
+                      </span>
+                    </label>
+                  </div>
+                  {logoUploading && <p className="text-xs text-muted-foreground">Uploading…</p>}
+                  {logoError && <p className="text-xs text-destructive">{logoError}</p>}
+                  {form.logoUrl ? (
+                    <div className="relative inline-flex">
+                      <div className="h-20 w-20 overflow-hidden rounded-full border-2 border-blue-400/80 bg-muted">
+                        <img
+                          src={form.logoUrl}
+                          alt="Organization logo"
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForm(f => ({ ...f, logoUrl: "" }));
+                          setLogoCropParams(DEFAULT_CROP_PARAMS);
+                        }}
+                        className="absolute -right-1 -top-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-destructive/70 bg-destructive/70 text-destructive-foreground shadow-sm transition hover:bg-destructive/85"
+                        aria-label="Remove logo"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No logo uploaded yet.</p>
+                  )}
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs text-muted-foreground mb-1">Website</label>
                   <input
@@ -424,10 +537,10 @@ export default function OrgEditor({ params }: OrgEditorProps) {
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={handleSave}
-                  disabled={saving || !form.name || !form.slug}
+                  disabled={saving || logoProcessing || !form.name || !form.slug}
                   className="px-5 py-2 rounded-md bg-foreground text-background text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
                 >
-                  {saving ? "Saving..." : isNew ? "Create Organization" : "Save Changes"}
+                  {logoProcessing ? "Processing logo…" : saving ? "Saving…" : isNew ? "Create Organization" : "Save Changes"}
                 </button>
                 {!isNew && org && (
                   <Link href={`/orgs/${org.slug}`}>
@@ -527,5 +640,14 @@ export default function OrgEditor({ params }: OrgEditorProps) {
         </motion.div>
       </div>
     </section>
+    <LogoCropModal
+      open={logoCropOpen}
+      logoUrl={form.logoUrl}
+      entityName={form.name}
+      entitySubtitle={ORG_TYPES.find(t => t.value === form.orgType)?.label}
+      initialParams={logoCropParams}
+      onClose={() => setLogoCropOpen(false)}
+      onApply={params => setLogoCropParams(params)}
+    />
   );
 }
