@@ -32,17 +32,29 @@ export default function ResetPassword() {
 
         const code = searchParams.get("code");
         if (code) {
-          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(window.location.href);
-          if (exchangeError) throw exchangeError;
+          // Supabase's detectSessionInUrl may have already exchanged the code (it's one-time use).
+          // Check for an existing session first to avoid a double-consumption error.
+          const { data: existingData } = await supabase.auth.getSession();
+          if (!existingData.session) {
+            const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(window.location.href);
+            if (exchangeError) {
+              // Race condition: detectSessionInUrl may have just finished — check once more.
+              const { data: retryData } = await supabase.auth.getSession();
+              if (!retryData.session) throw exchangeError;
+            }
+          }
         } else {
           const accessToken = hashParams.get("access_token");
           const refreshToken = hashParams.get("refresh_token");
           if (accessToken && refreshToken) {
-            const { error: sessionError } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken,
-            });
-            if (sessionError) throw sessionError;
+            const { data: existingData } = await supabase.auth.getSession();
+            if (!existingData.session) {
+              const { error: sessionError } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
+              if (sessionError) throw sessionError;
+            }
           } else {
             const { data: sessionData } = await supabase.auth.getSession();
             if (!sessionData.session) {
