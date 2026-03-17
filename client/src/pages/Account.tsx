@@ -531,7 +531,13 @@ export default function Account() {
         setError(error.message);
         setProfile(null);
       } else {
-        setProfile((data as unknown as Profile | null) ?? null);
+        const loaded = (data as unknown as Profile | null) ?? null;
+        setProfile(loaded);
+        // If the stored tab requires privileges this user doesn't have, reset to overview.
+        // This prevents a prior admin session's localStorage from leaking into a non-admin account.
+        if (!loaded?.is_admin) {
+          setActiveTab(prev => (prev === "adminLabs" ? "overview" : prev));
+        }
       }
       setLoading(false);
     }
@@ -2785,7 +2791,7 @@ export default function Account() {
             />
           )}
 
-          {activeTab === "adminLabs" && (
+          {activeTab === "adminLabs" && profile && toBool(profile.is_admin) && (
             <div className="space-y-5">
               <div className="rounded-3xl border border-border bg-card/80 p-5 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-4">
