@@ -57,6 +57,11 @@ import { AuthProvider } from "@/context/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LabRoute from "@/components/LabRoute";
 import AdminRoute from "@/components/AdminRoute";
+import AuditorRoute from "@/components/AuditorRoute";
+import OrgProfile from "@/pages/OrgProfile";
+import OrgEditor from "@/pages/OrgEditor";
+import Orgs from "@/pages/Orgs";
+import AuditorPortal from "@/pages/AuditorPortal";
 import StripeCheckout from "@/pages/StripeCheckout";
 import { Footer } from "@/components/sections/footer";
 import { ConsentProvider } from "@/context/ConsentContext";
@@ -133,6 +138,12 @@ function Router() {
       <AdminRoute path="/admin/labs" component={AdminLabs} />
       <AdminRoute path="/admin/audit" component={AdminAudit} />
       <AdminRoute path="/certificate-template-preview" component={CertificateTemplatePreview} />
+      <AuditorRoute path="/auditor-portal" component={AuditorPortal} />
+      <Route path="/orgs" component={Orgs} />
+      <Route path="/orgs/:slug" component={OrgProfile} />
+      <ProtectedRoute path="/org/manage" component={OrgEditor} />
+      <ProtectedRoute path="/org/manage/new" component={OrgEditor} />
+      <ProtectedRoute path="/org/manage/:id" component={OrgEditor} />
       <Route path="/lab-profile" component={LabProfile} />
       <ProtectedRoute path="/account" component={Account} />
       <ProtectedRoute path="/account/edit" component={Account} />

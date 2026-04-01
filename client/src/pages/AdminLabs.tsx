@@ -1444,6 +1444,11 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                     Audit scheduler
                   </a>
                 </Link>
+                <Link href="/auditor-portal">
+                  <a className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary">
+                    Auditor portal
+                  </a>
+                </Link>
                 <Link href="/lab-profile">
                   <a className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary">
                     Lab profile guide
