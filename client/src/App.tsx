@@ -33,6 +33,7 @@ import LabRequest from "@/pages/LabRequest";
 import LabCollaboration from "@/pages/LabCollaboration";
 import AdminLabs from "@/pages/AdminLabs";
 import AdminAudit from "@/pages/AdminAudit";
+import AdminInvite from "@/pages/AdminInvite";
 import Pricing from "@/pages/Pricing";
 import PricingArchiveCheckout from "@/pages/PricingArchiveCheckout";
 import LabProfile from "@/pages/LabProfile";
@@ -132,6 +133,7 @@ function Router() {
       <LabRoute path="/labs/:id/collaborate" component={LabCollaboration} />
       <AdminRoute path="/admin/labs" component={AdminLabs} />
       <AdminRoute path="/admin/audit" component={AdminAudit} />
+      <AdminRoute path="/admin/invite" component={AdminInvite} />
       <AdminRoute path="/certificate-template-preview" component={CertificateTemplatePreview} />
       <Route path="/lab-profile" component={LabProfile} />
       <ProtectedRoute path="/account" component={Account} />
