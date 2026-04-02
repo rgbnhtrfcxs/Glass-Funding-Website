@@ -475,9 +475,9 @@ export default function AdminAudit() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Link href="/admin/labs">
+            <Link href="/admin">
               <a className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary">
-                Back to labs
+                ← Admin
               </a>
             </Link>
           </div>

@@ -1439,6 +1439,11 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                     Verified
                   </button>
                 </div>
+                <Link href="/admin">
+                  <a className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary">
+                    ← Admin
+                  </a>
+                </Link>
                 <Link href="/admin/audit">
                   <a className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary">
                     Audit scheduler
