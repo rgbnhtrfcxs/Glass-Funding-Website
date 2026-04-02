@@ -4158,6 +4158,107 @@ app.post("/api/signup", signupRateLimit, async (req, res) => {
 
 
 
+// Admin: list all users with their profile flags and owned labs
+app.get("/api/admin/users", authenticate, async (req, res) => {
+  try {
+    const capabilities = await fetchProfileCapabilities(req.user!.id);
+    if (!capabilities?.isAdmin) return res.status(403).json({ message: "Admin access required." });
+
+    const [profilesResult, labsResult] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("user_id,email,name,subscription_tier,subscription_status,avatar_url,can_create_lab,can_manage_multiple_labs,can_manage_teams,can_manage_multiple_teams,can_post_news,can_broker_requests,can_receive_investor,is_admin")
+        .order("name"),
+      supabase
+        .from("labs")
+        .select("id,name,owner_user_id")
+        .not("owner_user_id", "is", null),
+    ]);
+
+    if (profilesResult.error) throw profilesResult.error;
+
+    const labs: any[] = labsResult.data ?? [];
+    const users = (profilesResult.data ?? []).map((p: any) => ({
+      ...p,
+      labs: labs.filter(l => l.owner_user_id === p.user_id).map(l => ({ id: l.id, name: l.name })),
+    }));
+
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ message: err instanceof Error ? err.message : "Failed to fetch users." });
+  }
+});
+
+// Admin: update profile permission flags for a user
+const ALLOWED_PROFILE_FLAGS = new Set([
+  "can_create_lab",
+  "can_manage_multiple_labs",
+  "can_manage_teams",
+  "can_manage_multiple_teams",
+  "can_post_news",
+  "can_broker_requests",
+  "can_receive_investor",
+  "is_admin",
+]);
+
+app.patch("/api/admin/users/:userId", authenticate, async (req, res) => {
+  try {
+    const capabilities = await fetchProfileCapabilities(req.user!.id);
+    if (!capabilities?.isAdmin) return res.status(403).json({ message: "Admin access required." });
+
+    const { userId } = req.params;
+    const updates: Record<string, boolean> = {};
+    for (const [key, value] of Object.entries(req.body ?? {})) {
+      if (ALLOWED_PROFILE_FLAGS.has(key) && typeof value === "boolean") {
+        updates[key] = value;
+      }
+    }
+    if (Object.keys(updates).length === 0) return res.status(400).json({ message: "No valid fields to update." });
+
+    const { error } = await supabase.from("profiles").update(updates).eq("user_id", userId);
+    if (error) throw error;
+
+    res.json({ message: "Profile updated." });
+  } catch (err) {
+    res.status(500).json({ message: err instanceof Error ? err.message : "Failed to update profile." });
+  }
+});
+
+// Admin: assign or unassign a lab to a user (set owner_user_id)
+app.patch("/api/admin/labs/:labId/owner", authenticate, async (req, res) => {
+  try {
+    const capabilities = await fetchProfileCapabilities(req.user!.id);
+    if (!capabilities?.isAdmin) return res.status(403).json({ message: "Admin access required." });
+
+    const { labId } = req.params;
+    const ownerUserId = req.body?.owner_user_id ?? null;
+    if (ownerUserId !== null && typeof ownerUserId !== "string") {
+      return res.status(400).json({ message: "owner_user_id must be a string or null." });
+    }
+
+    const { error } = await supabase.from("labs").update({ owner_user_id: ownerUserId }).eq("id", labId);
+    if (error) throw error;
+
+    res.json({ message: "Lab owner updated." });
+  } catch (err) {
+    res.status(500).json({ message: err instanceof Error ? err.message : "Failed to update lab owner." });
+  }
+});
+
+// Admin: list all labs (id, name, owner_user_id) — used by the user-management UI for lab assignment
+app.get("/api/admin/all-labs", authenticate, async (req, res) => {
+  try {
+    const capabilities = await fetchProfileCapabilities(req.user!.id);
+    if (!capabilities?.isAdmin) return res.status(403).json({ message: "Admin access required." });
+
+    const { data, error } = await supabase.from("labs").select("id,name,owner_user_id").order("name");
+    if (error) throw error;
+    res.json(data ?? []);
+  } catch (err) {
+    res.status(500).json({ message: err instanceof Error ? err.message : "Failed to fetch labs." });
+  }
+});
+
 // Admin invite — generate invite link via Supabase admin, deliver email through Brevo (bypasses Supabase's slow email queue)
 app.post("/api/admin/invite", authenticate, async (req, res) => {
   try {

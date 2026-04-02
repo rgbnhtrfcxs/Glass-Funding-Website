@@ -1,7 +1,13 @@
 import { Link } from "wouter";
-import { FlaskConical, CalendarCheck, UserPlus } from "lucide-react";
+import { FlaskConical, CalendarCheck, UserPlus, Users } from "lucide-react";
 
 const PAGES = [
+  {
+    href: "/admin/users",
+    icon: Users,
+    title: "Users",
+    description: "View all accounts, manage permissions and lab assignments.",
+  },
   {
     href: "/admin/labs",
     icon: FlaskConical,
