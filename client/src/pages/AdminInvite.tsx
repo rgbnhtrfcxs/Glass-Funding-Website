@@ -75,14 +75,9 @@ export default function AdminInvite() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Link href="/admin/labs">
+            <Link href="/admin">
               <a className="inline-flex items-center rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary transition">
-                Labs
-              </a>
-            </Link>
-            <Link href="/admin/audit">
-              <a className="inline-flex items-center rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-primary transition">
-                Audit
+                ← Admin
               </a>
             </Link>
           </div>
