@@ -1,50 +1,67 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
-import { Send, CheckCircle2, AlertCircle } from "lucide-react";
+import { Send, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 
-type Status = { type: "success" | "error"; message: string } | null;
+type EmailResult = { email: string; status: "pending" | "sending" | "ok" | "error"; error?: string };
+
+function parseEmails(raw: string): string[] {
+  return raw
+    .split(/[\n,;]+/)
+    .map(s => s.trim().toLowerCase())
+    .filter(s => s.includes("@") && s.includes("."));
+}
+
+async function sendInvite(email: string, token: string): Promise<void> {
+  const res = await fetch("/api/admin/invite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ email }),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.message || "Failed");
+}
 
 export default function AdminInvite() {
-  const [email, setEmail] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<Status>(null);
-  const [history, setHistory] = useState<string[]>([]);
+  const [raw, setRaw] = useState("");
+  const [results, setResults] = useState<EmailResult[]>([]);
+  const [running, setRunning] = useState(false);
+
+  const parsed = parseEmails(raw);
+  const hasInput = parsed.length > 0;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    const trimmed = email.trim().toLowerCase();
-    if (!trimmed) return;
+    if (!hasInput || running) return;
 
-    setLoading(true);
-    setStatus(null);
-
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) throw new Error("Not authenticated.");
-
-      const res = await fetch("/api/admin/invite", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ email: trimmed }),
-      });
-
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.message || "Failed to send invite.");
-
-      setStatus({ type: "success", message: `Invite sent to ${trimmed}.` });
-      setHistory(prev => [trimmed, ...prev]);
-      setEmail("");
-    } catch (err: any) {
-      setStatus({ type: "error", message: err?.message || "Something went wrong." });
-    } finally {
-      setLoading(false);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setResults([{ email: "", status: "error", error: "Not authenticated." }]);
+      return;
     }
+
+    const initial: EmailResult[] = parsed.map(email => ({ email, status: "pending" }));
+    setResults(initial);
+    setRunning(true);
+
+    for (let i = 0; i < parsed.length; i++) {
+      const email = parsed[i];
+      setResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: "sending" } : r));
+      try {
+        await sendInvite(email, token);
+        setResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: "ok" } : r));
+      } catch (err: any) {
+        setResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: "error", error: err?.message } : r));
+      }
+    }
+
+    setRunning(false);
+    setRaw("");
   };
+
+  const doneCount = results.filter(r => r.status === "ok").length;
+  const errorCount = results.filter(r => r.status === "error").length;
 
   return (
     <section className="bg-background min-h-screen">
@@ -52,9 +69,9 @@ export default function AdminInvite() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <span className="text-sm uppercase tracking-[0.3em] text-muted-foreground">Admin</span>
-            <h1 className="mt-2 text-2xl font-semibold text-foreground">Invite user</h1>
+            <h1 className="mt-2 text-2xl font-semibold text-foreground">Invite users</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Send an account invite via Brevo. The recipient receives a link to set their password — no Supabase email queue involved.
+              Paste one or more emails — one per line, or comma-separated. Invites are sent directly via Brevo.
             </p>
           </div>
           <div className="flex gap-2">
@@ -74,57 +91,51 @@ export default function AdminInvite() {
         <div className="rounded-2xl border border-border bg-card/90 p-6 space-y-4 max-w-lg">
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
-              <label className="text-sm font-medium text-foreground">Email address</label>
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="client@example.com"
-                required
-                className="mt-2 w-full rounded-full border border-border bg-background px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              <label className="text-sm font-medium text-foreground">Email addresses</label>
+              <textarea
+                value={raw}
+                onChange={e => { setRaw(e.target.value); setResults([]); }}
+                placeholder={"alice@example.com\nbob@example.com\ncarol@example.com"}
+                rows={5}
+                disabled={running}
+                className="mt-2 w-full rounded-2xl border border-border bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none disabled:opacity-50"
               />
+              {hasInput && !running && results.length === 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">{parsed.length} email{parsed.length !== 1 ? "s" : ""} detected</p>
+              )}
             </div>
             <button
               type="submit"
-              disabled={loading || !email.trim()}
+              disabled={!hasInput || running}
               className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition disabled:opacity-60"
             >
-              <Send className="h-3.5 w-3.5" />
-              {loading ? "Sending…" : "Send invite"}
+              {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+              {running ? "Sending…" : `Send ${hasInput ? parsed.length : ""} invite${parsed.length !== 1 ? "s" : ""}`}
             </button>
           </form>
 
-          {status && (
-            <div
-              className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-sm ${
-                status.type === "success"
-                  ? "border-emerald-300 bg-emerald-50 text-emerald-900"
-                  : "border-destructive/40 bg-destructive/5 text-destructive"
-              }`}
-            >
-              {status.type === "success" ? (
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-              ) : (
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          {results.length > 0 && (
+            <div className="space-y-1.5">
+              {!running && (
+                <p className="text-xs text-muted-foreground">
+                  {doneCount} sent{errorCount > 0 ? `, ${errorCount} failed` : ""}
+                </p>
               )}
-              {status.message}
+              {results.map(r => (
+                <div key={r.email} className="flex items-center gap-2 text-sm">
+                  {r.status === "pending" && <span className="h-4 w-4 shrink-0 rounded-full border border-border" />}
+                  {r.status === "sending" && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />}
+                  {r.status === "ok" && <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />}
+                  {r.status === "error" && <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />}
+                  <span className={r.status === "error" ? "text-destructive" : "text-foreground"}>{r.email}</span>
+                  {r.status === "error" && r.error && (
+                    <span className="text-xs text-muted-foreground truncate">— {r.error}</span>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
-
-        {history.length > 0 && (
-          <div className="max-w-lg space-y-2">
-            <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Sent this session</p>
-            <ul className="space-y-1">
-              {history.map(addr => (
-                <li key={addr} className="flex items-center gap-2 text-sm text-foreground">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                  {addr}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
       </div>
     </section>
   );
