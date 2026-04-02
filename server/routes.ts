@@ -4158,6 +4158,45 @@ app.post("/api/signup", signupRateLimit, async (req, res) => {
 
 
 
+// Admin invite — generate invite link via Supabase admin, deliver email through Brevo (bypasses Supabase's slow email queue)
+app.post("/api/admin/invite", authenticate, async (req, res) => {
+  try {
+    const capabilities = await fetchProfileCapabilities(req.user!.id);
+    if (!capabilities?.isAdmin) {
+      return res.status(403).json({ message: "Admin access required." });
+    }
+
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    if (!email || !email.includes("@")) {
+      return res.status(400).json({ message: "A valid email address is required." });
+    }
+
+    const origin = resolvePublicSiteOrigin(req);
+
+    // Generate the invite link without Supabase sending the email — we deliver it via Brevo instead.
+    const { data, error } = await supabase.auth.admin.generateLink({
+      type: "invite",
+      email,
+      options: { redirectTo: `${origin}/reset-password` },
+    });
+    if (error) throw error;
+
+    const inviteLink = (data as any).properties?.action_link as string;
+    const senderName = process.env.MAIL_FROM_NAME?.trim() || "Glass Funding";
+
+    await sendMail({
+      to: email,
+      subject: `You've been invited to Glass Funding`,
+      text: `You've been invited to create an account on Glass Funding.\n\nClick the link below to set your password and get started:\n\n${inviteLink}\n\nThis link expires in 24 hours.\n\n— ${senderName}`,
+      html: `<p>You've been invited to create an account on <strong>Glass Funding</strong>.</p><p><a href="${inviteLink}" style="color:#0070f3">Accept invitation &rarr;</a></p><p style="color:#888;font-size:12px">This link expires in 24 hours.</p>`,
+    });
+
+    res.json({ message: "Invite sent." });
+  } catch (err) {
+    res.status(500).json({ message: err instanceof Error ? err.message : "Failed to send invite." });
+  }
+});
+
 // Legacy debug route archived
 app.get("/api/profile", (_req, res) => {
   res.status(410).json({ message: "This endpoint is archived. Use /api/me/profile instead." });
