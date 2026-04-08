@@ -4275,14 +4275,17 @@ app.post("/api/admin/invite", authenticate, async (req, res) => {
     const origin = resolvePublicSiteOrigin(req);
 
     // Generate the invite link without Supabase sending the email — we deliver it via Brevo instead.
+    console.log("[invite] generating link for", email);
     const { data, error } = await supabase.auth.admin.generateLink({
       type: "invite",
       email,
       options: { redirectTo: `${origin}/reset-password` },
     });
+    console.log("[invite] generateLink result — error:", error?.message ?? null, "hasData:", !!data);
     if (error) throw error;
 
     const inviteLink = (data as any).properties?.action_link as string;
+    console.log("[invite] inviteLink present:", !!inviteLink);
     const senderName = process.env.MAIL_FROM_NAME?.trim() || "Glass Funding";
 
     await sendMail({
