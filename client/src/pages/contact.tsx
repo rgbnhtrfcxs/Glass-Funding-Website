@@ -27,7 +27,7 @@ export default function Contact() {
                 href="mailto:support@glass.demo"
                 className="font-medium text-primary hover:underline"
               >
-                contact@glass-funding.com
+                contact@glass-connect.com
               </a>.
             </p>
           </motion.div>
@@ -46,10 +46,10 @@ export default function Contact() {
                 <div className="text-left">
                   <p className="text-sm uppercase tracking-[0.25em] text-muted-foreground">Write to us</p>
                   <a
-                    href="mailto:contact@glass-funding.com"
+                    href="mailto:contact@glass-connect.com"
                     className="text-lg font-medium text-foreground hover:text-primary"
                   >
-                    contact@glass-funding.com
+                    contact@glass-connect.com
                   </a>
                 </div>
               </div>
@@ -106,7 +106,7 @@ export default function Contact() {
                   </AccordionTrigger>
                   <AccordionContent>
                     <p className="text-muted-foreground text-sm leading-relaxed">
-                      Yes—drop us a note at contact@glass-funding.com and we’ll share the latest demo environment and roadmap update.
+                      Yes—drop us a note at contact@glass-connect.com and we’ll share the latest demo environment and roadmap update.
                     </p>
                   </AccordionContent>
                 </AccordionItem>

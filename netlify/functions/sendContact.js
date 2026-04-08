@@ -30,11 +30,11 @@ exports.handler = async (event) => {
       {
         sender: {
           name: "Glass Contact Form",
-          email: "no-reply@glass-funding.com", // must be verified in Brevo
+          email: "no-reply@glass-connect.com", // must be verified in Brevo
         },
         to: [
           {
-            email: "contact@glass-funding.com",
+            email: "contact@glass-connect.com",
             name: "Glass Team",
           },
         ],
