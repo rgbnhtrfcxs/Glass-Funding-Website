@@ -504,7 +504,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
           ? "Pending"
           : "Added by GLASS";
   const listedDisclaimer = "Profile details compiled by GLASS from publicly available sources.";
-  const claimEmail = "contact@glass-funding.com";
+  const claimEmail = "contact@glass-connect.com";
   const isListedOnly = status === "listed";
   const isLabOwnerByUserId = Boolean(user?.id) && Boolean(lab.ownerUserId) && lab.ownerUserId === user?.id;
   const isOwnLab = isLabOwnerByUserId;

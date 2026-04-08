@@ -1519,7 +1519,7 @@ const formatAuditSlotLabel = (slot: {
 };
 
 const resolveWebsiteBaseUrl = () =>
-  (process.env.WEBSITE_URL || process.env.APP_BASE_URL || "https://glass-funding.com").replace(/\/+$/, "");
+  (process.env.WEBSITE_URL || process.env.APP_BASE_URL || "https://glass-connect.com").replace(/\/+$/, "");
 
 const formatUtcIcsTimestamp = (date: Date) =>
   date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
@@ -1567,7 +1567,7 @@ const buildAuditCalendarPackage = (input: {
     endsAt.toISOString(),
   )}&location=${encodeURIComponent(location)}`;
 
-  const uid = `glass-audit-${input.bookingId}@glass-funding.com`;
+  const uid = `glass-audit-${input.bookingId}@glass-connect.com`;
   const dtStamp = formatUtcIcsTimestamp(new Date());
   const dtStart = formatUtcIcsTimestamp(startsAt);
   const dtEnd = formatUtcIcsTimestamp(endsAt);
@@ -2638,7 +2638,7 @@ export function registerRoutes(app: Express) {
   app.post("/api/subscriptions/free-confirmation", authenticate, async (req, res) => {
     try {
       const payload = insertFreeTierConfirmationSchema.parse(req.body ?? {});
-      const adminEmail = process.env.ADMIN_INBOX ?? "contact@glass-funding.com";
+      const adminEmail = process.env.ADMIN_INBOX ?? "contact@glass-connect.com";
       const submittedAt = new Date().toISOString();
       const requesterName =
         payload.name ||
@@ -2715,7 +2715,7 @@ export function registerRoutes(app: Express) {
   app.post("/api/subscriptions/enterprise-interest", authenticate, async (req, res) => {
     try {
       const payload = insertEnterpriseInterestSchema.parse(req.body ?? {});
-      const adminEmail = process.env.ADMIN_INBOX ?? "contact@glass-funding.com";
+      const adminEmail = process.env.ADMIN_INBOX ?? "contact@glass-connect.com";
       const submittedAt = new Date().toISOString();
       const labsManaged = payload.labsManaged?.trim() || "N/A";
       const details = payload.message?.trim() || "No additional details provided.";
@@ -2800,7 +2800,7 @@ export function registerRoutes(app: Express) {
   app.post("/api/onboarding-call-request", publicFormRateLimit, async (req, res) => {
     try {
       const payload = insertOnboardingCallRequestSchema.parse(req.body);
-      const adminEmail = process.env.ADMIN_INBOX ?? "contact@glass-funding.com";
+      const adminEmail = process.env.ADMIN_INBOX ?? "contact@glass-connect.com";
       const phone = payload.contactPhone?.trim();
       const notes = payload.notes?.trim();
 
@@ -2901,7 +2901,7 @@ export function registerRoutes(app: Express) {
         (req.user.user_metadata?.display_name as string | undefined) ||
         "Unknown";
       const requesterEmail = req.user.email || "unknown";
-      const adminEmail = process.env.ADMIN_INBOX ?? "contact@glass-funding.com";
+      const adminEmail = process.env.ADMIN_INBOX ?? "contact@glass-connect.com";
       const tierLabel = payload.tier === "premier" ? "Premier" : "Verified";
       const billingPreference = (payload.interval || "yearly").toLowerCase();
       const labsText = labs
@@ -3841,7 +3841,7 @@ export function registerRoutes(app: Express) {
       });
       // Notify internal inbox
       await sendMail({
-        to: process.env.ADMIN_INBOX ?? "contact@glass-funding.com",
+        to: process.env.ADMIN_INBOX ?? "contact@glass-connect.com",
         from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
         subject: `New collaboration inquiry for ${lab.name}`,
         text: [
@@ -3969,7 +3969,7 @@ export function registerRoutes(app: Express) {
       }
       console.log("[lab-requests] sending admin email");
       await sendMail({
-        to: process.env.ADMIN_INBOX ?? "contact@glass-funding.com",
+        to: process.env.ADMIN_INBOX ?? "contact@glass-connect.com",
         from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
         subject: `New lab request for ${lab.name}`,
         text: [
@@ -4627,7 +4627,7 @@ app.get("/api/profile", (_req, res) => {
         type: "investor",
       });
 
-      const adminEmail = process.env.ADMIN_INBOX ?? "contact@glass-funding.com";
+      const adminEmail = process.env.ADMIN_INBOX ?? "contact@glass-connect.com";
       const labEmail = lab.contactEmail || adminEmail;
       const lines = [
         `Lab: ${lab.name} (id: ${labId})`,
@@ -4687,7 +4687,7 @@ app.get("/api/profile", (_req, res) => {
     try {
       const payload = insertLegalAssistSchema.parse(req.body);
       const lab = payload.labId ? await labStore.findById(payload.labId) : null;
-      const adminEmail = process.env.ADMIN_INBOX ?? "contact@glass-funding.com";
+      const adminEmail = process.env.ADMIN_INBOX ?? "contact@glass-connect.com";
       const legalEmail = process.env.LEGAL_INBOX ?? adminEmail;
       const lines = [
         `From: ${payload.name} <${payload.email}>`,
@@ -5767,7 +5767,7 @@ app.get("/api/profile", (_req, res) => {
         }
       }
 
-      const adminInbox = process.env.ADMIN_INBOX ?? "contact@glass-funding.com";
+      const adminInbox = process.env.ADMIN_INBOX ?? "contact@glass-connect.com";
       const userEmail = req.user.email || lab.contactEmail || null;
 
       // Notify admin

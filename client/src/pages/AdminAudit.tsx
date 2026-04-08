@@ -136,7 +136,7 @@ const buildAdminCalendarLinks = (booking: AuditBooking) => {
     "PRODID:-//GLASS//Audit Scheduler//EN",
     "METHOD:PUBLISH",
     "BEGIN:VEVENT",
-    `UID:glass-admin-audit-${booking.id}@glass-funding.com`,
+    `UID:glass-admin-audit-${booking.id}@glass-connect.com`,
     `DTSTAMP:${toCompactUtcStamp(new Date())}`,
     `DTSTART:${toCompactUtcStamp(startsAt)}`,
     `DTEND:${toCompactUtcStamp(endsAt)}`,
