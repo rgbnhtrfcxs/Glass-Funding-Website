@@ -14,6 +14,7 @@ export default function ResetPassword() {
   const [ready, setReady] = useState(false);
   const [success, setSuccess] = useState(false);
   const [isInviteFlow, setIsInviteFlow] = useState(false);
+  const [claimedLabName, setClaimedLabName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -97,6 +98,24 @@ export default function ResetPassword() {
     try {
       const { error: updateError } = await supabase.auth.updateUser({ password });
       if (updateError) throw updateError;
+
+      // If this was a claim invite, auto-assign the pre-designated lab
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.user_metadata?.claim_lab_id) {
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const token = sessionData.session?.access_token;
+          const claimRes = await fetch("/api/me/claim-lab", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          });
+          const claimJson = await claimRes.json();
+          if (claimRes.ok && claimJson.lab_name) setClaimedLabName(claimJson.lab_name);
+        } catch {
+          // Non-fatal — lab can be assigned manually by admin if this fails
+        }
+      }
+
       setSuccess(true);
     } catch (err: any) {
       setError(err?.message || "Unable to update password.");
@@ -167,8 +186,9 @@ export default function ResetPassword() {
           )}
 
           {success && (
-            <div className="mt-6 rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-              Password updated. You can now sign in with email and password.
+            <div className="mt-6 rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 space-y-1">
+              <p>Password updated. You can now sign in with email and password.</p>
+              {claimedLabName && <p className="font-medium">Your lab <span className="underline">{claimedLabName}</span> has been assigned to your account.</p>}
             </div>
           )}
 
