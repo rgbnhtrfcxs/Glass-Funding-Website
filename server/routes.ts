@@ -4259,7 +4259,7 @@ app.get("/api/admin/all-labs", authenticate, async (req, res) => {
   }
 });
 
-// Admin invite — generate invite link via Supabase admin, deliver email through Brevo (bypasses Supabase's slow email queue)
+// Admin invite — uses Supabase inviteUserByEmail which sends via the configured SMTP (Brevo)
 app.post("/api/admin/invite", authenticate, async (req, res) => {
   try {
     const capabilities = await fetchProfileCapabilities(req.user!.id);
@@ -4274,30 +4274,55 @@ app.post("/api/admin/invite", authenticate, async (req, res) => {
 
     const origin = resolvePublicSiteOrigin(req);
 
-    // Generate the invite link without Supabase sending the email — we deliver it via Brevo instead.
-    console.log("[invite] generating link for", email);
-    const { data, error } = await supabase.auth.admin.generateLink({
-      type: "invite",
-      email,
-      options: { redirectTo: `${origin}/reset-password` },
+    const { error } = await supabase.auth.admin.inviteUserByEmail(email, {
+      redirectTo: `${origin}/reset-password`,
     });
-    console.log("[invite] generateLink result — error:", error?.message ?? null, "hasData:", !!data);
     if (error) throw error;
-
-    const inviteLink = (data as any).properties?.action_link as string;
-    console.log("[invite] inviteLink present:", !!inviteLink);
-    const senderName = process.env.MAIL_FROM_NAME?.trim() || "Glass Funding";
-
-    await sendMail({
-      to: email,
-      subject: `You've been invited to Glass Funding`,
-      text: `You've been invited to create an account on Glass Funding.\n\nClick the link below to set your password and get started:\n\n${inviteLink}\n\nThis link expires in 24 hours.\n\n— ${senderName}`,
-      html: `<p>You've been invited to create an account on <strong>Glass Funding</strong>.</p><p><a href="${inviteLink}" style="color:#0070f3">Accept invitation &rarr;</a></p><p style="color:#888;font-size:12px">This link expires in 24 hours.</p>`,
-    });
 
     res.json({ message: "Invite sent." });
   } catch (err) {
     res.status(500).json({ message: err instanceof Error ? err.message : "Failed to send invite." });
+  }
+});
+
+// Admin claim-invite — invite a user and immediately assign them a lab
+app.post("/api/admin/claim-invite", authenticate, async (req, res) => {
+  try {
+    const capabilities = await fetchProfileCapabilities(req.user!.id);
+    if (!capabilities?.isAdmin) return res.status(403).json({ message: "Admin access required." });
+
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    const labId = req.body?.lab_id;
+    if (!email || !email.includes("@")) return res.status(400).json({ message: "A valid email address is required." });
+    if (!labId) return res.status(400).json({ message: "A lab is required for a claim invite." });
+
+    // Verify the lab exists and is unowned
+    const { data: lab, error: labError } = await supabase
+      .from("labs")
+      .select("id,name,owner_user_id")
+      .eq("id", labId)
+      .maybeSingle();
+    if (labError) throw labError;
+    if (!lab) return res.status(404).json({ message: "Lab not found." });
+    if (lab.owner_user_id) return res.status(409).json({ message: `${lab.name} already has an owner.` });
+
+    const origin = resolvePublicSiteOrigin(req);
+    const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(email, {
+      redirectTo: `${origin}/reset-password`,
+    });
+    if (inviteError) throw inviteError;
+
+    const userId = inviteData.user.id;
+
+    // Assign the lab and grant can_create_lab immediately — account exists even before confirmation
+    await Promise.all([
+      supabase.from("labs").update({ owner_user_id: userId }).eq("id", labId),
+      supabase.from("profiles").update({ can_create_lab: true }).eq("user_id", userId),
+    ]);
+
+    res.json({ message: "Claim invite sent.", lab: { id: lab.id, name: lab.name } });
+  } catch (err) {
+    res.status(500).json({ message: err instanceof Error ? err.message : "Failed to send claim invite." });
   }
 });
 
