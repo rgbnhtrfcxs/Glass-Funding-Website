@@ -1,13 +1,14 @@
 import { motion } from "framer-motion";
-import { useState, useMemo, type ReactNode } from "react";
+import { useEffect, useState, useMemo, type ReactNode } from "react";
 import { Link } from "wouter";
 import { CheckCircle2, Loader2, ShieldCheck, AlertTriangle } from "lucide-react";
 import { useLabs } from "@/context/LabsContext";
+import { getLabHref, labMatchesParam } from "@/lib/labPaths";
 // Note: this standalone page is currently unused in routing; kept for reference/future reuse.
 
 interface RouteProps {
   params: {
-    id: string;
+    identifier: string;
   };
 }
 
@@ -45,8 +46,7 @@ const defaultState: FormState = {
 
 export default function LabRequest({ params }: RouteProps) {
   const { labs, isLoading } = useLabs();
-  const labId = Number(params.id);
-  const lab = useMemo(() => labs.find(item => item.id === labId), [labs, labId]);
+  const lab = useMemo(() => labs.find(item => labMatchesParam(item, params.identifier)), [labs, params.identifier]);
   const inputClasses =
     "w-full rounded-2xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
 
@@ -54,6 +54,12 @@ export default function LabRequest({ params }: RouteProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successId, setSuccessId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !lab?.slug) return;
+    if (params.identifier === lab.slug || params.identifier !== String(lab.id)) return;
+    window.history.replaceState({}, "", `${getLabHref(lab)}/request${window.location.search}${window.location.hash}`);
+  }, [lab, params.identifier]);
 
   const updateField = (field: keyof FormState, value: string | boolean | string[]) => {
     setFormState(prev => ({ ...prev, [field]: value }));
@@ -127,7 +133,7 @@ export default function LabRequest({ params }: RouteProps) {
   return (
     <section className="bg-background min-h-screen">
       <div className="container mx-auto px-4 py-16 lg:py-20 max-w-4xl">
-        <Link href={`/labs/${lab.id}`}>
+        <Link href={getLabHref(lab)}>
           <a className="inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-primary">
             ← Back to {lab.name}
           </a>

@@ -20,8 +20,8 @@ import ResetPassword from "@/pages/ResetPassword";
 import ConfirmEmail from "@/pages/ConfirmEmail";
 
 import Labs from "@/pages/Labs";
-import Terms from "@/pages/Terms";
-import Privacy from "@/pages/Privacy";
+import Terms from "@/pages/terms";
+import Privacy from "@/pages/privacy";
 import Waitlist1 from "@/pages/Waitlist";
 import OnePagers from "@/pages/OnePagers";
 import Roadmap from "@/pages/Roadmap";
@@ -35,6 +35,7 @@ import AdminLabs from "@/pages/AdminLabs";
 import AdminAudit from "@/pages/AdminAudit";
 import AdminInvite from "@/pages/AdminInvite";
 import AdminUsers from "@/pages/AdminUsers";
+import AdminOrgs from "@/pages/AdminOrgs";
 import Admin from "@/pages/Admin";
 import Pricing from "@/pages/Pricing";
 import PricingArchiveCheckout from "@/pages/PricingArchiveCheckout";
@@ -42,8 +43,12 @@ import LabProfile from "@/pages/LabProfile";
 import Account from "@/pages/Account";
 import Teams from "@/pages/Teams";
 import TeamDetails from "@/pages/TeamDetails";
+import Orgs from "@/pages/Orgs";
+import OrgDetails from "@/pages/OrgDetails";
 import ManageTeams from "@/pages/ManageTeams";
 import TeamEditor from "@/pages/TeamEditor";
+import ManageOrgs from "@/pages/ManageOrgs";
+import OrgEditor from "@/pages/OrgEditor";
 import Requests from "@/pages/Requests";
 import MyLab from "@/pages/MyLab";
 import Logout from "@/pages/Logout";
@@ -56,6 +61,7 @@ import SubscribeArchiveCheckout from "@/pages/SubscribeArchiveCheckout";
 import Subscriptions from "@/pages/Subscriptions";
 import { LabsProvider } from "@/context/LabsContext";
 import { TeamsProvider } from "@/context/TeamsContext";
+import { OrgsProvider } from "@/context/OrgsContext";
 import { AuthProvider } from "@/context/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LabRoute from "@/components/LabRoute";
@@ -128,13 +134,16 @@ function Router() {
   return (
     <Switch>
       <Route path="/labs" component={Labs} />
-      <Route path="/labs/:id" component={LabDetails} />
+      <Route path="/labs/:identifier" component={LabDetails} />
       <Route path="/teams" component={Teams} />
       <Route path="/teams/:id" component={TeamDetails} />
-      <Route path="/labs/:id/request" component={LabRequest} />
-      <LabRoute path="/labs/:id/collaborate" component={LabCollaboration} />
+      <Route path="/orgs" component={Orgs} />
+      <Route path="/orgs/:identifier" component={OrgDetails} />
+      <Route path="/labs/:identifier/request" component={LabRequest} />
+      <LabRoute path="/labs/:identifier/collaborate" component={LabCollaboration} />
       <AdminRoute path="/admin" component={Admin} />
       <AdminRoute path="/admin/labs" component={AdminLabs} />
+      <AdminRoute path="/admin/orgs" component={AdminOrgs} />
       <AdminRoute path="/admin/audit" component={AdminAudit} />
       <AdminRoute path="/admin/invite" component={AdminInvite} />
       <AdminRoute path="/admin/users" component={AdminUsers} />
@@ -151,6 +160,9 @@ function Router() {
       <ProtectedRoute path="/team/manage" component={ManageTeams} />
       <ProtectedRoute path="/team/manage/new" component={TeamEditor} />
       <ProtectedRoute path="/team/manage/:id" component={TeamEditor} />
+      <ProtectedRoute path="/org/manage" component={ManageOrgs} />
+      <ProtectedRoute path="/org/manage/new" component={OrgEditor} />
+      <ProtectedRoute path="/org/manage/:id" component={OrgEditor} />
       <Route path="/payments" component={PaymentFlow} />
       <Route path="/stripe" component={StripeCheckout} />
       <ProtectedRoute path="/subscribe" component={Subscribe} />
@@ -193,17 +205,19 @@ function App() {
         <AuthProvider>
           <LabsProvider>
             <TeamsProvider>
-              <Navbar />
-              <ScrollToTop />
-              <AuthLinkBridge />
-              <div className="pt-16">
-                <PageTransition>
-                  <Router />
-                </PageTransition>
-              </div>
-              <Footer />
-              <ConsentBanner />
-              <Toaster />
+              <OrgsProvider>
+                <Navbar />
+                <ScrollToTop />
+                <AuthLinkBridge />
+                <div className="pt-16">
+                  <PageTransition>
+                    <Router />
+                  </PageTransition>
+                </div>
+                <Footer />
+                <ConsentBanner />
+                <Toaster />
+              </OrgsProvider>
             </TeamsProvider>
           </LabsProvider>
         </AuthProvider>

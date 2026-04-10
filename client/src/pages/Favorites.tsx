@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
+import { getLabHref } from "@/lib/labPaths";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/context/AuthContext";
 import { useLabs } from "@/context/LabsContext";
@@ -104,7 +105,7 @@ export default function Favorites({ embedded = false }: { embedded?: boolean }) 
                         <span className="font-medium text-primary">{status}</span>
                       </div>
                       <Link
-                        href={`/labs/${lab.id}`}
+                        href={getLabHref(lab)}
                         className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
                       >
                         View lab

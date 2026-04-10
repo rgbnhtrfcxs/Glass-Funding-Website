@@ -137,6 +137,7 @@ export const labCoreSchema = z.object({
 
 export const labSchema = labCoreSchema.extend({
   id: z.number().int().positive(),
+  slug: z.string().min(1).optional().nullable(),
 });
 
 export const insertLabSchema = labCoreSchema;

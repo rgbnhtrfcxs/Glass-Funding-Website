@@ -27,6 +27,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { getLabHref } from "@/lib/labPaths";
 import { orgRoleOptions, type OrgRoleOption } from "@shared/labs";
 
 type DirectoryMode = "discover" | "rent";
@@ -403,7 +404,7 @@ export default function Labs() {
               label: lab.name,
               subtitle: formatLocation(lab) || "Location not set",
               address: addressLabel,
-              href: `/labs/${lab.id}`,
+              href: getLabHref(lab),
               imageUrl: lab.logoUrl ? getImageUrl(lab.logoUrl, 300) : undefined,
             });
           } else {
@@ -415,7 +416,7 @@ export default function Labs() {
                   label: lab.name,
                   subtitle: formatLocation(lab) || "Location not set",
                   address: addressLabel,
-                  href: `/labs/${lab.id}`,
+                  href: getLabHref(lab),
                   imageUrl: lab.logoUrl ? getImageUrl(lab.logoUrl, 300) : undefined,
                 },
               ],
@@ -449,7 +450,7 @@ export default function Labs() {
           label: lab.name,
           subtitle: formatLocation(lab) || "Location not set",
           address: addressLabel,
-          href: `/labs/${lab.id}`,
+          href: getLabHref(lab),
           imageUrl: lab.logoUrl ? getImageUrl(lab.logoUrl, 300) : undefined,
         };
         geocodeCache.current.set(lab.id, marker);
@@ -969,12 +970,12 @@ export default function Labs() {
                     onClick={event => {
                       const target = event.target as HTMLElement;
                       if (target.closest("button")) return;
-                      setLocation(`/labs/${lab.id}`);
+                      setLocation(getLabHref(lab));
                     }}
                     onKeyDown={event => {
                       if (event.key !== "Enter" && event.key !== " ") return;
                       event.preventDefault();
-                      setLocation(`/labs/${lab.id}`);
+                      setLocation(getLabHref(lab));
                     }}
                   >
                     <div className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-sky-200/80 via-white/70 to-white/80 opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-100" />

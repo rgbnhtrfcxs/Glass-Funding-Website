@@ -14,6 +14,7 @@ import {
   Star,
   Unlock,
   Users,
+  Building2,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useLabs } from "@/context/LabsContext";
@@ -23,12 +24,15 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { MapboxMap, type MapMarker } from "@/components/maps/MapboxMap";
 import { buildAddress, geocodeAddress, mapboxToken } from "@/lib/mapbox";
+import { getLabHref, labMatchesParam } from "@/lib/labPaths";
+import { getOrgHref } from "@/lib/orgPaths";
 import { nanoid } from "nanoid";
 import type { Team } from "@shared/teams";
+import type { Org } from "@shared/orgs";
 
 interface LabDetailsProps {
   params: {
-    id: string;
+    identifier: string;
   };
 }
 
@@ -53,7 +57,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const { labs, isLoading } = useLabs();
   const { user } = useAuth();
   const { hasAnalyticsConsent } = useConsent();
-  const lab = labs.find(item => item.id === Number(params.id));
+  const lab = labs.find(item => labMatchesParam(item, params.identifier));
   const labId = lab?.id;
   const halConfigured = Boolean(lab?.halStructureId || lab?.halPersonId);
   const primaryErcDiscipline = lab?.primaryErcDisciplineCode
@@ -231,8 +235,17 @@ export default function LabDetails({ params }: LabDetailsProps) {
     preferredContact: "email" as "email" | "video_call" | "in_person",
   });
   const [linkedTeams, setLinkedTeams] = useState<Team[]>([]);
+  const [linkedOrgs, setLinkedOrgs] = useState<Org[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
+  const [orgsLoading, setOrgsLoading] = useState(false);
   const [teamsError, setTeamsError] = useState<string | null>(null);
+  const [orgsError, setOrgsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !lab?.slug) return;
+    if (params.identifier === lab.slug || params.identifier !== String(lab.id)) return;
+    window.history.replaceState({}, "", `${getLabHref(lab)}${window.location.search}${window.location.hash}`);
+  }, [lab?.id, lab?.slug, params.identifier]);
 
   useEffect(() => {
     if (!user?.email) return;
@@ -262,6 +275,44 @@ export default function LabDetails({ params }: LabDetailsProps) {
       prev.targetLabs ? prev : { ...prev, targetLabs: lab.name }
     );
   }, [lab?.name]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadLinkedOrgs() {
+      if (!labId) {
+        if (active) {
+          setLinkedOrgs([]);
+          setOrgsError(null);
+          setOrgsLoading(false);
+        }
+        return;
+      }
+      setOrgsLoading(true);
+      try {
+        const response = await fetch(`/api/labs/${labId}/orgs`);
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload?.message || "Unable to load organizations");
+        }
+        const data = (await response.json()) as Org[];
+        if (active) {
+          setLinkedOrgs(data);
+          setOrgsError(null);
+        }
+      } catch (error) {
+        if (active) {
+          setLinkedOrgs([]);
+          setOrgsError(error instanceof Error ? error.message : "Unable to load organizations");
+        }
+      } finally {
+        if (active) setOrgsLoading(false);
+      }
+    }
+    loadLinkedOrgs();
+    return () => {
+      active = false;
+    };
+  }, [labId]);
 
   useEffect(() => {
     if (!labId) return;
@@ -1126,6 +1177,55 @@ export default function LabDetails({ params }: LabDetailsProps) {
                   </span>
                 )}
               </div>
+            </section>
+          )}
+          {(linkedOrgs.length > 0 || orgsLoading || orgsError) && (
+            <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Organizations</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Organizations this lab is part of across networks, institutions, and larger structures.
+                  </p>
+                </div>
+              </div>
+              {orgsLoading && (
+                <p className="mt-4 text-sm text-muted-foreground">Loading organizations…</p>
+              )}
+              {orgsError && (
+                <p className="mt-4 text-sm text-destructive">{orgsError}</p>
+              )}
+              {!orgsLoading && !orgsError && linkedOrgs.length === 0 && (
+                <p className="mt-4 text-sm text-muted-foreground">No organizations linked to this lab yet.</p>
+              )}
+              {linkedOrgs.length > 0 && (
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {linkedOrgs.map(org => (
+                    <Link
+                      href={getOrgHref(org)}
+                      key={org.id}
+                      className="flex items-center justify-between gap-3 rounded-2xl border border-border px-4 py-3 text-sm transition hover:border-primary"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="inline-flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-border bg-background">
+                          {org.logoUrl ? (
+                            <img src={org.logoUrl} alt={org.name} className="h-full w-full object-cover" />
+                          ) : (
+                            <Building2 className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-foreground">{org.name}</p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {org.members.length} members
+                          </p>
+                        </div>
+                      </div>
+                      <ArrowUpRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                    </Link>
+                  ))}
+                </div>
+              )}
             </section>
           )}
           {teamsError && (

@@ -30,6 +30,7 @@ export const teamTechniqueSchema = z.object({
 
 export const teamLabSchema = z.object({
   id: z.number().int().positive(),
+  slug: z.string().min(1).optional().nullable(),
   name: z.string().min(1),
   city: z.string().min(1).optional().nullable(),
   country: z.string().min(1).optional().nullable(),

@@ -17,6 +17,7 @@ type UserRow = {
   can_manage_multiple_labs: boolean;
   can_manage_teams: boolean;
   can_manage_multiple_teams: boolean;
+  can_manage_orgs: boolean;
   can_post_news: boolean;
   can_broker_requests: boolean;
   can_receive_investor: boolean;
@@ -34,6 +35,7 @@ const FLAGS: { key: keyof UserRow; label: string }[] = [
   { key: "can_manage_multiple_labs",  label: "Manage multiple labs" },
   { key: "can_manage_teams",          label: "Manage teams" },
   { key: "can_manage_multiple_teams", label: "Manage multiple teams" },
+  { key: "can_manage_orgs",           label: "Manage orgs" },
   { key: "can_post_news",             label: "Post news" },
   { key: "can_broker_requests",       label: "Broker requests" },
   { key: "can_receive_investor",      label: "Receive investor inquiries" },

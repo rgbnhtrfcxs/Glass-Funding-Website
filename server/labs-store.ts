@@ -23,6 +23,7 @@ import { supabase } from "./supabaseClient";
 const LAB_SELECT_BASE = `
   id,
   name,
+  slug,
   owner_user_id,
   created_at,
   is_visible,
@@ -59,6 +60,7 @@ type ProfileLabOfferRow = {
 type LabRow = {
   id: number;
   name: string;
+  slug: string | null;
   owner_user_id: string | null;
   created_at: string | null;
   is_visible: boolean | string | null;
@@ -181,6 +183,32 @@ function normalizeLabStatus(value?: string | null): LabPartner["labStatus"] {
   if (raw === "verified_active") return "verified_active";
   if (raw === "premier") return "premier";
   return "listed";
+}
+
+function slugifyLabName(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+async function generateUniqueLabSlug(name: string, excludeId?: number): Promise<string> {
+  const baseSlug = slugifyLabName(name) || "lab";
+  let candidate = baseSlug;
+  let attempt = 1;
+
+  for (;;) {
+    let query = supabase.from("labs").select("id").eq("slug", candidate).limit(1);
+    if (excludeId !== undefined) {
+      query = query.neq("id", excludeId);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    if (!data || data.length === 0) return candidate;
+    attempt += 1;
+    candidate = `${baseSlug}-${attempt}`;
+  }
 }
 
 function normalizeErcCode(value?: string | null): string | null {
@@ -333,6 +361,7 @@ function mapLabRow(row: LabRow, profileOffer?: ProfileLabOfferRow | null): LabPa
   const mapped = {
     id: Number(row.id),
     name: row.name,
+    slug: row.slug ?? null,
     labManager: (profileRow?.lab_manager ?? "").trim(),
     contactEmail: (contactRow?.contact_email ?? "").trim(),
     ownerUserId: row.owner_user_id || null,
@@ -711,6 +740,7 @@ export class LabStore {
   async create(payload: InsertLab): Promise<LabPartner> {
     const data = insertLabSchema.parse(payload);
     const ownerUserId = await resolveOwnerUserId(data.ownerUserId ?? null);
+    const slug = await generateUniqueLabSlug(data.name);
     const auditPassed = Boolean(data.auditPassed);
     const auditPassedAt = auditPassed ? (data.auditPassedAt ?? new Date().toISOString()) : null;
     const initialStatus = data.labStatus ?? "listed";
@@ -719,6 +749,7 @@ export class LabStore {
       .from("labs")
       .insert({
         name: data.name,
+        slug,
         owner_user_id: ownerUserId,
         lab_status: labStatus,
         audit_passed: auditPassed,

@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { ArrowLeft, ArrowUpRight, Beaker, MapPin, Users } from "lucide-react";
 import { Link } from "wouter";
+import { getLabHref } from "@/lib/labPaths";
 import { useEffect, useMemo, useState } from "react";
 import type { Team } from "@shared/teams";
 
@@ -286,7 +287,7 @@ export default function TeamDetails({ params }: TeamDetailsProps) {
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               {team.labs.map(lab => (
                 <Link
-                  href={`/labs/${lab.id}`}
+                  href={getLabHref(lab)}
                   key={lab.id}
                   className="flex items-center gap-3 rounded-2xl border border-border px-4 py-3 text-sm text-muted-foreground transition hover:border-primary hover:text-primary"
                 >

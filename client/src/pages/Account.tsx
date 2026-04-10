@@ -27,6 +27,7 @@ import ProfilePortal from "@/pages/ProfilePortal";
 import Requests from "@/pages/Requests";
 import ManageSelect from "@/pages/ManageSelect";
 import ManageTeams from "@/pages/ManageTeams";
+import ManageOrgs from "@/pages/ManageOrgs";
 import AdminLabs from "@/pages/AdminLabs";
 import Favorites from "@/pages/Favorites";
 import { GlassIdCard, type GlassIdCardData } from "@/components/GlassIdCard";
@@ -42,6 +43,7 @@ type Profile = {
   can_manage_multiple_labs?: boolean | null;
   can_manage_teams?: boolean | null;
   can_manage_multiple_teams?: boolean | null;
+  can_manage_orgs?: boolean | null;
   can_post_news?: boolean | null;
   can_broker_requests?: boolean | null;
   can_receive_investor?: boolean | null;
@@ -110,7 +112,7 @@ type AuditSlotDayGroup = {
   slots: AuditSlotOption[];
 };
 
-type AccountTab = "overview" | "edit" | "requests" | "manageLab" | "manageTeams" | "adminLabs" | "favorites" | "legal";
+type AccountTab = "overview" | "edit" | "requests" | "manageLab" | "manageTeams" | "manageOrg" | "adminLabs" | "favorites" | "legal";
 type OverviewTab = "overview" | "labs" | "equipment" | "team" | "activity";
 type VerifyModalTab = "slot" | "address" | "payment";
 
@@ -133,6 +135,7 @@ const ACCOUNT_TABS: AccountTab[] = [
   "requests",
   "manageLab",
   "manageTeams",
+  "manageOrg",
   "adminLabs",
   "favorites",
   "legal",
@@ -233,7 +236,7 @@ function readStoredAccountSection() {
 }
 
 export default function Account() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { user, loading: authLoading } = useAuth();
   const { labs: allLabs, updateLab } = useLabs();
   const { toast } = useToast();
@@ -517,6 +520,7 @@ export default function Account() {
             "can_manage_multiple_labs",
             "can_manage_teams",
             "can_manage_multiple_teams",
+            "can_manage_orgs",
             "can_post_news",
             "can_broker_requests",
             "can_receive_investor",
@@ -698,7 +702,15 @@ export default function Account() {
   );
   const favoriteLabs = favoriteIds.length ? allLabs.filter(l => favoriteIds.includes(l.id)) : [];
   const hasPremierLab = premiumLabs.length > 0;
-  const canSeeDashboard = toBool(profile?.can_create_lab);
+  const canManageLabs = toBool(profile?.can_create_lab);
+  const canManageTeams = toBool(profile?.can_manage_teams);
+  const canManageOrgs = toBool(profile?.can_manage_orgs) || toBool(profile?.is_admin);
+  const canBrokerRequests = toBool(profile?.can_broker_requests);
+  const canAccessLegal = canManageLabs || canManageTeams;
+  const canSeeDashboard = canManageLabs;
+  const canSeeLabOverview = canManageLabs;
+  const canSeeTeamOverview = canManageTeams;
+  const canSeeActivityOverview = canManageLabs || canBrokerRequests;
   const canPostNews = canSeeDashboard && hasPremierLab;
   const isLabVerified = (labId: number) => {
     const fromStats = labStats.find(l => l.id === labId);
@@ -808,7 +820,6 @@ export default function Account() {
   const verifyModalTabIndex = VERIFY_MODAL_TAB_ORDER.indexOf(verifyModalTab);
   const canGoVerifyPrev = verifyModalTabIndex > 0;
   const canGoVerifyNext = verifyModalTabIndex < VERIFY_MODAL_TAB_ORDER.length - 1;
-  const canManageLabs = toBool(profile?.can_create_lab);
   const emptyTeamForm: TeamMemberForm = {
     name: "",
     title: "",
@@ -1502,23 +1513,57 @@ export default function Account() {
     }
   }, [activeTab, overviewTab]);
 
-  const tabs: Array<{ id: typeof activeTab; label: ReactNode; hidden?: boolean }> = [
-    { id: "overview", label: "Overview" },
-    { id: "edit", label: "Edit account" },
-    { id: "requests", label: "Requests", hidden: !(profile && toBool(profile.can_broker_requests)) },
-    { id: "manageLab", label: "Lab workspace", hidden: !(profile && toBool(profile.can_create_lab)) },
-    { id: "manageTeams", label: "Manage teams", hidden: !(profile && toBool(profile.can_manage_teams)) },
-    { id: "adminLabs", label: "Labs admin", hidden: !(profile && toBool(profile.is_admin)) },
-    { id: "favorites", label: `Favorites (${favoriteLabs.length})` },
-    { id: "legal", label: "Legal assistance", hidden: !(profile && (toBool(profile.can_create_lab) || toBool(profile.can_manage_teams))) },
-  ];
-
   const overviewTabs = [
-    { id: "overview", label: "Dashboard", icon: Activity },
-    { id: "labs", label: "Labs", icon: FlaskConical },
-    { id: "team", label: "Team", icon: Users },
-    { id: "activity", label: "Activity", icon: ClipboardList },
+    { id: "overview", label: "Dashboard", icon: Activity, hidden: false },
+    { id: "labs", label: "Labs", icon: FlaskConical, hidden: !canSeeLabOverview },
+    { id: "team", label: "Team", icon: Users, hidden: !canSeeTeamOverview },
+    { id: "activity", label: "Activity", icon: ClipboardList, hidden: !canSeeActivityOverview },
   ] as const;
+  const visibleOverviewTabs = overviewTabs.filter(tab => !tab.hidden);
+
+  useEffect(() => {
+    if (!profile) return;
+
+    const activeTabAllowed =
+      activeTab === "overview" ||
+      activeTab === "edit" ||
+      activeTab === "favorites" ||
+      (activeTab === "requests" && canBrokerRequests) ||
+      (activeTab === "manageLab" && canManageLabs) ||
+      (activeTab === "manageTeams" && canManageTeams) ||
+      (activeTab === "manageOrg" && canManageOrgs) ||
+      (activeTab === "adminLabs" && toBool(profile.is_admin)) ||
+      (activeTab === "legal" && canAccessLegal);
+
+    if (!activeTabAllowed) {
+      setActiveTab("overview");
+      setOverviewTab("overview");
+      return;
+    }
+
+    const overviewTabAllowed =
+      overviewTab === "overview" ||
+      (overviewTab === "labs" && canSeeLabOverview) ||
+      (overviewTab === "team" && canSeeTeamOverview) ||
+      (overviewTab === "activity" && canSeeActivityOverview) ||
+      (overviewTab === "equipment" && canSeeLabOverview);
+
+    if (!overviewTabAllowed) {
+      setOverviewTab("overview");
+    }
+  }, [
+    activeTab,
+    overviewTab,
+    profile,
+    canBrokerRequests,
+    canManageLabs,
+    canManageTeams,
+    canManageOrgs,
+    canAccessLegal,
+    canSeeLabOverview,
+    canSeeTeamOverview,
+    canSeeActivityOverview,
+  ]);
 
 
   return (
@@ -2133,7 +2178,7 @@ export default function Account() {
             <div className="space-y-2">
               <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Overview</p>
               <div className="space-y-1">
-                {overviewTabs.map(tab => {
+                {visibleOverviewTabs.map(tab => {
                   const isActive =
                     (activeTab === "overview" && overviewTab === tab.id) ||
                     (activeTab === "overview" && overviewTab === "equipment" && tab.id === "labs") ||
@@ -2181,7 +2226,7 @@ export default function Account() {
                     Edit account
                   </span>
                 </button>
-                {profile && (toBool(profile.can_create_lab) || toBool(profile.can_manage_teams)) && (
+                {profile && canAccessLegal && (
                   <button
                     type="button"
                     onClick={() => setActiveTab("legal")}
@@ -2197,19 +2242,31 @@ export default function Account() {
                     </span>
                   </button>
                 )}
-                {profile && toBool(profile.is_admin) && (
+                {profile && canManageOrgs && (
                   <button
                     type="button"
-                    onClick={() => setActiveTab("adminLabs")}
+                    onClick={() => setActiveTab("manageOrg")}
                     className={`w-full rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
-                      activeTab === "adminLabs"
+                      activeTab === "manageOrg"
                         ? "border-primary/40 bg-primary/10 text-primary"
                         : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
                     }`}
                   >
                     <span className="flex items-center gap-2">
+                      <UsersRound className="h-4 w-4" />
+                      Manage org
+                    </span>
+                  </button>
+                )}
+                {profile && toBool(profile.is_admin) && (
+                  <button
+                    type="button"
+                    onClick={() => setLocation("/admin")}
+                    className="w-full rounded-xl border border-transparent px-3 py-2 text-left text-sm font-medium text-muted-foreground transition hover:border-border hover:bg-muted/60 hover:text-foreground"
+                  >
+                    <span className="flex items-center gap-2">
                       <ShieldAlert className="h-4 w-4" />
-                      Labs admin
+                      Admin
                     </span>
                   </button>
                 )}
@@ -2744,9 +2801,9 @@ export default function Account() {
           )}
           {activeTab === "edit" && <ProfilePortal embedded onProfileSaved={handleProfileSaved} />}
 
-          {activeTab === "requests" && <Requests embedded />}
+          {activeTab === "requests" && canBrokerRequests && <Requests embedded />}
 
-          {activeTab === "manageLab" && (
+          {activeTab === "manageLab" && canManageLabs && (
             <div className="space-y-5">
               <div className="rounded-3xl border border-border bg-gradient-to-br from-primary/5 via-background to-primary/10 p-5 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-4">
@@ -2781,7 +2838,7 @@ export default function Account() {
             </div>
           )}
 
-          {activeTab === "manageTeams" && (
+          {activeTab === "manageTeams" && canManageTeams && (
             <ManageTeams
               embedded
               onBack={() => {
@@ -2790,6 +2847,8 @@ export default function Account() {
               }}
             />
           )}
+
+          {activeTab === "manageOrg" && canManageOrgs && <ManageOrgs embedded />}
 
           {activeTab === "adminLabs" && profile && toBool(profile.is_admin) && (
             <div className="space-y-5">

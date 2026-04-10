@@ -39,7 +39,9 @@ import {
   upsertLabOfferProfile,
 } from "@/lib/labOfferProfile";
 import { fetchErcDisciplineOptions } from "@/lib/ercDisciplines";
+import { getOrgHref } from "@/lib/orgPaths";
 import { Link, useLocation } from "wouter";
+import type { OrgLabLinkRequest } from "@shared/orgs";
 
 const INPUT_CLASS =
   "w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
@@ -234,6 +236,19 @@ export default function MyLab({ params }: { params: { id: string } }) {
   }>>([]);
   const [teamLinkLoading, setTeamLinkLoading] = useState(false);
   const [teamLinkError, setTeamLinkError] = useState<string | null>(null);
+  const [orgLinkRequests, setOrgLinkRequests] = useState<OrgLabLinkRequest[]>([]);
+  const [orgMemberships, setOrgMemberships] = useState<Array<{
+    id: number;
+    slug: string;
+    name: string;
+    shortDescription?: string | null;
+    logoUrl?: string | null;
+    orgType?: string | null;
+    isVisible?: boolean | null;
+  }>>([]);
+  const [orgLinkLoading, setOrgLinkLoading] = useState(false);
+  const [orgLinkError, setOrgLinkError] = useState<string | null>(null);
+  const [orgActionId, setOrgActionId] = useState<number | null>(null);
   const [logoPreviewOpen, setLogoPreviewOpen] = useState(false);
   const [logoPreviewScale, setLogoPreviewScale] = useState(1);
   const [logoPreviewOffsetX, setLogoPreviewOffsetX] = useState(0);
@@ -473,6 +488,47 @@ export default function MyLab({ params }: { params: { id: string } }) {
     };
   }, [labId]);
 
+  useEffect(() => {
+    if (!labId) return;
+    let active = true;
+    async function loadOrgLinks() {
+      setOrgLinkLoading(true);
+      setOrgLinkError(null);
+      try {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+        const [requestsRes, membershipsRes] = await Promise.all([
+          fetch(`/api/labs/${labId}/org-link-requests`, { headers }),
+          fetch(`/api/labs/${labId}/org-memberships`, { headers }),
+        ]);
+        if (!requestsRes.ok) {
+          const payload = await requestsRes.json().catch(() => ({}));
+          throw new Error(payload?.message || "Unable to load organization requests");
+        }
+        if (!membershipsRes.ok) {
+          const payload = await membershipsRes.json().catch(() => ({}));
+          throw new Error(payload?.message || "Unable to load organization memberships");
+        }
+        const [requestsData, membershipsData] = await Promise.all([
+          requestsRes.json(),
+          membershipsRes.json(),
+        ]);
+        if (!active) return;
+        setOrgLinkRequests(requestsData ?? []);
+        setOrgMemberships(membershipsData ?? []);
+      } catch (err: any) {
+        if (active) setOrgLinkError(err.message || "Unable to load organization requests");
+      } finally {
+        if (active) setOrgLinkLoading(false);
+      }
+    }
+    loadOrgLinks();
+    return () => {
+      active = false;
+    };
+  }, [labId]);
+
   const respondToTeamRequest = async (requestId: number, status: "approved" | "declined") => {
     if (!labId) return;
     setTeamLinkError(null);
@@ -496,6 +552,65 @@ export default function MyLab({ params }: { params: { id: string } }) {
       );
     } catch (err: any) {
       setTeamLinkError(err.message || "Unable to update request");
+    }
+  };
+
+  const respondToOrgRequest = async (requestId: number, status: "approved" | "declined") => {
+    if (!labId) return;
+    setOrgActionId(requestId);
+    setOrgLinkError(null);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const token = session.session?.access_token;
+      const res = await fetch(`/api/labs/${labId}/org-link-requests/${requestId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload?.message || "Unable to update request");
+      }
+      const approvedRequest = orgLinkRequests.find(request => request.id === requestId);
+      setOrgLinkRequests(prev =>
+        prev.map(item => (item.id === requestId ? { ...item, status, respondedAt: new Date().toISOString() } : item)),
+      );
+      if (status === "approved" && approvedRequest?.org) {
+        setOrgMemberships(prev => {
+          if (prev.some(org => org.id === approvedRequest.org?.id)) return prev;
+          return [...prev, approvedRequest.org as any];
+        });
+      }
+    } catch (err: any) {
+      setOrgLinkError(err.message || "Unable to update request");
+    } finally {
+      setOrgActionId(null);
+    }
+  };
+
+  const leaveOrgMembership = async (orgId: number) => {
+    if (!labId) return;
+    setOrgActionId(orgId);
+    setOrgLinkError(null);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const token = session.session?.access_token;
+      const res = await fetch(`/api/labs/${labId}/org-memberships/${orgId}`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload?.message || "Unable to leave organization");
+      }
+      setOrgMemberships(prev => prev.filter(org => org.id !== orgId));
+    } catch (err: any) {
+      setOrgLinkError(err.message || "Unable to leave organization");
+    } finally {
+      setOrgActionId(null);
     }
   };
 
@@ -2098,6 +2213,82 @@ export default function MyLab({ params }: { params: { id: string } }) {
                           type="button"
                           onClick={() => respondToTeamRequest(request.id, "declined")}
                           className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-destructive hover:text-destructive"
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Section>
+            <Section title="Organization memberships">
+              {orgLinkLoading && <p className="text-sm text-muted-foreground">Loading organization memberships...</p>}
+              {orgLinkError && <p className="text-sm text-destructive">{orgLinkError}</p>}
+              {!orgLinkLoading && orgMemberships.length === 0 && (
+                <p className="text-sm text-muted-foreground">This lab is not listed under any organizations yet.</p>
+              )}
+              <div className="space-y-3">
+                {orgMemberships.map(org => (
+                  <div
+                    key={org.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-3 py-3"
+                  >
+                    <div className="min-w-0">
+                      <Link href={getOrgHref(org as any)} className="text-sm font-medium text-foreground hover:text-primary">
+                        {org.name}
+                      </Link>
+                      {org.shortDescription && (
+                        <p className="text-xs text-muted-foreground">{org.shortDescription}</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => leaveOrgMembership(org.id)}
+                      disabled={orgActionId === org.id}
+                      className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-destructive hover:text-destructive disabled:opacity-60"
+                    >
+                      {orgActionId === org.id ? "Removing..." : "Leave org"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </Section>
+            <Section title="Organization membership requests">
+              {orgLinkLoading && <p className="text-sm text-muted-foreground">Loading requests...</p>}
+              {!orgLinkLoading && orgLinkRequests.length === 0 && (
+                <p className="text-sm text-muted-foreground">No organization membership requests.</p>
+              )}
+              <div className="space-y-3">
+                {orgLinkRequests.map(request => (
+                  <div
+                    key={request.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-3 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">
+                        {request.org?.name || `Organization #${request.orgId}`}
+                      </p>
+                      {request.org?.shortDescription && (
+                        <p className="text-xs text-muted-foreground">{request.org.shortDescription}</p>
+                      )}
+                      <p className="mt-1 text-xs text-muted-foreground">Status: {request.status}</p>
+                    </div>
+                    {request.status === "pending" && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => respondToOrgRequest(request.id, "approved")}
+                          disabled={orgActionId === request.id}
+                          className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-60"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => respondToOrgRequest(request.id, "declined")}
+                          disabled={orgActionId === request.id}
+                          className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:border-destructive hover:text-destructive disabled:opacity-60"
                         >
                           Decline
                         </button>
