@@ -120,6 +120,34 @@ function StandardInvite() {
   );
 }
 
+// ─── Domain → lab suggestion ──────────────────────────────────────────────────
+
+const DOMAIN_STOP_WORDS = new Set([
+  "lab", "labs", "research", "center", "centre", "institute", "university",
+  "tech", "technologies", "science", "sciences", "group", "team", "the",
+]);
+
+function suggestLabsForEmail(email: string, labs: LabStub[]): LabStub[] {
+  const atIdx = email.indexOf("@");
+  if (atIdx === -1) return [];
+  const domain = email.slice(atIdx + 1).toLowerCase();
+  const domainBase = domain.split(".").slice(0, -1).join(" "); // strip TLD
+  const tokens = domainBase
+    .split(/[-._\s]+/)
+    .map(t => t.trim())
+    .filter(t => t.length > 2 && !DOMAIN_STOP_WORDS.has(t));
+  if (tokens.length === 0) return [];
+
+  return labs
+    .filter(lab => {
+      const labTokens = lab.name.toLowerCase().split(/[\s\-_]+/);
+      return tokens.some(dt =>
+        labTokens.some(lt => lt.includes(dt) || dt.includes(lt))
+      );
+    })
+    .slice(0, 3);
+}
+
 // ─── Claim invite ─────────────────────────────────────────────────────────────
 
 function ClaimInvite() {
@@ -130,6 +158,8 @@ function ClaimInvite() {
   const [labsLoading, setLabsLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const suggestions = selectedLab ? [] : suggestLabsForEmail(email, labs);
 
   useEffect(() => {
     (async () => {
@@ -189,12 +219,30 @@ function ClaimInvite() {
           <input
             type="email"
             value={email}
-            onChange={e => setEmail(e.target.value)}
+            onChange={e => { setEmail(e.target.value); setSelectedLab(null); }}
             placeholder="manager@example.com"
             required
             className="mt-1.5 w-full rounded-full border border-border bg-background px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
+
+        {suggestions.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-xs text-muted-foreground">Suggested based on domain</p>
+            <div className="flex flex-wrap gap-2">
+              {suggestions.map(lab => (
+                <button
+                  key={lab.id}
+                  type="button"
+                  onClick={() => setSelectedLab(lab)}
+                  className="rounded-full border border-border bg-muted/40 px-3 py-1 text-xs text-foreground hover:border-primary hover:bg-primary/5 hover:text-primary transition"
+                >
+                  {lab.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div>
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Lab to assign</label>
