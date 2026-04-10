@@ -4285,7 +4285,7 @@ app.post("/api/admin/invite", authenticate, async (req, res) => {
   }
 });
 
-// Admin claim-invite — invite a user and pre-assign a lab they'll own on accept
+// Admin claim-invite — invite a user and immediately assign them a lab
 app.post("/api/admin/claim-invite", authenticate, async (req, res) => {
   try {
     const capabilities = await fetchProfileCapabilities(req.user!.id);
@@ -4307,50 +4307,22 @@ app.post("/api/admin/claim-invite", authenticate, async (req, res) => {
     if (lab.owner_user_id) return res.status(409).json({ message: `${lab.name} already has an owner.` });
 
     const origin = resolvePublicSiteOrigin(req);
-    const { error } = await supabase.auth.admin.inviteUserByEmail(email, {
+    const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(email, {
       redirectTo: `${origin}/reset-password`,
-      data: { claim_lab_id: labId, claim_lab_name: lab.name },
     });
-    if (error) throw error;
+    if (inviteError) throw inviteError;
+
+    const userId = inviteData.user.id;
+
+    // Assign the lab and grant can_create_lab immediately — account exists even before confirmation
+    await Promise.all([
+      supabase.from("labs").update({ owner_user_id: userId }).eq("id", labId),
+      supabase.from("profiles").update({ can_create_lab: true }).eq("user_id", userId),
+    ]);
 
     res.json({ message: "Claim invite sent.", lab: { id: lab.id, name: lab.name } });
   } catch (err) {
     res.status(500).json({ message: err instanceof Error ? err.message : "Failed to send claim invite." });
-  }
-});
-
-// Authenticated user: claim their pre-assigned lab after accepting an invite
-app.post("/api/me/claim-lab", authenticate, async (req, res) => {
-  try {
-    const userId = req.user!.id;
-
-    // Read claim_lab_id from server-side user metadata — don't trust the client to send it
-    const { data: userData, error: userError } = await supabase.auth.admin.getUserById(userId);
-    if (userError) throw userError;
-
-    const labId = (userData.user as any)?.user_metadata?.claim_lab_id;
-    if (!labId) return res.status(400).json({ message: "No lab claim found on this account." });
-
-    // Assign lab
-    const { error: labError } = await supabase
-      .from("labs")
-      .update({ owner_user_id: userId })
-      .eq("id", labId)
-      .is("owner_user_id", null); // safety: only assign if still unowned
-    if (labError) throw labError;
-
-    // Grant can_create_lab on their profile
-    await supabase.from("profiles").update({ can_create_lab: true }).eq("user_id", userId);
-
-    // Clear the claim metadata so it can't be replayed
-    await supabase.auth.admin.updateUserById(userId, {
-      user_metadata: { claim_lab_id: null, claim_lab_name: null },
-    });
-
-    const labName = (userData.user as any)?.user_metadata?.claim_lab_name ?? null;
-    res.json({ message: "Lab claimed.", lab_name: labName });
-  } catch (err) {
-    res.status(500).json({ message: err instanceof Error ? err.message : "Failed to claim lab." });
   }
 });
 
