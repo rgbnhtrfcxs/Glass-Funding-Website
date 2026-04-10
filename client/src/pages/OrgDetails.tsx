@@ -1,10 +1,12 @@
 import { motion } from "framer-motion";
 import { ArrowLeft, ArrowUpRight, Building2, Globe2, Linkedin, MapPin, Search, Users, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { getLabHref } from "@/lib/labPaths";
 import { getOrgHref } from "@/lib/orgPaths";
 import type { Org, OrgLab } from "@shared/orgs";
+import { MapboxMap, type MapMarker } from "@/components/maps/MapboxMap";
+import { buildAddress, geocodeAddress, mapboxToken } from "@/lib/mapbox";
 
 interface OrgDetailsProps {
   params: {
@@ -151,6 +153,9 @@ export default function OrgDetails({ params }: OrgDetailsProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAllMembers, setShowAllMembers] = useState(false);
+  const [mapMarkers, setMapMarkers] = useState<MapMarker[]>([]);
+  const [mapLoading, setMapLoading] = useState(false);
+  const geocodeCache = useRef(new Map<number, MapMarker>());
 
   useEffect(() => {
     let active = true;
@@ -182,6 +187,80 @@ export default function OrgDetails({ params }: OrgDetailsProps) {
     if (params.identifier === org.slug || params.identifier !== String(org.id)) return;
     window.history.replaceState({}, "", `${getOrgHref(org)}${window.location.search}${window.location.hash}`);
   }, [org?.id, org?.slug, params.identifier]);
+
+  // Geocode member labs to build map markers
+  useEffect(() => {
+    if (!org || org.members.length === 0 || !mapboxToken) return;
+    let active = true;
+    setMapLoading(true);
+
+    void (async () => {
+      const markerBuckets = new Map<string, MapMarker>();
+
+      for (const member of org.members) {
+        const address = buildAddress([member.city, member.country]);
+        if (!address) continue;
+
+        let point = geocodeCache.current.get(member.id)
+          ? { lat: geocodeCache.current.get(member.id)!.lat, lng: geocodeCache.current.get(member.id)!.lng }
+          : await geocodeAddress(address);
+
+        if (!point || !active) break;
+
+        const markerEntry: MapMarker = geocodeCache.current.get(member.id) ?? {
+          id: member.id,
+          ...point,
+          label: member.name,
+          subtitle: [member.city, member.country].filter(Boolean).join(", "),
+          href: getLabHref(member),
+          imageUrl: member.logoUrl ?? undefined,
+        };
+        if (!geocodeCache.current.has(member.id)) {
+          geocodeCache.current.set(member.id, markerEntry);
+        }
+
+        const key = `${markerEntry.lat.toFixed(4)}|${markerEntry.lng.toFixed(4)}`;
+        const bucket = markerBuckets.get(key);
+        const item = {
+          id: member.id,
+          label: member.name,
+          subtitle: [member.city, member.country].filter(Boolean).join(", "),
+          href: getLabHref(member),
+          imageUrl: member.logoUrl ?? undefined,
+        };
+        if (bucket) {
+          bucket.items = bucket.items ?? [];
+          bucket.items.push(item);
+        } else {
+          markerBuckets.set(key, { ...markerEntry, items: [item] });
+        }
+      }
+
+      if (!active) return;
+
+      const nextMarkers: MapMarker[] = [];
+      markerBuckets.forEach(bucket => {
+        if ((bucket.items?.length ?? 0) > 1) {
+          bucket.label = `${bucket.items!.length} labs`;
+          bucket.subtitle = "Same city";
+          bucket.imageUrl = undefined;
+          bucket.href = undefined;
+        } else if (bucket.items?.length === 1) {
+          const [single] = bucket.items;
+          bucket.label = single.label;
+          bucket.subtitle = single.subtitle;
+          bucket.imageUrl = single.imageUrl;
+          bucket.href = single.href;
+        }
+        nextMarkers.push(bucket);
+      });
+
+      setMapMarkers(nextMarkers);
+      setMapLoading(false);
+    })();
+
+    return () => { active = false; };
+  }, [org]);
 
   if (loading) {
     return (
@@ -296,6 +375,26 @@ export default function OrgDetails({ params }: OrgDetailsProps) {
             <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
               {org.longDescription}
             </p>
+          </div>
+        )}
+
+        {/* Map */}
+        {org.members.length > 0 && mapboxToken && (
+          <div className="mt-6 overflow-hidden rounded-3xl border border-border">
+            {mapLoading && mapMarkers.length === 0 ? (
+              <div className="flex h-72 items-center justify-center bg-card/70">
+                <p className="text-sm text-muted-foreground">Loading map…</p>
+              </div>
+            ) : (
+              <MapboxMap
+                markers={mapMarkers}
+                className="h-72 w-full"
+                zoom={4}
+                showNavigation
+                navigationVariant="glass-pill"
+                showPopups
+              />
+            )}
           </div>
         )}
 
