@@ -1,16 +1,18 @@
 import { motion } from "framer-motion";
-import { ArrowLeft, ArrowUpRight, Building2, Globe2, Linkedin, Users } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ArrowLeft, ArrowUpRight, Building2, Globe2, Linkedin, MapPin, Search, Users, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { getLabHref } from "@/lib/labPaths";
 import { getOrgHref } from "@/lib/orgPaths";
-import type { Org } from "@shared/orgs";
+import type { Org, OrgLab } from "@shared/orgs";
 
 interface OrgDetailsProps {
   params: {
     identifier: string;
   };
 }
+
+const MEMBERS_PREVIEW_COUNT = 6;
 
 const typeLabel: Record<string, string> = {
   research_org: "Research organization",
@@ -20,10 +22,135 @@ const typeLabel: Record<string, string> = {
   other: "Organization",
 };
 
+const statusBadge: Record<string, { label: string; className: string } | undefined> = {
+  premier: { label: "Premier", className: "bg-amber-500/10 text-amber-600 border border-amber-500/20" },
+  verified_active: { label: "Verified", className: "bg-primary/10 text-primary border border-primary/20" },
+  verified_passive: { label: "Verified", className: "bg-primary/10 text-primary border border-primary/20" },
+};
+
+function MemberCard({ member }: { member: OrgLab }) {
+  const badge = member.labStatus ? statusBadge[member.labStatus] : undefined;
+  return (
+    <Link
+      href={getLabHref(member)}
+      className="flex items-center justify-between gap-3 rounded-2xl border border-border px-4 py-3 text-sm transition hover:border-primary group"
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-border bg-background">
+          {member.logoUrl ? (
+            <img src={member.logoUrl} alt={member.name} className="h-full w-full object-cover" />
+          ) : (
+            <Building2 className="h-4 w-4 text-muted-foreground" />
+          )}
+        </span>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <p className="truncate font-medium text-foreground">{member.name}</p>
+            {badge && (
+              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${badge.className}`}>
+                {badge.label}
+              </span>
+            )}
+          </div>
+          {(member.city || member.country) && (
+            <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
+              <MapPin className="h-3 w-3 flex-shrink-0" />
+              {[member.city, member.country].filter(Boolean).join(", ")}
+            </p>
+          )}
+        </div>
+      </div>
+      <ArrowUpRight className="h-4 w-4 flex-shrink-0 text-muted-foreground transition group-hover:text-primary" />
+    </Link>
+  );
+}
+
+function AllMembersModal({
+  members,
+  orgName,
+  onClose,
+}: {
+  members: OrgLab[];
+  orgName: string;
+  onClose: () => void;
+}) {
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return members;
+    return members.filter(m =>
+      [m.name, m.city, m.country]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(term),
+    );
+  }, [members, search]);
+
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="flex w-full max-w-2xl flex-col rounded-3xl border border-border bg-background shadow-2xl" style={{ maxHeight: "85vh" }}>
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <div>
+            <h3 className="text-lg font-semibold text-foreground">All members</h3>
+            <p className="text-xs text-muted-foreground">{orgName} · {members.length} lab{members.length !== 1 ? "s" : ""}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border text-muted-foreground transition hover:border-primary hover:text-primary"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        {/* Search */}
+        <div className="border-b border-border px-4 py-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              placeholder="Search by name, city, or country…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full rounded-xl border border-border bg-background py-2 pl-9 pr-4 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              autoFocus
+            />
+          </div>
+        </div>
+        {/* List */}
+        <div className="flex-1 overflow-y-auto px-4 py-3">
+          {filtered.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">No labs match your search.</p>
+          ) : (
+            <div className="grid gap-2 md:grid-cols-2">
+              {filtered.map(member => (
+                <MemberCard key={member.id} member={member} />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function OrgDetails({ params }: OrgDetailsProps) {
   const [org, setOrg] = useState<Org | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showAllMembers, setShowAllMembers] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -47,9 +174,7 @@ export default function OrgDetails({ params }: OrgDetailsProps) {
       }
     }
     loadOrg();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [params.identifier]);
 
   useEffect(() => {
@@ -78,75 +203,95 @@ export default function OrgDetails({ params }: OrgDetailsProps) {
     );
   }
 
+  const uniqueCountries = [...new Set(org.members.map(m => m.country).filter(Boolean))];
+  const previewMembers = org.members.slice(0, MEMBERS_PREVIEW_COUNT);
+  const hasMore = org.members.length > MEMBERS_PREVIEW_COUNT;
+
   return (
     <section className="bg-background min-h-screen">
-      <div className="container mx-auto max-w-6xl px-4 py-12 lg:py-16">
+      <div className="container mx-auto max-w-5xl px-4 py-12 lg:py-16">
         <Link href="/orgs" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary">
           <ArrowLeft className="h-4 w-4" />
           Back to organizations
         </Link>
 
-        <div className="mt-6 flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="space-y-3"
-          >
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-3xl md:text-4xl font-semibold text-foreground">{org.name}</h1>
-              <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                {typeLabel[org.orgType] ?? "Organization"}
-              </span>
-            </div>
-            {org.shortDescription && (
-              <p className="max-w-2xl text-base text-muted-foreground">{org.shortDescription}</p>
-            )}
-            <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1">
-                <Users className="h-4 w-4 text-primary" />
-                {org.members.length} members
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {org.website && (
-                <a
-                  href={org.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:border-primary hover:text-primary"
-                >
-                  <Globe2 className="h-3.5 w-3.5" />
-                  Website
-                </a>
-              )}
-              {org.linkedin && (
-                <a
-                  href={org.linkedin}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:border-primary hover:text-primary"
-                >
-                  <Linkedin className="h-3.5 w-3.5" />
-                  LinkedIn
-                </a>
-              )}
-            </div>
-          </motion.div>
-
-          <div className="h-32 w-32 overflow-hidden rounded-3xl border border-border bg-background/80">
-            {org.logoUrl ? (
-              <img src={org.logoUrl} alt={org.name} className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center">
-                <Building2 className="h-8 w-8 text-muted-foreground" />
+        {/* Header */}
+        <div className="mt-6 rounded-3xl border border-border bg-card/70 p-6 lg:p-8">
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="min-w-0 space-y-3"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                  {typeLabel[org.orgType] ?? "Organization"}
+                </span>
               </div>
-            )}
+              <h1 className="text-3xl font-semibold text-foreground md:text-4xl">{org.name}</h1>
+              {org.shortDescription && (
+                <p className="max-w-2xl text-base text-muted-foreground">{org.shortDescription}</p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                {org.website && (
+                  <a
+                    href={org.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-primary hover:text-primary"
+                  >
+                    <Globe2 className="h-3.5 w-3.5" />
+                    Website
+                  </a>
+                )}
+                {org.linkedin && (
+                  <a
+                    href={org.linkedin}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-primary hover:text-primary"
+                  >
+                    <Linkedin className="h-3.5 w-3.5" />
+                    LinkedIn
+                  </a>
+                )}
+              </div>
+            </motion.div>
+
+            <div className="h-28 w-28 flex-shrink-0 overflow-hidden rounded-3xl border border-border bg-background/80 shadow-sm">
+              {org.logoUrl ? (
+                <img src={org.logoUrl} alt={org.name} className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center">
+                  <Building2 className="h-10 w-10 text-muted-foreground" />
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* Stats bar */}
+          {org.members.length > 0 && (
+            <div className="mt-6 flex flex-wrap gap-6 border-t border-border pt-6">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-primary" />
+                <span className="text-sm font-semibold text-foreground">{org.members.length}</span>
+                <span className="text-sm text-muted-foreground">member lab{org.members.length !== 1 ? "s" : ""}</span>
+              </div>
+              {uniqueCountries.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-semibold text-foreground">{uniqueCountries.length}</span>
+                  <span className="text-sm text-muted-foreground">{uniqueCountries.length === 1 ? "country" : "countries"}</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
+        {/* About */}
         {org.longDescription && (
-          <div className="mt-8 rounded-3xl border border-border bg-card/70 p-6">
+          <div className="mt-6 rounded-3xl border border-border bg-card/70 p-6">
             <h2 className="text-lg font-semibold text-foreground">About this organization</h2>
             <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
               {org.longDescription}
@@ -154,39 +299,58 @@ export default function OrgDetails({ params }: OrgDetailsProps) {
           </div>
         )}
 
-        <section className="mt-8 rounded-3xl border border-border bg-card/70 p-6">
-            <h2 className="text-lg font-semibold text-foreground">Members</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Labs associated with this organization.
-            </p>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {org.members.length > 0 ? org.members.map(member => (
-                <Link
-                  href={getLabHref(member)}
-                  key={member.id}
-                  className="flex items-center justify-between gap-3 rounded-2xl border border-border px-4 py-3 text-sm transition hover:border-primary"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
-                      {member.logoUrl ? (
-                        <img src={member.logoUrl} alt={member.name} className="h-full w-full object-cover" />
-                      ) : (
-                        <Building2 className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </span>
-                    <div>
-                      <p className="font-medium text-foreground">{member.name}</p>
-                      <p className="text-xs text-muted-foreground">{[member.city, member.country].filter(Boolean).join(", ") || "Location not set"}</p>
-                    </div>
-                  </div>
-                  <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
-                </Link>
-              )) : (
-                <p className="text-sm text-muted-foreground">No members listed yet.</p>
-              )}
+        {/* Members */}
+        <section className="mt-6 rounded-3xl border border-border bg-card/70 p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">Member labs</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Research labs and groups affiliated with this organization.
+              </p>
             </div>
+            {hasMore && (
+              <button
+                type="button"
+                onClick={() => setShowAllMembers(true)}
+                className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+              >
+                View all {org.members.length}
+                <ArrowUpRight className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          {org.members.length === 0 ? (
+            <p className="mt-4 text-sm text-muted-foreground">No members listed yet.</p>
+          ) : (
+            <>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {previewMembers.map(member => (
+                  <MemberCard key={member.id} member={member} />
+                ))}
+              </div>
+              {hasMore && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllMembers(true)}
+                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-border py-3 text-sm text-muted-foreground transition hover:border-primary hover:text-primary"
+                >
+                  <Users className="h-4 w-4" />
+                  Show {org.members.length - MEMBERS_PREVIEW_COUNT} more lab{org.members.length - MEMBERS_PREVIEW_COUNT !== 1 ? "s" : ""}
+                </button>
+              )}
+            </>
+          )}
         </section>
       </div>
+
+      {showAllMembers && (
+        <AllMembersModal
+          members={org.members}
+          orgName={org.name}
+          onClose={() => setShowAllMembers(false)}
+        />
+      )}
     </section>
   );
 }

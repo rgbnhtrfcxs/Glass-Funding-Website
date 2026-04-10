@@ -3791,6 +3791,38 @@ export function registerRoutes(app: Express) {
         throw error ?? new Error("Unable to create request");
       }
       res.status(201).json({ id: inserted.id });
+
+      // Fire-and-forget: notify the lab owner about the new membership request
+      if (lab.ownerUserId) {
+        void (async () => {
+          try {
+            const { data: userRecord } = await supabase.auth.admin.getUserById(lab.ownerUserId!);
+            const labOwnerEmail = userRecord?.user?.email;
+            if (labOwnerEmail) {
+              await sendMail({
+                to: labOwnerEmail,
+                from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
+                subject: `${org.name} would like to add your lab as a member`,
+                text: [
+                  `Hi,`,
+                  ``,
+                  `${org.name} has sent a request to list "${lab.name}" as a member lab of their organization on GLASS.`,
+                  ``,
+                  `To review and respond to this request, sign in to your GLASS account and open your lab management page.`,
+                  ``,
+                  `If this request was sent in error you can simply decline it — no action is needed to ignore it.`,
+                ].join("\n"),
+                templateId: process.env.BREVO_TEMPLATE_ORG_MEMBER_REQUEST_LAB
+                  ? Number(process.env.BREVO_TEMPLATE_ORG_MEMBER_REQUEST_LAB)
+                  : undefined,
+                params: { orgName: org.name, labName: lab.name },
+              });
+            }
+          } catch (mailError) {
+            console.error("[org-member-request] Failed to send lab notification email:", mailError);
+          }
+        })();
+      }
     } catch (error) {
       res.status(500).json({ message: error instanceof Error ? error.message : "Unable to create request" });
     }
@@ -3973,6 +4005,50 @@ export function registerRoutes(app: Express) {
       }
 
       res.json({ ok: true });
+
+      // Fire-and-forget: notify the org owner of the approve/decline outcome
+      void (async () => {
+        try {
+          const org = await orgStore.findById(requestRow.org_id);
+          if (!org?.ownerUserId) return;
+          const { data: userRecord } = await supabase.auth.admin.getUserById(org.ownerUserId);
+          const orgOwnerEmail = userRecord?.user?.email;
+          if (!orgOwnerEmail) return;
+          const isApproved = status === "approved";
+          await sendMail({
+            to: orgOwnerEmail,
+            from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
+            subject: isApproved
+              ? `${lab.name} has joined ${org.name}`
+              : `${lab.name} declined the membership request from ${org.name}`,
+            text: isApproved
+              ? [
+                  `Good news!`,
+                  ``,
+                  `"${lab.name}" has approved your request and is now listed as a member of ${org.name} on GLASS.`,
+                  ``,
+                  `You can view the updated member list on your organization's page.`,
+                ].join("\n")
+              : [
+                  `Hi,`,
+                  ``,
+                  `"${lab.name}" has declined the membership request from ${org.name}.`,
+                  ``,
+                  `You can send a new request at any time from your organization editor on GLASS.`,
+                ].join("\n"),
+            templateId: isApproved
+              ? process.env.BREVO_TEMPLATE_ORG_MEMBER_APPROVED_ORG
+                ? Number(process.env.BREVO_TEMPLATE_ORG_MEMBER_APPROVED_ORG)
+                : undefined
+              : process.env.BREVO_TEMPLATE_ORG_MEMBER_DECLINED_ORG
+                ? Number(process.env.BREVO_TEMPLATE_ORG_MEMBER_DECLINED_ORG)
+                : undefined,
+            params: { orgName: org.name, labName: lab.name },
+          });
+        } catch (mailError) {
+          console.error("[org-link-request] Failed to send org owner notification email:", mailError);
+        }
+      })();
     } catch (error) {
       res.status(500).json({ message: error instanceof Error ? error.message : "Unable to update request" });
     }
