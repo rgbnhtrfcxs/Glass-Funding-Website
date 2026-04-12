@@ -5,18 +5,42 @@ import { Search, FileText, Loader2 } from "lucide-react";
 
 type LabStub = { id: number; name: string; owner_user_id: string | null };
 
-const DEFAULT_TEMPLATE = (labName: string) =>
-  `Dear ${labName} team,
+type Template = { id: string; label: string; body: (labName: string) => string };
 
-We are reaching out on behalf of Glass-Connect — a platform connecting research labs with industry partners, startups, and investors looking to access cutting-edge infrastructure and expertise.
+const TEMPLATES: Template[] = [
+  {
+    id: "biovalley",
+    label: "BioValley",
+    body: (labName) =>
+      `Dear ${labName} team,
 
-We are building our network in partnership with BioValley and believe ${labName} would be a valuable addition to our directory. Listing your lab on Glass-Connect gives you visibility with a curated network of potential collaborators and clients — at no cost.
+We are reaching out on behalf of Glass-Connect — a trusted network and verified marketplace that connects research labs with the industry partners, startups, and investors looking to collaborate and access cutting-edge expertise.
+
+We are building our network in partnership with BioValley and believe ${labName} would be a valuable addition to our verified directory. Listing your lab on Glass-Connect gives you visibility with a curated network of potential collaborators and clients — at no cost.
 
 To claim your lab profile and get started, simply scan the QR code below with your phone. It takes less than two minutes.
 
 We look forward to welcoming you to the Glass-Connect network.
 
-The Glass-Connect Team`;
+The Glass-Connect Team`,
+  },
+  {
+    id: "general",
+    label: "General",
+    body: (labName) =>
+      `Dear ${labName} team,
+
+We are reaching out on behalf of Glass-Connect — a trusted network and verified marketplace that connects research labs with the industry partners, startups, and investors looking to collaborate and access cutting-edge expertise.
+
+We believe ${labName} would be a valuable addition to our verified directory. Listing your lab on Glass-Connect gives you visibility with a curated network of potential collaborators and clients — at no cost.
+
+To claim your lab profile and get started, simply scan the QR code below with your phone. It takes less than two minutes.
+
+We look forward to welcoming you to the Glass-Connect network.
+
+The Glass-Connect Team`,
+  },
+];
 
 async function getToken() {
   const { data } = await supabase.auth.getSession();
@@ -29,6 +53,7 @@ export default function AdminOutreach() {
   const [labsLoading, setLabsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedLab, setSelectedLab] = useState<LabStub | null>(null);
+  const [activeTemplate, setActiveTemplate] = useState<string>(TEMPLATES[0].id);
   const [body, setBody] = useState("");
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,8 +79,17 @@ export default function AdminOutreach() {
 
   const selectLab = (lab: LabStub) => {
     setSelectedLab(lab);
-    setBody(DEFAULT_TEMPLATE(lab.name));
+    const tpl = TEMPLATES.find(t => t.id === activeTemplate) ?? TEMPLATES[0];
+    setBody(tpl.body(lab.name));
     setError(null);
+  };
+
+  const applyTemplate = (templateId: string) => {
+    setActiveTemplate(templateId);
+    if (selectedLab) {
+      const tpl = TEMPLATES.find(t => t.id === templateId) ?? TEMPLATES[0];
+      setBody(tpl.body(selectedLab.name));
+    }
   };
 
   const handleGenerate = async () => {
@@ -157,6 +191,27 @@ export default function AdminOutreach() {
               </div>
             ) : (
               <div className="space-y-3">
+                {/* Template picker */}
+                <div className="flex gap-2 flex-wrap">
+                  {TEMPLATES.map(tpl => (
+                    <button
+                      key={tpl.id}
+                      type="button"
+                      onClick={() => applyTemplate(tpl.id)}
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                        activeTemplate === tpl.id
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                      }`}
+                    >
+                      {tpl.label}
+                    </button>
+                  ))}
+                  <span className="text-xs text-muted-foreground self-center ml-1">
+                    — or edit freely below
+                  </span>
+                </div>
+
                 <textarea
                   value={body}
                   onChange={e => setBody(e.target.value)}
