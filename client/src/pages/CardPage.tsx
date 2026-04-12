@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { Mail, Phone } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Mail, Phone, Check } from "lucide-react";
 
 interface CardPageProps {
   name: string;
@@ -10,12 +10,21 @@ interface CardPageProps {
 }
 
 export function CardPage({ name, title, email, phone, linkedIn }: CardPageProps) {
+  const [copied, setCopied] = useState(false);
+
   const initials = name
     .split(" ")
     .map((n) => n[0])
     .join("")
     .slice(0, 2)
     .toUpperCase();
+
+  function copyEmail() {
+    navigator.clipboard.writeText(email).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
 
   useEffect(() => {
     const meta = document.createElement("meta");
@@ -95,14 +104,18 @@ export function CardPage({ name, title, email, phone, linkedIn }: CardPageProps)
                 <span>Connect on LinkedIn</span>
               </a>
 
-              {/* Email */}
-              <a
-                href={`mailto:${email}`}
+              {/* Email — copies to clipboard */}
+              <button
+                type="button"
+                onClick={copyEmail}
                 className="flex items-center gap-3 w-full px-4 py-3.5 bg-primary hover:bg-primary/90 active:bg-primary/80 text-primary-foreground rounded-2xl transition-colors font-medium text-sm shadow-sm"
               >
-                <Mail className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
-                <span className="truncate">{email}</span>
-              </a>
+                {copied
+                  ? <Check className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
+                  : <Mail className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
+                }
+                <span className="truncate">{copied ? "Copied!" : email}</span>
+              </button>
 
               {/* Phone */}
               <a
