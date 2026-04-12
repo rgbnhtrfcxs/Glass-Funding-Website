@@ -1103,6 +1103,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
             </div>}
           </section>
 
+          {labTechniques.length > 0 && (
           <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
             <h2 className="text-lg font-semibold text-foreground">Techniques & expertise</h2>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -1117,11 +1118,9 @@ export default function LabDetails({ params }: LabDetailsProps) {
                   )}
                 </div>
               ))}
-              {labTechniques.length === 0 && (
-                <p className="text-sm text-muted-foreground">No techniques listed yet.</p>
-              )}
             </div>
           </section>
+          )}
 
           {lab.teamMembers.length > 0 && (
             <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
@@ -1177,55 +1176,6 @@ export default function LabDetails({ params }: LabDetailsProps) {
                   </span>
                 )}
               </div>
-            </section>
-          )}
-          {(linkedOrgs.length > 0 || orgsLoading || orgsError) && (
-            <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-foreground">Organizations</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Organizations this lab is part of across networks, institutions, and larger structures.
-                  </p>
-                </div>
-              </div>
-              {orgsLoading && (
-                <p className="mt-4 text-sm text-muted-foreground">Loading organizations…</p>
-              )}
-              {orgsError && (
-                <p className="mt-4 text-sm text-destructive">{orgsError}</p>
-              )}
-              {!orgsLoading && !orgsError && linkedOrgs.length === 0 && (
-                <p className="mt-4 text-sm text-muted-foreground">No organizations linked to this lab yet.</p>
-              )}
-              {linkedOrgs.length > 0 && (
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  {linkedOrgs.map(org => (
-                    <Link
-                      href={getOrgHref(org)}
-                      key={org.id}
-                      className="flex items-center justify-between gap-3 rounded-2xl border border-border px-4 py-3 text-sm transition hover:border-primary"
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <span className="inline-flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-border bg-background">
-                          {org.logoUrl ? (
-                            <img src={org.logoUrl} alt={org.name} className="h-full w-full object-cover" />
-                          ) : (
-                            <Building2 className="h-4 w-4 text-muted-foreground" />
-                          )}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-foreground">{org.name}</p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {org.members.length} members
-                          </p>
-                        </div>
-                      </div>
-                      <ArrowUpRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                    </Link>
-                  ))}
-                </div>
-              )}
             </section>
           )}
           {teamsError && (
