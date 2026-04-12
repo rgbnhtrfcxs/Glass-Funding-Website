@@ -1,5 +1,7 @@
 import { Switch, Route, useLocation } from "wouter";
 import type { ReactNode } from "react";
+import CardUros from "@/pages/CardUros";
+import CardYu from "@/pages/CardYu";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
@@ -36,6 +38,9 @@ import AdminAudit from "@/pages/AdminAudit";
 import AdminInvite from "@/pages/AdminInvite";
 import AdminUsers from "@/pages/AdminUsers";
 import AdminOrgs from "@/pages/AdminOrgs";
+import AdminOutreach from "@/pages/AdminOutreach";
+import AdminOutreachLetter from "@/pages/AdminOutreachLetter";
+import ClaimLab from "@/pages/ClaimLab";
 import Admin from "@/pages/Admin";
 import Pricing from "@/pages/Pricing";
 import PricingArchiveCheckout from "@/pages/PricingArchiveCheckout";
@@ -130,9 +135,30 @@ function PageTransition({ children }: { children: ReactNode }) {
   );
 }
 
+function AppShell({ children }: { children: ReactNode }) {
+  const [location] = useLocation();
+  const isCardPage = location.startsWith("/card/");
+
+  return (
+    <>
+      {!isCardPage && <Navbar />}
+      <ScrollToTop />
+      <AuthLinkBridge />
+      <div className={isCardPage ? "" : "pt-16"}>
+        <PageTransition>{children}</PageTransition>
+      </div>
+      {!isCardPage && <Footer />}
+      {!isCardPage && <ConsentBanner />}
+    </>
+  );
+}
+
 function Router() {
   return (
     <Switch>
+      {/* Business card pages — no nav/footer, not indexed */}
+      <Route path="/card/uros" component={CardUros} />
+      <Route path="/card/yu" component={CardYu} />
       <Route path="/labs" component={Labs} />
       <Route path="/labs/:identifier" component={LabDetails} />
       <Route path="/teams" component={Teams} />
@@ -147,6 +173,9 @@ function Router() {
       <AdminRoute path="/admin/audit" component={AdminAudit} />
       <AdminRoute path="/admin/invite" component={AdminInvite} />
       <AdminRoute path="/admin/users" component={AdminUsers} />
+      <AdminRoute path="/admin/outreach" component={AdminOutreach} />
+      <AdminRoute path="/admin/outreach/letter" component={AdminOutreachLetter} />
+      <Route path="/claim/:token" component={ClaimLab} />
       <AdminRoute path="/certificate-template-preview" component={CertificateTemplatePreview} />
       <Route path="/lab-profile" component={LabProfile} />
       <ProtectedRoute path="/account" component={Account} />
@@ -218,6 +247,10 @@ function App() {
                 <ConsentBanner />
                 <Toaster />
               </OrgsProvider>
+              <AppShell>
+                <Router />
+              </AppShell>
+              <Toaster />
             </TeamsProvider>
           </LabsProvider>
         </AuthProvider>
