@@ -88,8 +88,8 @@ export default function AdminOutreachLetter() {
       {/* Letter — A4-ish, centred */}
       <div className="print:pt-0 pt-20 min-h-screen bg-gray-100 print:bg-white flex justify-center">
         <div
-          className="bg-white w-full max-w-2xl print:max-w-none mx-auto my-8 print:my-0 shadow-sm print:shadow-none px-16 py-14 print:px-12 print:py-12 space-y-10"
-          style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
+          className="bg-white w-full max-w-2xl print:max-w-none mx-auto my-8 print:my-0 shadow-sm print:shadow-none px-16 py-14 print:px-12 print:py-12 flex flex-col"
+          style={{ minHeight: "297mm", fontFamily: "Georgia, 'Times New Roman', serif" }}
         >
           {/* Header */}
           <div className="flex items-center justify-between">
@@ -108,17 +108,20 @@ export default function AdminOutreachLetter() {
             )}
           </div>
 
-          <hr className="border-gray-200" />
+          <hr className="border-gray-200 mt-10" />
 
           {/* Body */}
-          <div className="space-y-4 text-gray-800 text-[15px] leading-relaxed">
+          <div className="space-y-4 text-gray-800 text-[15px] leading-relaxed mt-10">
             {paragraphs.map((para, i) => (
               <p key={i} className="whitespace-pre-line">{para}</p>
             ))}
           </div>
 
-          {/* QR code block */}
-          <div className="flex flex-col items-center gap-3 pt-4">
+          {/* Spacer — pushes QR into the bottom third of the A4 page */}
+          <div className="flex-1" />
+
+          {/* QR code block — bottom third */}
+          <div className="flex flex-col items-center gap-3 pb-2">
             <div className="rounded-2xl border border-gray-200 p-4 inline-block">
               {qrSrc ? (
                 <img
@@ -146,7 +149,7 @@ export default function AdminOutreachLetter() {
 
           {/* Footer */}
           <div
-            className="flex items-center justify-between pt-6 border-t border-gray-100 text-xs text-gray-400"
+            className="flex items-center justify-between pt-6 border-t border-gray-100 text-xs text-gray-400 mt-6"
             style={{ fontFamily: "system-ui, sans-serif" }}
           >
             <span>glass-connect.com</span>
