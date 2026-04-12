@@ -20,8 +20,10 @@ export function CardPage({ name, title, email, phone, linkedIn }: CardPageProps)
     .slice(0, 2)
     .toUpperCase();
 
+  const displayEmail = email.toLowerCase();
+
   function copyEmail() {
-    navigator.clipboard.writeText(email).then(() => {
+    navigator.clipboard.writeText(displayEmail).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
@@ -112,7 +114,7 @@ export function CardPage({ name, title, email, phone, linkedIn }: CardPageProps)
                 className="flex items-center gap-3 w-full px-4 py-3.5 bg-primary hover:bg-primary/90 active:bg-primary/80 text-primary-foreground rounded-2xl transition-colors font-medium text-sm shadow-sm"
               >
                 <Mail className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
-                <span className="truncate">{email}</span>
+                <span className="text-xs break-all leading-snug">{displayEmail}</span>
               </button>
 
               {/* Phone */}
