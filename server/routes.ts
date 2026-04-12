@@ -4259,6 +4259,128 @@ app.get("/api/admin/all-labs", authenticate, async (req, res) => {
   }
 });
 
+// ── Outreach / QR claim flow ──────────────────────────────────────────────────
+
+// Admin: generate a single-use claim token for a lab (stored in lab_claim_tokens)
+app.post("/api/admin/labs/:labId/claim-token", authenticate, async (req, res) => {
+  try {
+    const capabilities = await fetchProfileCapabilities(req.user!.id);
+    if (!capabilities?.isAdmin) return res.status(403).json({ message: "Admin access required." });
+
+    const labId = parseInt(req.params.labId, 10);
+    if (isNaN(labId)) return res.status(400).json({ message: "Invalid lab ID." });
+
+    const { data: lab, error: labError } = await supabase
+      .from("labs")
+      .select("id,name,owner_user_id")
+      .eq("id", labId)
+      .maybeSingle();
+    if (labError) throw labError;
+    if (!lab) return res.status(404).json({ message: "Lab not found." });
+    if (lab.owner_user_id) return res.status(409).json({ message: `${lab.name} already has an owner.` });
+
+    const token = crypto.randomUUID();
+
+    // Delete any existing active token for this lab then insert the new one
+    await supabase.from("lab_claim_tokens").delete().eq("lab_id", labId).is("used_at", null);
+    const { error: insertError } = await supabase
+      .from("lab_claim_tokens")
+      .insert({ lab_id: labId, token });
+    if (insertError) throw insertError;
+
+    const origin = resolvePublicSiteOrigin(req);
+    res.json({ token, claimUrl: `${origin}/claim/${token}`, lab: { id: lab.id, name: lab.name } });
+  } catch (err) {
+    res.status(500).json({ message: err instanceof Error ? err.message : "Failed to generate token." });
+  }
+});
+
+// Public: get lab info for a claim token (no auth)
+app.get("/api/public/claim/:token", async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    const { data: row, error } = await supabase
+      .from("lab_claim_tokens")
+      .select("lab_id, used_at, labs(id, name, owner_user_id, lab_profile(description_short, logo_url), lab_location(city, country))")
+      .eq("token", token)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!row) return res.status(404).json({ message: "Invalid or expired invite link." });
+    if (row.used_at) return res.status(404).json({ message: "This invite link has already been used." });
+
+    const lab = row.labs as any;
+    if (lab?.owner_user_id) return res.status(409).json({ message: "This lab has already been claimed." });
+
+    res.json({
+      lab: {
+        id: lab.id,
+        name: lab.name,
+        descriptionShort: lab.lab_profile?.description_short ?? null,
+        logoUrl: lab.lab_profile?.logo_url ?? null,
+        city: lab.lab_location?.city ?? null,
+        country: lab.lab_location?.country ?? null,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ message: err instanceof Error ? err.message : "Failed to fetch lab info." });
+  }
+});
+
+// Public: create account and claim lab via QR token (no auth)
+app.post("/api/public/claim/:token", async (req, res) => {
+  try {
+    const { token } = req.params;
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    const password = typeof req.body?.password === "string" ? req.body.password : "";
+
+    if (!email || !email.includes("@")) return res.status(400).json({ message: "A valid email address is required." });
+    if (!password || password.length < 8) return res.status(400).json({ message: "Password must be at least 8 characters." });
+
+    // Look up token
+    const { data: row, error: tokenError } = await supabase
+      .from("lab_claim_tokens")
+      .select("id, lab_id, used_at, labs(id, name, owner_user_id)")
+      .eq("token", token)
+      .maybeSingle();
+
+    if (tokenError) throw tokenError;
+    if (!row) return res.status(404).json({ message: "Invalid or expired invite link." });
+    if (row.used_at) return res.status(409).json({ message: "This invite link has already been used." });
+
+    const lab = row.labs as any;
+    if (lab?.owner_user_id) return res.status(409).json({ message: "This lab has already been claimed." });
+
+    const origin = resolvePublicSiteOrigin(req);
+
+    // Create the user account
+    const { data: userData, error: createError } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: false,
+      options: { emailRedirectTo: `${origin}/account` },
+    } as any);
+    if (createError) throw createError;
+
+    const userId = userData.user.id;
+
+    // Mark token used, assign lab, grant permission, set banner flag — all in parallel
+    await Promise.all([
+      supabase.from("lab_claim_tokens").update({ used_at: new Date().toISOString() }).eq("id", row.id),
+      supabase.from("labs").update({ owner_user_id: userId }).eq("id", lab.id),
+      supabase.from("profiles").update({ can_create_lab: true }).eq("user_id", userId),
+      supabase.auth.admin.updateUserById(userId, {
+        user_metadata: { show_lab_banner: lab.name },
+      }),
+    ]);
+
+    res.json({ message: "Account created. Check your email to confirm.", lab: { id: lab.id, name: lab.name } });
+  } catch (err) {
+    res.status(500).json({ message: err instanceof Error ? err.message : "Failed to create account." });
+  }
+});
+
 // Admin invite — uses Supabase inviteUserByEmail which sends via the configured SMTP (Brevo)
 app.post("/api/admin/invite", authenticate, async (req, res) => {
   try {

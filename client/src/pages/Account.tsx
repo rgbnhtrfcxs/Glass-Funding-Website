@@ -256,6 +256,7 @@ export default function Account() {
   const [collabCount, setCollabCount] = useState<number>(0);
   const [contactCount, setContactCount] = useState<number>(0);
   const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
+  const [labBanner, setLabBanner] = useState<string | null>(null);
   const [showNewsModal, setShowNewsModal] = useState(false);
   const [newsSubmitting, setNewsSubmitting] = useState(false);
   const [newsError, setNewsError] = useState<string | null>(null);
@@ -539,6 +540,10 @@ export default function Account() {
           setActiveTab(prev => (prev === "adminLabs" ? "overview" : prev));
         }
       }
+      // Check for lab claim banner set in user_metadata
+      const { data: { user: freshUser } } = await supabase.auth.getUser();
+      const bannerName = (freshUser?.user_metadata as any)?.show_lab_banner;
+      if (typeof bannerName === "string" && bannerName) setLabBanner(bannerName);
       setLoading(false);
     }
     if (!authLoading) load();
@@ -1521,9 +1526,36 @@ export default function Account() {
   ] as const;
 
 
+  const dismissLabBanner = async () => {
+    setLabBanner(null);
+    await supabase.auth.updateUser({ data: { show_lab_banner: null } });
+  };
+
   return (
     <section className="bg-background min-h-screen">
       <div className="container mx-auto px-4 py-20 lg:py-24 max-w-5xl">
+        {labBanner && (
+          <div className="mb-6 flex items-center justify-between gap-4 rounded-2xl border border-emerald-300 bg-emerald-50 px-5 py-3">
+            <p className="text-sm text-emerald-900">
+              <span className="font-medium">Your lab is ready —</span>{" "}
+              <span className="font-semibold">{labBanner}</span> has been assigned to your account.
+            </p>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link href="/account?tab=manageLab">
+                <a className="rounded-full bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-700 transition">
+                  Manage lab →
+                </a>
+              </Link>
+              <button
+                type="button"
+                onClick={dismissLabBanner}
+                className="text-emerald-600 hover:text-emerald-800 text-xs underline underline-offset-2 transition"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <label className="group relative cursor-pointer">

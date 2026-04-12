@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { FlaskConical, CalendarCheck, UserPlus, Users } from "lucide-react";
+import { FlaskConical, CalendarCheck, UserPlus, Users, FileText } from "lucide-react";
 
 const PAGES = [
   {
@@ -13,6 +13,12 @@ const PAGES = [
     icon: FlaskConical,
     title: "Labs",
     description: "Manage lab listings, details, and visibility.",
+  },
+  {
+    href: "/admin/outreach",
+    icon: FileText,
+    title: "Outreach letters",
+    description: "Generate a letter with QR code to hand to labs during visits.",
   },
   {
     href: "/admin/audit",

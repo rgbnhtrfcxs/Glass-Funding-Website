@@ -35,6 +35,9 @@ import AdminLabs from "@/pages/AdminLabs";
 import AdminAudit from "@/pages/AdminAudit";
 import AdminInvite from "@/pages/AdminInvite";
 import AdminUsers from "@/pages/AdminUsers";
+import AdminOutreach from "@/pages/AdminOutreach";
+import AdminOutreachLetter from "@/pages/AdminOutreachLetter";
+import ClaimLab from "@/pages/ClaimLab";
 import Admin from "@/pages/Admin";
 import Pricing from "@/pages/Pricing";
 import PricingArchiveCheckout from "@/pages/PricingArchiveCheckout";
@@ -138,6 +141,9 @@ function Router() {
       <AdminRoute path="/admin/audit" component={AdminAudit} />
       <AdminRoute path="/admin/invite" component={AdminInvite} />
       <AdminRoute path="/admin/users" component={AdminUsers} />
+      <AdminRoute path="/admin/outreach" component={AdminOutreach} />
+      <AdminRoute path="/admin/outreach/letter" component={AdminOutreachLetter} />
+      <Route path="/claim/:token" component={ClaimLab} />
       <AdminRoute path="/certificate-template-preview" component={CertificateTemplatePreview} />
       <Route path="/lab-profile" component={LabProfile} />
       <ProtectedRoute path="/account" component={Account} />
