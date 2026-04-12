@@ -1069,7 +1069,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
               )}
             </div>
 
-            <div className="rounded-2xl border border-border/80 bg-background/50 p-6">
+            {auditPassed && <div className="rounded-2xl border border-border/80 bg-background/50 p-6">
               <h2 className="text-lg font-semibold text-foreground">Equipment inventory</h2>
               <p className="mt-2 text-sm text-muted-foreground">
                 Priority equipment is highlighted first, followed by the full list.
@@ -1100,7 +1100,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
                   {showAllEquipment ? "Show fewer" : `Show ${remainingEquipment.length - 6} more`}
                 </button>
               )}
-            </div>
+            </div>}
           </section>
 
           <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
