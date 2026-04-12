@@ -3040,6 +3040,20 @@ export function registerRoutes(app: Express) {
     res.json(includeHidden ? labs : labs.map(sanitizePublicLab));
   });
 
+  app.get("/api/labs/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ message: "Invalid lab id" });
+    try {
+      const lab = await labStore.findById(id);
+      if (!lab) return res.status(404).json({ message: "Lab not found" });
+      const canAccess = await canAccessLabFromPublicRoute(req, lab);
+      if (!canAccess) return res.status(404).json({ message: "Lab not found" });
+      res.json(sanitizePublicLab(lab));
+    } catch (err) {
+      res.status(500).json({ message: err instanceof Error ? err.message : "Unable to load lab" });
+    }
+  });
+
   app.get("/api/labs/:id/offers-profile", async (req, res) => {
     const id = Number(req.params.id);
     if (Number.isNaN(id)) {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Printer, Download, Loader2 } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
 
 function getParam(key: string): string {
   return new URLSearchParams(window.location.search).get(key) ?? "";
@@ -21,9 +22,14 @@ export default function AdminOutreachLetter() {
 
   useEffect(() => {
     if (!labId) { setLoading(false); return; }
-    fetch(`/api/labs/${labId}`)
-      .then(r => r.json())
-      .then(data => {
+    (async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token ?? "";
+        const res = await fetch(`/api/labs/${labId}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const data = await res.json();
         setLabName(data?.name ?? "");
         setLogoUrl(data?.logoUrl ?? data?.logo_url ?? null);
         setAddress({
@@ -34,9 +40,9 @@ export default function AdminOutreachLetter() {
           state: data?.state ?? null,
           country: data?.country ?? null,
         });
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      } catch {}
+      finally { setLoading(false); }
+    })();
   }, [labId]);
 
   const handlePrint = () => {
