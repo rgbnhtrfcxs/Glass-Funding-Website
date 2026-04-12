@@ -1,8 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import QRCode from "react-qr-code";
 import { Printer, Download, Loader2 } from "lucide-react";
-import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
 
 function getParam(key: string): string {
   return new URLSearchParams(window.location.search).get(key) ?? "";
@@ -10,15 +7,12 @@ function getParam(key: string): string {
 
 export default function AdminOutreachLetter() {
   const labId = getParam("lab");
-  const token = getParam("token");
   const claimUrl = getParam("claimUrl");
   const body = getParam("body");
 
   const [labName, setLabName] = useState<string>("");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [downloading, setDownloading] = useState(false);
-  const letterRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!labId) { setLoading(false); return; }
@@ -32,26 +26,18 @@ export default function AdminOutreachLetter() {
       .finally(() => setLoading(false));
   }, [labId]);
 
-  const handlePrint = () => window.print();
+  const handlePrint = () => {
+    const prev = document.title;
+    document.title = `Glass - ${labName || "Lab"}`;
+    window.print();
+    document.title = prev;
+  };
 
-  const handleDownload = async () => {
-    if (!letterRef.current) return;
-    setDownloading(true);
-    try {
-      const canvas = await html2canvas(letterRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-      });
-      const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const pdfW = pdf.internal.pageSize.getWidth();
-      const pdfH = (canvas.height * pdfW) / canvas.width;
-      pdf.addImage(imgData, "PNG", 0, 0, pdfW, pdfH);
-      pdf.save(`Glass - ${labName || "Lab"}.pdf`);
-    } finally {
-      setDownloading(false);
-    }
+  const handleDownloadPDF = () => {
+    const prev = document.title;
+    document.title = `Glass - ${labName || "Lab"}`;
+    window.print();
+    document.title = prev;
   };
 
   if (loading) {
@@ -63,6 +49,9 @@ export default function AdminOutreachLetter() {
   }
 
   const paragraphs = body.split("\n\n").filter(Boolean);
+  const qrSrc = claimUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(claimUrl)}&margin=10&color=000000&bgcolor=ffffff`
+    : null;
 
   return (
     <>
@@ -81,14 +70,11 @@ export default function AdminOutreachLetter() {
           </button>
           <button
             type="button"
-            onClick={handleDownload}
-            disabled={downloading}
-            className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition disabled:opacity-60"
+            onClick={handleDownloadPDF}
+            className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition"
           >
-            {downloading
-              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              : <Download className="h-3.5 w-3.5" />}
-            {downloading ? "Generating…" : "Download PDF"}
+            <Download className="h-3.5 w-3.5" />
+            Download PDF
           </button>
         </div>
       </div>
@@ -96,7 +82,6 @@ export default function AdminOutreachLetter() {
       {/* Letter — A4-ish, centred */}
       <div className="print:pt-0 pt-20 min-h-screen bg-gray-100 print:bg-white flex justify-center">
         <div
-          ref={letterRef}
           className="bg-white w-full max-w-2xl print:max-w-none mx-auto my-8 print:my-0 shadow-sm print:shadow-none px-16 py-14 print:px-12 print:py-12 space-y-10"
           style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
         >
@@ -129,8 +114,14 @@ export default function AdminOutreachLetter() {
           {/* QR code block */}
           <div className="flex flex-col items-center gap-3 pt-4">
             <div className="rounded-2xl border border-gray-200 p-4 inline-block">
-              {claimUrl ? (
-                <QRCode value={claimUrl} size={160} />
+              {qrSrc ? (
+                <img
+                  src={qrSrc}
+                  alt="Scan to claim lab"
+                  width={160}
+                  height={160}
+                  style={{ display: "block" }}
+                />
               ) : (
                 <div className="h-40 w-40 bg-gray-100 rounded-xl flex items-center justify-center text-xs text-gray-400">
                   No URL
@@ -150,7 +141,7 @@ export default function AdminOutreachLetter() {
       <style>{`
         @media print {
           body { background: white; }
-          @page { margin: 0; size: A4; }
+          @page { margin: 15mm; size: A4; }
         }
       `}</style>
     </>
