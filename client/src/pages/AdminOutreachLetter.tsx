@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { QRCodeSVG } from "qrcode.react";
+import QRCode from "react-qr-code";
 import { Printer, Download, Loader2 } from "lucide-react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
@@ -130,7 +130,7 @@ export default function AdminOutreachLetter() {
           <div className="flex flex-col items-center gap-3 pt-4">
             <div className="rounded-2xl border border-gray-200 p-4 inline-block">
               {claimUrl ? (
-                <QRCodeSVG value={claimUrl} size={160} />
+                <QRCode value={claimUrl} size={160} />
               ) : (
                 <div className="h-40 w-40 bg-gray-100 rounded-xl flex items-center justify-center text-xs text-gray-400">
                   No URL
