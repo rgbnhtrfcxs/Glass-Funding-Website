@@ -101,25 +101,20 @@ export default function AdminOutreachLetter() {
           style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
         >
           {/* Header */}
-          <div className="flex items-start justify-between">
-            <div>
-              {logoUrl && (
-                <img
-                  src={logoUrl}
-                  alt={labName}
-                  className="h-10 object-contain mb-1"
-                  crossOrigin="anonymous"
-                />
-              )}
-            </div>
-            <div className="text-right">
-              <p className="text-2xl font-bold tracking-tight" style={{ fontFamily: "system-ui, sans-serif" }}>
-                Glass
-              </p>
-              <p className="text-xs text-gray-400 mt-0.5" style={{ fontFamily: "system-ui, sans-serif" }}>
-                glass-connect.com
-              </p>
-            </div>
+          <div className="flex items-center justify-between">
+            <img
+              src="/GlassLogoLettering.png"
+              alt="Glass"
+              className="h-8 object-contain"
+            />
+            {logoUrl && (
+              <img
+                src={logoUrl}
+                alt={labName}
+                className="h-10 object-contain"
+                crossOrigin="anonymous"
+              />
+            )}
           </div>
 
           <hr className="border-gray-200" />
