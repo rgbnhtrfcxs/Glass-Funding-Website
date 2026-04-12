@@ -103,7 +103,7 @@ export default function AdminOutreachLetter() {
           {/* Header */}
           <div className="flex items-center justify-between">
             <img
-              src="/GlassLogoLettering.png"
+              src="/GlassLogo5.png"
               alt="Glass"
               className="h-8 object-contain"
             />
