@@ -44,8 +44,8 @@ export default function LabRoute({ path, component: Component }: { path: string;
           return null;
         }
         if (!allowed) {
-          const id = props?.params?.id;
-          window.location.replace(id ? `/labs/${id}` : "/");
+          const identifier = props?.params?.identifier ?? props?.params?.id;
+          window.location.replace(identifier ? `/labs/${identifier}` : "/");
           return null;
         }
         return <Component {...props} />;

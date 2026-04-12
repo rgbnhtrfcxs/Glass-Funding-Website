@@ -14,6 +14,7 @@ import {
   Star,
   Unlock,
   Users,
+  Building2,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useLabs } from "@/context/LabsContext";
@@ -23,12 +24,15 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { MapboxMap, type MapMarker } from "@/components/maps/MapboxMap";
 import { buildAddress, geocodeAddress, mapboxToken } from "@/lib/mapbox";
+import { getLabHref, labMatchesParam } from "@/lib/labPaths";
+import { getOrgHref } from "@/lib/orgPaths";
 import { nanoid } from "nanoid";
 import type { Team } from "@shared/teams";
+import type { Org } from "@shared/orgs";
 
 interface LabDetailsProps {
   params: {
-    id: string;
+    identifier: string;
   };
 }
 
@@ -53,7 +57,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const { labs, isLoading } = useLabs();
   const { user } = useAuth();
   const { hasAnalyticsConsent } = useConsent();
-  const lab = labs.find(item => item.id === Number(params.id));
+  const lab = labs.find(item => labMatchesParam(item, params.identifier));
   const labId = lab?.id;
   const halConfigured = Boolean(lab?.halStructureId || lab?.halPersonId);
   const primaryErcDiscipline = lab?.primaryErcDisciplineCode
@@ -231,8 +235,17 @@ export default function LabDetails({ params }: LabDetailsProps) {
     preferredContact: "email" as "email" | "video_call" | "in_person",
   });
   const [linkedTeams, setLinkedTeams] = useState<Team[]>([]);
+  const [linkedOrgs, setLinkedOrgs] = useState<Org[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
+  const [orgsLoading, setOrgsLoading] = useState(false);
   const [teamsError, setTeamsError] = useState<string | null>(null);
+  const [orgsError, setOrgsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !lab?.slug) return;
+    if (params.identifier === lab.slug || params.identifier !== String(lab.id)) return;
+    window.history.replaceState({}, "", `${getLabHref(lab)}${window.location.search}${window.location.hash}`);
+  }, [lab?.id, lab?.slug, params.identifier]);
 
   useEffect(() => {
     if (!user?.email) return;
@@ -262,6 +275,44 @@ export default function LabDetails({ params }: LabDetailsProps) {
       prev.targetLabs ? prev : { ...prev, targetLabs: lab.name }
     );
   }, [lab?.name]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadLinkedOrgs() {
+      if (!labId) {
+        if (active) {
+          setLinkedOrgs([]);
+          setOrgsError(null);
+          setOrgsLoading(false);
+        }
+        return;
+      }
+      setOrgsLoading(true);
+      try {
+        const response = await fetch(`/api/labs/${labId}/orgs`);
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload?.message || "Unable to load organizations");
+        }
+        const data = (await response.json()) as Org[];
+        if (active) {
+          setLinkedOrgs(data);
+          setOrgsError(null);
+        }
+      } catch (error) {
+        if (active) {
+          setLinkedOrgs([]);
+          setOrgsError(error instanceof Error ? error.message : "Unable to load organizations");
+        }
+      } finally {
+        if (active) setOrgsLoading(false);
+      }
+    }
+    loadLinkedOrgs();
+    return () => {
+      active = false;
+    };
+  }, [labId]);
 
   useEffect(() => {
     if (!labId) return;
@@ -1018,7 +1069,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
               )}
             </div>
 
-            <div className="rounded-2xl border border-border/80 bg-background/50 p-6">
+            {auditPassed && <div className="rounded-2xl border border-border/80 bg-background/50 p-6">
               <h2 className="text-lg font-semibold text-foreground">Equipment inventory</h2>
               <p className="mt-2 text-sm text-muted-foreground">
                 Priority equipment is highlighted first, followed by the full list.
@@ -1049,9 +1100,10 @@ export default function LabDetails({ params }: LabDetailsProps) {
                   {showAllEquipment ? "Show fewer" : `Show ${remainingEquipment.length - 6} more`}
                 </button>
               )}
-            </div>
+            </div>}
           </section>
 
+          {labTechniques.length > 0 && (
           <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
             <h2 className="text-lg font-semibold text-foreground">Techniques & expertise</h2>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -1066,11 +1118,9 @@ export default function LabDetails({ params }: LabDetailsProps) {
                   )}
                 </div>
               ))}
-              {labTechniques.length === 0 && (
-                <p className="text-sm text-muted-foreground">No techniques listed yet.</p>
-              )}
             </div>
           </section>
+          )}
 
           {lab.teamMembers.length > 0 && (
             <section className="rounded-2xl border border-border/80 bg-background/50 p-6">
@@ -1158,35 +1208,52 @@ export default function LabDetails({ params }: LabDetailsProps) {
             </section>
           )}
 
-          {partnerLogos.length > 0 && canShowPartnerLogos && (
-            <div className="mt-8 rounded-2xl border border-primary/40 bg-primary/5 p-4">
-              <h3 className="text-sm font-semibold text-foreground mb-3">Featured partners</h3>
-              <div className="flex gap-3 overflow-x-auto pb-2">
-                {partnerLogos.map((logo, idx) => {
-                  const card = (
-                    <div
-                      className="h-28 w-28 overflow-hidden rounded-xl border border-primary/40 bg-background flex-shrink-0"
-                      title={logo.name}
+          {(() => {
+            const orgPartners = linkedOrgs.filter(org => org.logoUrl);
+            const hasAnyPartners = partnerLogos.length > 0 || orgPartners.length > 0;
+            if (!hasAnyPartners || !canShowPartnerLogos) return null;
+            return (
+              <div className="mt-8 rounded-2xl border border-primary/40 bg-primary/5 p-4">
+                <h3 className="text-sm font-semibold text-foreground mb-3">Featured partners</h3>
+                <div className="flex gap-3 overflow-x-auto pb-2">
+                  {partnerLogos.map((logo, idx) => {
+                    const card = (
+                      <div
+                        className="h-28 w-28 overflow-hidden rounded-xl border border-primary/40 bg-background flex-shrink-0"
+                        title={logo.name}
+                      >
+                        <img src={logo.url} alt={logo.name} className="h-full w-full object-cover" />
+                      </div>
+                    );
+                    if (!logo.website) return <div key={`${logo.url}-${idx}`}>{card}</div>;
+                    return (
+                      <a
+                        key={`${logo.url}-${idx}`}
+                        href={logo.website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex"
+                      >
+                        {card}
+                      </a>
+                    );
+                  })}
+                  {orgPartners.map(org => (
+                    <Link
+                      key={`org-${org.id}`}
+                      href={getOrgHref(org)}
+                      className="inline-flex flex-shrink-0"
+                      title={org.name}
                     >
-                      <img src={logo.url} alt={logo.name} className="h-full w-full object-cover" />
-                    </div>
-                  );
-                  if (!logo.website) return <div key={`${logo.url}-${idx}`}>{card}</div>;
-                  return (
-                    <a
-                      key={`${logo.url}-${idx}`}
-                      href={logo.website}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex"
-                    >
-                      {card}
-                    </a>
-                  );
-                })}
+                      <div className="h-28 w-28 overflow-hidden rounded-xl border border-primary/40 bg-background">
+                        <img src={org.logoUrl!} alt={org.name} className="h-full w-full object-cover" />
+                      </div>
+                    </Link>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
         {showHalModal && (
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4 py-8">

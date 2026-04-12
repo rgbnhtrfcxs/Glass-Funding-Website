@@ -5,6 +5,7 @@ import { supabase } from "./supabaseClient.js";
 import { storage } from "./storage";
 import { labStore } from "./labs-store";
 import { teamStore } from "./teams-store";
+import { orgStore } from "./orgs-store";
 import { labRequestStore } from "./lab-requests-store";
 import { labCollaborationStore } from "./collaboration-store";
 import { sendMail } from "./mailer";
@@ -32,6 +33,7 @@ import {
 import { upsertLabOfferProfileSchema } from "@shared/labOffers";
 import { insertLabViewSchema } from "@shared/views";
 import { insertTeamSchema, updateTeamSchema } from "@shared/teams";
+import { insertOrgSchema, updateOrgSchema } from "@shared/orgs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1448,6 +1450,7 @@ const fetchProfileCapabilities = async (userId?: string | null) => {
         "can_manage_multiple_labs",
         "can_manage_teams",
         "can_manage_multiple_teams",
+        "can_manage_orgs",
         "can_post_news",
         "can_broker_requests",
         "can_receive_investor",
@@ -1463,6 +1466,7 @@ const fetchProfileCapabilities = async (userId?: string | null) => {
     canManageMultipleLabs: parseBoolean((data as any)?.can_manage_multiple_labs, false),
     canManageTeams: parseBoolean((data as any)?.can_manage_teams, false),
     canManageMultipleTeams: parseBoolean((data as any)?.can_manage_multiple_teams, false),
+    canManageOrgs: parseBoolean((data as any)?.can_manage_orgs, false),
     canPostNews: parseBoolean((data as any)?.can_post_news, false),
     canBrokerRequests: parseBoolean((data as any)?.can_broker_requests, false),
     canReceiveInvestor: parseBoolean((data as any)?.can_receive_investor, false),
@@ -1978,6 +1982,11 @@ const sanitizePublicTeam = (team: any) => ({
         email: null,
       }))
     : [],
+});
+
+const sanitizePublicOrg = (org: any) => ({
+  ...org,
+  ownerUserId: null,
 });
 
 export function registerRoutes(app: Express) {
@@ -3444,6 +3453,701 @@ export function registerRoutes(app: Express) {
   });
 
   // --------- Teams ----------
+  app.get("/api/orgs", async (req, res) => {
+    try {
+      const includeHiddenRequested = req.query.includeHidden === "true" || req.query.includeHidden === "1";
+      let includeHidden = false;
+      if (includeHiddenRequested) {
+        const userId = await getOptionalUserIdFromAuthHeader(req);
+        if (userId) {
+          const profile = await fetchProfileCapabilities(userId);
+          includeHidden = Boolean(profile?.isAdmin);
+        }
+      }
+      const orgs = includeHidden ? await orgStore.list() : await orgStore.listVisible();
+      res.json(includeHidden ? orgs : orgs.map(sanitizePublicOrg));
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load organizations" });
+    }
+  });
+
+  app.get("/api/orgs/:id", async (req, res) => {
+    const identifier = (req.params.id ?? "").trim();
+    try {
+      const numericId = Number(identifier);
+      const org = Number.isNaN(numericId)
+        ? await orgStore.findBySlug(identifier)
+        : (await orgStore.findBySlug(identifier)) ?? (await orgStore.findById(numericId));
+      if (!org) return res.status(404).json({ message: "Organization not found" });
+      if (org.isVisible === false) {
+        const userId = await getOptionalUserIdFromAuthHeader(req);
+        if (!userId) return res.status(404).json({ message: "Organization not found" });
+        const profile = await fetchProfileCapabilities(userId);
+        if (org.ownerUserId !== userId && !profile?.isAdmin) {
+          return res.status(404).json({ message: "Organization not found" });
+        }
+        return res.json(org);
+      }
+      res.json(sanitizePublicOrg(org));
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load organization" });
+    }
+  });
+
+  app.post("/api/orgs", authenticate, async (req, res) => {
+    try {
+      const ownerUserId = req.user?.id ?? null;
+      const profile = await fetchProfileCapabilities(req.user?.id);
+      if (!profile) {
+        return res.status(403).json({ message: "Profile permissions not found for this account." });
+      }
+      if (!profile.canManageOrgs && !profile.isAdmin) {
+        return res.status(403).json({ message: "This account is not allowed to manage organizations yet." });
+      }
+      const { count, error: countErr } = await supabase
+        .from("organizations")
+        .select("id", { count: "exact", head: true })
+        .eq("owner_user_id", ownerUserId);
+      if (countErr) throw countErr;
+      if ((count ?? 0) >= 1) {
+        return res
+          .status(403)
+          .json({ message: "This account can manage only one organization." });
+      }
+      const requestBody = req.body && typeof req.body === "object" ? { ...req.body } : {};
+      if (!profile.isAdmin) {
+        delete (requestBody as Record<string, unknown>).isVisible;
+      }
+      delete (requestBody as Record<string, unknown>).memberLabIds;
+      const payload = insertOrgSchema.parse({
+        ...requestBody,
+        ownerUserId,
+      });
+      const org = await orgStore.create(payload);
+      res.status(201).json(org);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const issue = error.issues[0];
+        return res.status(400).json({ message: issue?.message ?? "Invalid organization payload" });
+      }
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to create organization" });
+    }
+  });
+
+  app.put("/api/orgs/:id", authenticate, async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ message: "Invalid organization id" });
+    }
+    try {
+      const existing = await orgStore.findById(id);
+      if (!existing) return res.status(404).json({ message: "Organization not found" });
+      const profile = await fetchProfileCapabilities(req.user?.id);
+      if (!profile) {
+        return res.status(403).json({ message: "Profile permissions not found for this account." });
+      }
+      if (existing.ownerUserId !== req.user?.id && !profile.isAdmin) {
+        return res.status(403).json({ message: "Not authorized to update this organization" });
+      }
+      if (!profile.canManageOrgs && !profile.isAdmin) {
+        return res.status(403).json({ message: "This account is not allowed to manage organizations yet." });
+      }
+      const requestBody = req.body && typeof req.body === "object" ? { ...req.body } : {};
+      if (!profile.isAdmin) {
+        delete (requestBody as Record<string, unknown>).isVisible;
+      }
+      delete (requestBody as Record<string, unknown>).memberLabIds;
+      const updates = updateOrgSchema.parse(requestBody);
+      const updated = await orgStore.update(id, updates);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const issue = error.issues[0];
+        return res.status(400).json({ message: issue?.message ?? "Invalid organization update" });
+      }
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to update organization" });
+    }
+  });
+
+  app.delete("/api/orgs/:id", authenticate, async (req, res) => {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ message: "Invalid organization id" });
+    }
+    try {
+      const existing = await orgStore.findById(id);
+      if (!existing) return res.status(404).json({ message: "Organization not found" });
+      const profile = await fetchProfileCapabilities(req.user?.id);
+      if (!profile) {
+        return res.status(403).json({ message: "Profile permissions not found for this account." });
+      }
+      if (existing.ownerUserId !== req.user?.id && !profile.isAdmin) {
+        return res.status(403).json({ message: "Not authorized to delete this organization" });
+      }
+      if (!profile.canManageOrgs && !profile.isAdmin) {
+        return res.status(403).json({ message: "This account is not allowed to manage organizations yet." });
+      }
+      await orgStore.delete(id);
+      res.status(204).end();
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to delete organization" });
+    }
+  });
+
+  app.get("/api/my-orgs", authenticate, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const profile = await fetchProfileCapabilities(userId);
+      if (!profile?.canManageOrgs && !profile?.isAdmin) {
+        return res.status(403).json({ message: "This account is not enabled to manage organizations yet." });
+      }
+      const orgs = await orgStore.listByOwner(userId);
+      res.json(orgs);
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load organizations" });
+    }
+  });
+
+  app.get("/api/my-org/:id", authenticate, async (req, res) => {
+    try {
+      const orgId = Number(req.params.id);
+      if (Number.isNaN(orgId)) return res.status(400).json({ message: "Invalid organization id" });
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const profile = await fetchProfileCapabilities(userId);
+      if (!profile?.canManageOrgs && !profile?.isAdmin) {
+        return res.status(403).json({ message: "This account is not enabled to manage organizations yet." });
+      }
+      const org = await orgStore.findById(orgId);
+      if (!org || (org.ownerUserId !== userId && !profile.isAdmin)) {
+        return res.status(404).json({ message: "No organization linked to this account" });
+      }
+      res.json(org);
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load organization" });
+    }
+  });
+
+  app.put("/api/my-org/:id", authenticate, async (req, res) => {
+    try {
+      const orgId = Number(req.params.id);
+      if (Number.isNaN(orgId)) return res.status(400).json({ message: "Invalid organization id" });
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const profile = await fetchProfileCapabilities(userId);
+      if (!profile?.canManageOrgs && !profile?.isAdmin) {
+        return res.status(403).json({ message: "This account is not enabled to manage organizations yet." });
+      }
+      const org = await orgStore.findById(orgId);
+      if (!org || (org.ownerUserId !== userId && !profile.isAdmin)) {
+        return res.status(404).json({ message: "No organization linked to this account" });
+      }
+      const requestBody = req.body && typeof req.body === "object" ? { ...req.body } : {};
+      if (!profile.isAdmin) {
+        delete (requestBody as Record<string, unknown>).isVisible;
+      }
+      delete (requestBody as Record<string, unknown>).memberLabIds;
+      const updated = await orgStore.update(orgId, updateOrgSchema.parse(requestBody));
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const issue = error.issues[0];
+        return res.status(400).json({ message: issue?.message ?? "Invalid organization update" });
+      }
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to update organization" });
+    }
+  });
+
+  app.delete("/api/my-org/:id", authenticate, async (req, res) => {
+    try {
+      const orgId = Number(req.params.id);
+      if (Number.isNaN(orgId)) return res.status(400).json({ message: "Invalid organization id" });
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const profile = await fetchProfileCapabilities(userId);
+      const org = await orgStore.findById(orgId);
+      if (!org || (org.ownerUserId !== userId && !profile?.isAdmin)) {
+        return res.status(404).json({ message: "No organization linked to this account" });
+      }
+      await orgStore.delete(orgId);
+      res.status(204).end();
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to delete organization" });
+    }
+  });
+
+  app.get("/api/orgs/:id/member-requests", authenticate, async (req, res) => {
+    const orgId = Number(req.params.id);
+    if (Number.isNaN(orgId)) return res.status(400).json({ message: "Invalid organization id" });
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const profile = await fetchProfileCapabilities(userId);
+      const org = await orgStore.findById(orgId);
+      if (!org) return res.status(404).json({ message: "Organization not found" });
+      if (org.ownerUserId !== userId && !profile?.isAdmin) {
+        return res.status(403).json({ message: "Not authorized to view requests" });
+      }
+      if (!profile?.canManageOrgs && !profile?.isAdmin) {
+        return res.status(403).json({ message: "This account cannot manage organizations." });
+      }
+      const { data, error } = await supabase
+        .from("org_lab_link_requests")
+        .select("id, org_id, lab_id, requested_by_user_id, status, created_at, responded_at, labs (id, slug, name, lab_status, lab_location (city, country), lab_profile (logo_url))")
+        .eq("org_id", orgId)
+        .order("created_at", { ascending: false });
+      if (error) {
+        if (isMissingRelationError(error)) {
+          return res.status(500).json({ message: "Organization membership requests are not configured yet. Run server/sql/org_lab_link_requests.sql first." });
+        }
+        throw error;
+      }
+      const mapped = (data ?? []).map((row: any) => {
+        const lab = row?.labs ?? null;
+        const location = (Array.isArray(lab?.lab_location) ? lab.lab_location[0] : lab?.lab_location) ?? null;
+        const profileRow = (Array.isArray(lab?.lab_profile) ? lab.lab_profile[0] : lab?.lab_profile) ?? null;
+        return {
+          id: row.id,
+          orgId: row.org_id,
+          labId: row.lab_id,
+          requestedByUserId: row.requested_by_user_id ?? null,
+          status: row.status,
+          createdAt: row.created_at ?? null,
+          respondedAt: row.responded_at ?? null,
+          lab: lab
+            ? {
+                id: lab.id,
+                slug: lab.slug ?? null,
+                name: lab.name,
+                city: location?.city ?? null,
+                country: location?.country ?? null,
+                logoUrl: profileRow?.logo_url ?? null,
+                labStatus: normalizeLabStatus(lab.lab_status),
+              }
+            : null,
+        };
+      });
+      res.json(mapped);
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load organization requests" });
+    }
+  });
+
+  app.post("/api/orgs/:id/member-requests", authenticate, async (req, res) => {
+    const orgId = Number(req.params.id);
+    const labId = Number(req.body?.labId);
+    if (Number.isNaN(orgId) || Number.isNaN(labId)) {
+      return res.status(400).json({ message: "Invalid organization or lab id" });
+    }
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const profile = await fetchProfileCapabilities(userId);
+      const org = await orgStore.findById(orgId);
+      if (!org) return res.status(404).json({ message: "Organization not found" });
+      if (org.ownerUserId !== userId && !profile?.isAdmin) {
+        return res.status(403).json({ message: "Not authorized to request members" });
+      }
+      if (!profile?.canManageOrgs && !profile?.isAdmin) {
+        return res.status(403).json({ message: "This account cannot manage organizations." });
+      }
+      const lab = await labStore.findById(labId);
+      if (!lab) return res.status(404).json({ message: "Lab not found" });
+
+      const { data: existingLink, error: linkError } = await supabase
+        .from("lab_organization_links")
+        .select("lab_id")
+        .eq("lab_id", labId)
+        .eq("org_id", orgId)
+        .maybeSingle();
+      if (linkError) {
+        if (isMissingRelationError(linkError)) {
+          return res.status(500).json({ message: "Organization memberships are not configured yet. Run the lab_organization_links SQL first." });
+        }
+        throw linkError;
+      }
+      if (existingLink) {
+        return res.status(409).json({ message: "This lab is already a member of the organization" });
+      }
+
+      const { data: existingRequest, error: requestError } = await supabase
+        .from("org_lab_link_requests")
+        .select("id, status")
+        .eq("org_id", orgId)
+        .eq("lab_id", labId)
+        .order("created_at", { ascending: false })
+        .maybeSingle();
+      if (requestError) {
+        if (isMissingRelationError(requestError)) {
+          return res.status(500).json({ message: "Organization membership requests are not configured yet. Run server/sql/org_lab_link_requests.sql first." });
+        }
+        throw requestError;
+      }
+      if (existingRequest && existingRequest.status === "pending") {
+        return res.status(409).json({ message: "A pending request already exists for this lab" });
+      }
+
+      const { data: inserted, error } = await supabase
+        .from("org_lab_link_requests")
+        .insert({
+          org_id: orgId,
+          lab_id: labId,
+          requested_by_user_id: userId,
+          status: "pending",
+        })
+        .select("id")
+        .single();
+      if (error || !inserted) {
+        if (isMissingRelationError(error)) {
+          return res.status(500).json({ message: "Organization membership requests are not configured yet. Run server/sql/org_lab_link_requests.sql first." });
+        }
+        throw error ?? new Error("Unable to create request");
+      }
+      res.status(201).json({ id: inserted.id });
+
+      // Fire-and-forget: notify the lab owner about the new membership request
+      if (lab.ownerUserId) {
+        void (async () => {
+          try {
+            const { data: userRecord } = await supabase.auth.admin.getUserById(lab.ownerUserId!);
+            const labOwnerEmail = userRecord?.user?.email;
+            if (labOwnerEmail) {
+              await sendMail({
+                to: labOwnerEmail,
+                from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
+                subject: `${org.name} would like to add your lab as a member`,
+                text: [
+                  `Hi,`,
+                  ``,
+                  `${org.name} has sent a request to list "${lab.name}" as a member lab of their organization on GLASS.`,
+                  ``,
+                  `To review and respond to this request, sign in to your GLASS account and open your lab management page.`,
+                  ``,
+                  `If this request was sent in error you can simply decline it — no action is needed to ignore it.`,
+                ].join("\n"),
+                templateId: process.env.BREVO_TEMPLATE_ORG_MEMBER_REQUEST_LAB
+                  ? Number(process.env.BREVO_TEMPLATE_ORG_MEMBER_REQUEST_LAB)
+                  : undefined,
+                params: { orgName: org.name, labName: lab.name },
+              });
+            }
+          } catch (mailError) {
+            console.error("[org-member-request] Failed to send lab notification email:", mailError);
+          }
+        })();
+      }
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to create request" });
+    }
+  });
+
+  app.post("/api/orgs/:id/member-requests/:requestId/cancel", authenticate, async (req, res) => {
+    const orgId = Number(req.params.id);
+    const requestId = Number(req.params.requestId);
+    if (Number.isNaN(orgId) || Number.isNaN(requestId)) {
+      return res.status(400).json({ message: "Invalid request" });
+    }
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const profile = await fetchProfileCapabilities(userId);
+      const org = await orgStore.findById(orgId);
+      if (!org) return res.status(404).json({ message: "Organization not found" });
+      if (org.ownerUserId !== userId && !profile?.isAdmin) {
+        return res.status(403).json({ message: "Not authorized to cancel requests" });
+      }
+      const { data: requestRow, error: reqError } = await supabase
+        .from("org_lab_link_requests")
+        .select("id, status")
+        .eq("id", requestId)
+        .eq("org_id", orgId)
+        .maybeSingle();
+      if (reqError) throw reqError;
+      if (!requestRow) return res.status(404).json({ message: "Request not found" });
+      if (requestRow.status !== "pending") {
+        return res.status(409).json({ message: "Only pending requests can be cancelled" });
+      }
+      const { error } = await supabase
+        .from("org_lab_link_requests")
+        .update({ status: "cancelled", responded_at: new Date().toISOString() })
+        .eq("id", requestId);
+      if (error) throw error;
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to cancel request" });
+    }
+  });
+
+  app.delete("/api/orgs/:id/members/:labId", authenticate, async (req, res) => {
+    const orgId = Number(req.params.id);
+    const labId = Number(req.params.labId);
+    if (Number.isNaN(orgId) || Number.isNaN(labId)) {
+      return res.status(400).json({ message: "Invalid organization or lab id" });
+    }
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const profile = await fetchProfileCapabilities(userId);
+      const org = await orgStore.findById(orgId);
+      if (!org) return res.status(404).json({ message: "Organization not found" });
+      if (org.ownerUserId !== userId && !profile?.isAdmin) {
+        return res.status(403).json({ message: "Not authorized to remove members" });
+      }
+      const { error } = await supabase
+        .from("lab_organization_links")
+        .delete()
+        .eq("org_id", orgId)
+        .eq("lab_id", labId);
+      if (error) {
+        if (isMissingRelationError(error)) {
+          return res.status(500).json({ message: "Organization memberships are not configured yet. Run the lab_organization_links SQL first." });
+        }
+        throw error;
+      }
+      res.status(204).end();
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to remove member" });
+    }
+  });
+
+  app.get("/api/labs/:id/org-link-requests", authenticate, async (req, res) => {
+    const labId = Number(req.params.id);
+    if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const lab = await labStore.findById(labId);
+      if (!lab) return res.status(404).json({ message: "Lab not found" });
+      const profile = await fetchProfileCapabilities(userId);
+      if (lab.ownerUserId !== userId && !profile?.isAdmin) {
+        return res.status(403).json({ message: "Not authorized to view requests" });
+      }
+      if (!profile?.canCreateLab && !profile?.isAdmin) {
+        return res.status(403).json({ message: "This account cannot manage labs." });
+      }
+      const { data, error } = await supabase
+        .from("org_lab_link_requests")
+        .select("id, org_id, lab_id, requested_by_user_id, status, created_at, responded_at, organizations (id, slug, name, short_description, logo_url, org_type, is_visible)")
+        .eq("lab_id", labId)
+        .order("created_at", { ascending: false });
+      if (error) {
+        if (isMissingRelationError(error)) {
+          return res.status(500).json({ message: "Organization membership requests are not configured yet. Run server/sql/org_lab_link_requests.sql first." });
+        }
+        throw error;
+      }
+      const mapped = (data ?? []).map((row: any) => {
+        const orgRow = Array.isArray(row?.organizations) ? row.organizations[0] : row?.organizations;
+        return {
+          id: row.id,
+          orgId: row.org_id,
+          labId: row.lab_id,
+          requestedByUserId: row.requested_by_user_id ?? null,
+          status: row.status,
+          createdAt: row.created_at ?? null,
+          respondedAt: row.responded_at ?? null,
+          org: orgRow
+            ? {
+                id: orgRow.id,
+                slug: orgRow.slug,
+                name: orgRow.name,
+                shortDescription: orgRow.short_description ?? null,
+                logoUrl: orgRow.logo_url ?? null,
+                orgType: orgRow.org_type ?? "research_org",
+                isVisible: orgRow.is_visible !== false,
+              }
+            : null,
+        };
+      });
+      res.json(mapped);
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load organization requests" });
+    }
+  });
+
+  app.post("/api/labs/:id/org-link-requests/:requestId", authenticate, async (req, res) => {
+    const labId = Number(req.params.id);
+    const requestId = Number(req.params.requestId);
+    if (Number.isNaN(labId) || Number.isNaN(requestId)) {
+      return res.status(400).json({ message: "Invalid request" });
+    }
+    const status = (req.body?.status as string)?.toLowerCase();
+    if (status !== "approved" && status !== "declined") {
+      return res.status(400).json({ message: "Status must be approved or declined" });
+    }
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const lab = await labStore.findById(labId);
+      if (!lab) return res.status(404).json({ message: "Lab not found" });
+      const profile = await fetchProfileCapabilities(userId);
+      if (lab.ownerUserId !== userId && !profile?.isAdmin) {
+        return res.status(403).json({ message: "Not authorized to update requests" });
+      }
+      if (!profile?.canCreateLab && !profile?.isAdmin) {
+        return res.status(403).json({ message: "This account cannot manage labs." });
+      }
+      const { data: requestRow, error: reqError } = await supabase
+        .from("org_lab_link_requests")
+        .select("id, org_id, status")
+        .eq("id", requestId)
+        .eq("lab_id", labId)
+        .maybeSingle();
+      if (reqError) throw reqError;
+      if (!requestRow) return res.status(404).json({ message: "Request not found" });
+      if (requestRow.status !== "pending") {
+        return res.status(409).json({ message: "Request already resolved" });
+      }
+
+      const { error: updateError } = await supabase
+        .from("org_lab_link_requests")
+        .update({ status, responded_at: new Date().toISOString() })
+        .eq("id", requestId);
+      if (updateError) throw updateError;
+
+      if (status === "approved") {
+        const { error: linkError } = await supabase
+          .from("lab_organization_links")
+          .upsert({ lab_id: labId, org_id: requestRow.org_id }, { onConflict: "lab_id,org_id" });
+        if (linkError) {
+          if (isMissingRelationError(linkError)) {
+            return res.status(500).json({ message: "Organization memberships are not configured yet. Run the lab_organization_links SQL first." });
+          }
+          throw linkError;
+        }
+      }
+
+      res.json({ ok: true });
+
+      // Fire-and-forget: notify the org owner of the approve/decline outcome
+      void (async () => {
+        try {
+          const org = await orgStore.findById(requestRow.org_id);
+          if (!org?.ownerUserId) return;
+          const { data: userRecord } = await supabase.auth.admin.getUserById(org.ownerUserId);
+          const orgOwnerEmail = userRecord?.user?.email;
+          if (!orgOwnerEmail) return;
+          const isApproved = status === "approved";
+          await sendMail({
+            to: orgOwnerEmail,
+            from: process.env.MAIL_FROM_ADMIN || process.env.MAIL_FROM,
+            subject: isApproved
+              ? `${lab.name} has joined ${org.name}`
+              : `${lab.name} declined the membership request from ${org.name}`,
+            text: isApproved
+              ? [
+                  `Good news!`,
+                  ``,
+                  `"${lab.name}" has approved your request and is now listed as a member of ${org.name} on GLASS.`,
+                  ``,
+                  `You can view the updated member list on your organization's page.`,
+                ].join("\n")
+              : [
+                  `Hi,`,
+                  ``,
+                  `"${lab.name}" has declined the membership request from ${org.name}.`,
+                  ``,
+                  `You can send a new request at any time from your organization editor on GLASS.`,
+                ].join("\n"),
+            templateId: isApproved
+              ? process.env.BREVO_TEMPLATE_ORG_MEMBER_APPROVED_ORG
+                ? Number(process.env.BREVO_TEMPLATE_ORG_MEMBER_APPROVED_ORG)
+                : undefined
+              : process.env.BREVO_TEMPLATE_ORG_MEMBER_DECLINED_ORG
+                ? Number(process.env.BREVO_TEMPLATE_ORG_MEMBER_DECLINED_ORG)
+                : undefined,
+            params: { orgName: org.name, labName: lab.name },
+          });
+        } catch (mailError) {
+          console.error("[org-link-request] Failed to send org owner notification email:", mailError);
+        }
+      })();
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to update request" });
+    }
+  });
+
+  app.get("/api/labs/:id/org-memberships", authenticate, async (req, res) => {
+    const labId = Number(req.params.id);
+    if (Number.isNaN(labId)) return res.status(400).json({ message: "Invalid lab id" });
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const lab = await labStore.findById(labId);
+      if (!lab) return res.status(404).json({ message: "Lab not found" });
+      const profile = await fetchProfileCapabilities(userId);
+      if (lab.ownerUserId !== userId && !profile?.isAdmin) {
+        return res.status(403).json({ message: "Not authorized to view memberships" });
+      }
+      const { data, error } = await supabase
+        .from("lab_organization_links")
+        .select("org_id, organizations (id, slug, name, short_description, logo_url, org_type, is_visible)")
+        .eq("lab_id", labId);
+      if (error) {
+        if (isMissingRelationError(error)) return res.json([]);
+        throw error;
+      }
+      const mapped = (data ?? []).map((row: any) => {
+        const orgRow = Array.isArray(row?.organizations) ? row.organizations[0] : row?.organizations;
+        return orgRow
+          ? {
+              id: orgRow.id,
+              slug: orgRow.slug,
+              name: orgRow.name,
+              shortDescription: orgRow.short_description ?? null,
+              logoUrl: orgRow.logo_url ?? null,
+              orgType: orgRow.org_type ?? "research_org",
+              isVisible: orgRow.is_visible !== false,
+            }
+          : null;
+      }).filter(Boolean);
+      res.json(mapped);
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load memberships" });
+    }
+  });
+
+  app.delete("/api/labs/:id/org-memberships/:orgId", authenticate, async (req, res) => {
+    const labId = Number(req.params.id);
+    const orgId = Number(req.params.orgId);
+    if (Number.isNaN(labId) || Number.isNaN(orgId)) {
+      return res.status(400).json({ message: "Invalid lab or organization id" });
+    }
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(400).json({ message: "No user on request" });
+      const lab = await labStore.findById(labId);
+      if (!lab) return res.status(404).json({ message: "Lab not found" });
+      const profile = await fetchProfileCapabilities(userId);
+      if (lab.ownerUserId !== userId && !profile?.isAdmin) {
+        return res.status(403).json({ message: "Not authorized to update memberships" });
+      }
+      const { error } = await supabase
+        .from("lab_organization_links")
+        .delete()
+        .eq("lab_id", labId)
+        .eq("org_id", orgId);
+      if (error) throw error;
+      res.status(204).end();
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to leave organization" });
+    }
+  });
+
+  app.get("/api/labs/:id/orgs", async (req, res) => {
+    const labId = Number(req.params.id);
+    if (Number.isNaN(labId)) {
+      return res.status(400).json({ message: "Invalid lab id" });
+    }
+    try {
+      const orgs = await orgStore.listByLabId(labId);
+      res.json(orgs.filter(org => org.isVisible !== false).map(sanitizePublicOrg));
+    } catch (error) {
+      res.status(500).json({ message: error instanceof Error ? error.message : "Unable to load organizations" });
+    }
+  });
+
   app.get("/api/teams", async (req, res) => {
     const includeHiddenRequested = req.query.includeHidden === "true" || req.query.includeHidden === "1";
     let includeHidden = false;
@@ -4181,7 +4885,7 @@ app.get("/api/admin/users", authenticate, async (req, res) => {
     const [profilesResult, labsResult] = await Promise.all([
       supabase
         .from("profiles")
-        .select("user_id,email,name,subscription_tier,subscription_status,avatar_url,can_create_lab,can_manage_multiple_labs,can_manage_teams,can_manage_multiple_teams,can_post_news,can_broker_requests,can_receive_investor,is_admin")
+        .select("user_id,email,name,subscription_tier,subscription_status,avatar_url,can_create_lab,can_manage_multiple_labs,can_manage_teams,can_manage_multiple_teams,can_manage_orgs,can_post_news,can_broker_requests,can_receive_investor,is_admin")
         .order("name"),
       supabase
         .from("labs")
@@ -4209,6 +4913,7 @@ const ALLOWED_PROFILE_FLAGS = new Set([
   "can_manage_multiple_labs",
   "can_manage_teams",
   "can_manage_multiple_teams",
+  "can_manage_orgs",
   "can_post_news",
   "can_broker_requests",
   "can_receive_investor",
@@ -4593,6 +5298,9 @@ app.get("/api/profile", (_req, res) => {
       );
       await runCleanup("team link requests", async () =>
         supabase.from("lab_team_link_requests").delete().eq("requested_by_user_id", userId),
+      );
+      await runCleanup("org link requests", async () =>
+        supabase.from("org_lab_link_requests").delete().eq("requested_by_user_id", userId),
       );
       if (userEmail) {
         await runCleanup("lab contact requests", async () =>

@@ -10,7 +10,6 @@ export function Navbar() {
   const navItems = [
     { href: "/", label: "Home" },
     { href: "/labs", label: "Labs" },
-    { href: "/teams", label: "Teams" },
     { href: "/pricing", label: "Pricing" },
     { href: "/contact", label: "Contact" },
   ];

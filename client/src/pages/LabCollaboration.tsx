@@ -2,16 +2,17 @@ import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { useLabs } from "@/context/LabsContext";
 import { useAuth } from "@/context/AuthContext";
+import { getLabHref, labMatchesParam } from "@/lib/labPaths";
 // Note: this standalone page is currently unused in routing; kept for reference/future reuse.
 
 interface Props {
-  params: { id: string };
+  params: { identifier: string };
 }
 
 export default function LabCollaboration({ params }: Props) {
-  const labId = Number(params.id);
   const { labs } = useLabs();
-  const lab = labs.find(l => l.id === labId);
+  const lab = labs.find(l => labMatchesParam(l, params.identifier));
+  const labId = lab?.id ?? null;
   const { user } = useAuth();
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -23,6 +24,12 @@ export default function LabCollaboration({ params }: Props) {
   const [preferredContact, setPreferredContact] = useState<"email" | "video_call" | "in_person">("email");
   const [status, setStatus] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !lab?.slug) return;
+    if (params.identifier === lab.slug || params.identifier !== String(lab.id)) return;
+    window.history.replaceState({}, "", `${getLabHref(lab)}/collaborate${window.location.search}${window.location.hash}`);
+  }, [lab, params.identifier]);
 
   // Prefill targetLabs with the current lab name if empty
   useEffect(() => {
@@ -48,6 +55,10 @@ export default function LabCollaboration({ params }: Props) {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!labId) {
+      setStatus("Lab not found.");
+      return;
+    }
     setSubmitting(true);
     setStatus(null);
     try {
@@ -90,7 +101,7 @@ export default function LabCollaboration({ params }: Props) {
   return (
     <section className="bg-background min-h-screen">
       <div className="container mx-auto px-4 pb-20 max-w-2xl">
-        <Link href={`/labs/${labId}`} className="text-sm text-muted-foreground hover:text-primary">Back to lab</Link>
+        <Link href={lab ? getLabHref(lab) : "/labs"} className="text-sm text-muted-foreground hover:text-primary">Back to lab</Link>
         <h1 className="mt-4 text-2xl font-semibold text-foreground">Propose a collaboration</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {lab ? (

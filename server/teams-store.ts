@@ -32,6 +32,7 @@ const TEAM_SELECT = `
     lab_id,
     labs (
       id,
+      slug,
       name,
       lab_status,
       lab_location (city, country),
@@ -61,6 +62,7 @@ const TEAM_SELECT_BY_LAB = `
     lab_id,
     labs (
       id,
+      slug,
       name,
       lab_status,
       lab_location (city, country),
@@ -99,6 +101,7 @@ type TeamRow = {
     labs:
       | {
           id: number;
+          slug: string | null;
           name: string;
           lab_status: string | null;
           lab_location: Array<{ city: string | null; country: string | null }> | null;
@@ -106,6 +109,7 @@ type TeamRow = {
         }
       | Array<{
           id: number;
+          slug: string | null;
           name: string;
           lab_status: string | null;
           lab_location: Array<{ city: string | null; country: string | null }> | null;
@@ -146,6 +150,7 @@ function mapTeamRow(row: TeamRow): Team {
       const profile = pickOne(lab.lab_profile);
       acc.push({
         id: Number(lab.id),
+        slug: lab.slug ?? null,
         name: lab.name,
         city: location?.city ?? null,
         country: location?.country ?? null,

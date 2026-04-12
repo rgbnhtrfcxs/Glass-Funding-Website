@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { MapPin, ShieldCheck, Sparkles } from "lucide-react";
+import { getLabHref } from "@/lib/labPaths";
 
 type LabAsset = { url: string; name?: string };
 type LabItem = {
   id: number;
+  slug?: string | null;
   name: string;
   city?: string | null;
   country?: string | null;
@@ -121,7 +123,7 @@ export function FeaturedLabs({ title = "Featured labs", description, className =
                     Premium listing with GLASS support and top placement.
                   </p>
                   <Link
-                    href={`/labs/${lab.id}`}
+                    href={getLabHref(lab)}
                     className="inline-flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
                   >
                     View lab
