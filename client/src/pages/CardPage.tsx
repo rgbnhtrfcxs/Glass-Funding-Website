@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Mail, Phone, Check } from "lucide-react";
+import { createPortal } from "react-dom";
 
 interface CardPageProps {
   name: string;
@@ -110,11 +111,8 @@ export function CardPage({ name, title, email, phone, linkedIn }: CardPageProps)
                 onClick={copyEmail}
                 className="flex items-center gap-3 w-full px-4 py-3.5 bg-primary hover:bg-primary/90 active:bg-primary/80 text-primary-foreground rounded-2xl transition-colors font-medium text-sm shadow-sm"
               >
-                {copied
-                  ? <Check className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
-                  : <Mail className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
-                }
-                <span className="truncate">{copied ? "Copied!" : email}</span>
+                <Mail className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
+                <span className="truncate">{email}</span>
               </button>
 
               {/* Phone */}
@@ -134,6 +132,21 @@ export function CardPage({ name, title, email, phone, linkedIn }: CardPageProps)
           glass-connect.com
         </p>
       </div>
+
+      {/* Copied toast */}
+      {createPortal(
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-3 rounded-full bg-[#1a2238]/90 backdrop-blur-md text-white text-sm font-medium shadow-xl transition-all duration-300 ${
+            copied ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
+          }`}
+        >
+          <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" aria-hidden="true" />
+          Email copied to clipboard
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
