@@ -1,5 +1,7 @@
 import { Switch, Route, useLocation } from "wouter";
 import type { ReactNode } from "react";
+import CardUros from "@/pages/CardUros";
+import CardYu from "@/pages/CardYu";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
@@ -124,9 +126,30 @@ function PageTransition({ children }: { children: ReactNode }) {
   );
 }
 
+function AppShell({ children }: { children: ReactNode }) {
+  const [location] = useLocation();
+  const isCardPage = location.startsWith("/card/");
+
+  return (
+    <>
+      {!isCardPage && <Navbar />}
+      <ScrollToTop />
+      <AuthLinkBridge />
+      <div className={isCardPage ? "" : "pt-16"}>
+        <PageTransition>{children}</PageTransition>
+      </div>
+      {!isCardPage && <Footer />}
+      {!isCardPage && <ConsentBanner />}
+    </>
+  );
+}
+
 function Router() {
   return (
     <Switch>
+      {/* Business card pages — no nav/footer, not indexed */}
+      <Route path="/card/uros" component={CardUros} />
+      <Route path="/card/yu" component={CardYu} />
       <Route path="/labs" component={Labs} />
       <Route path="/labs/:id" component={LabDetails} />
       <Route path="/teams" component={Teams} />
@@ -193,16 +216,9 @@ function App() {
         <AuthProvider>
           <LabsProvider>
             <TeamsProvider>
-              <Navbar />
-              <ScrollToTop />
-              <AuthLinkBridge />
-              <div className="pt-16">
-                <PageTransition>
-                  <Router />
-                </PageTransition>
-              </div>
-              <Footer />
-              <ConsentBanner />
+              <AppShell>
+                <Router />
+              </AppShell>
               <Toaster />
             </TeamsProvider>
           </LabsProvider>
