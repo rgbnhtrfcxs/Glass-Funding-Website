@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Printer, Download, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -13,37 +13,20 @@ export default function AdminOutreachLetter() {
 
   const [labName, setLabName] = useState<string>("");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [address, setAddress] = useState<{
-    line1: string | null; line2: string | null;
-    city: string | null; postalCode: string | null;
-    state: string | null; country: string | null;
-  }>({ line1: null, line2: null, city: null, postalCode: null, state: null, country: null });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!labId) { setLoading(false); return; }
     (async () => {
       try {
-        const id = Number(labId);
-
-        const [labRes, locationRes] = await Promise.all([
-          supabase.from("labs").select("name, lab_profile(logo_url)").eq("id", id).single(),
-          supabase.from("lab_location").select("address_line1, address_line2, city, state, postal_code, country").eq("lab_id", id).maybeSingle(),
-        ]);
-
-        const lab = labRes.data as any;
-        const loc = locationRes.data as any;
-
+        const { data } = await supabase
+          .from("labs")
+          .select("name, lab_profile(logo_url)")
+          .eq("id", Number(labId))
+          .single();
+        const lab = data as any;
         setLabName(lab?.name ?? "");
         setLogoUrl(lab?.lab_profile?.[0]?.logo_url ?? lab?.lab_profile?.logo_url ?? null);
-        setAddress({
-          line1: loc?.address_line1 ?? null,
-          line2: loc?.address_line2 ?? null,
-          city: loc?.city ?? null,
-          postalCode: loc?.postal_code ?? null,
-          state: loc?.state ?? null,
-          country: loc?.country ?? null,
-        });
       } catch {}
       finally { setLoading(false); }
     })();
@@ -123,21 +106,6 @@ export default function AdminOutreachLetter() {
                 crossOrigin="anonymous"
               />
             )}
-          </div>
-
-          {/* Recipient address block — positioned for windowed envelope (DL, fold in thirds) */}
-          <div
-            className="text-gray-800 text-[14px] leading-snug"
-            style={{ fontFamily: "system-ui, sans-serif", minHeight: "5rem" }}
-          >
-            <p className="font-semibold">{labName}</p>
-            {address.line1 && <p>{address.line1}</p>}
-            {address.line2 && <p>{address.line2}</p>}
-            {(address.postalCode || address.city) && (
-              <p>{[address.postalCode, address.city].filter(Boolean).join(" ")}</p>
-            )}
-            {address.state && <p>{address.state}</p>}
-            {address.country && <p>{address.country}</p>}
           </div>
 
           <hr className="border-gray-200" />
