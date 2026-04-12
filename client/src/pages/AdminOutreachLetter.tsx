@@ -12,6 +12,11 @@ export default function AdminOutreachLetter() {
 
   const [labName, setLabName] = useState<string>("");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [address, setAddress] = useState<{
+    line1: string | null; line2: string | null;
+    city: string | null; postalCode: string | null;
+    state: string | null; country: string | null;
+  }>({ line1: null, line2: null, city: null, postalCode: null, state: null, country: null });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -21,6 +26,14 @@ export default function AdminOutreachLetter() {
       .then(data => {
         setLabName(data?.name ?? "");
         setLogoUrl(data?.logoUrl ?? data?.logo_url ?? null);
+        setAddress({
+          line1: data?.addressLine1 ?? null,
+          line2: data?.addressLine2 ?? null,
+          city: data?.city ?? null,
+          postalCode: data?.postalCode ?? null,
+          state: data?.state ?? null,
+          country: data?.country ?? null,
+        });
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -100,6 +113,21 @@ export default function AdminOutreachLetter() {
                 crossOrigin="anonymous"
               />
             )}
+          </div>
+
+          {/* Recipient address block — positioned for windowed envelope (DL, fold in thirds) */}
+          <div
+            className="text-gray-800 text-[14px] leading-snug"
+            style={{ fontFamily: "system-ui, sans-serif", minHeight: "5rem" }}
+          >
+            <p className="font-semibold">{labName}</p>
+            {address.line1 && <p>{address.line1}</p>}
+            {address.line2 && <p>{address.line2}</p>}
+            {(address.postalCode || address.city) && (
+              <p>{[address.postalCode, address.city].filter(Boolean).join(" ")}</p>
+            )}
+            {address.state && <p>{address.state}</p>}
+            {address.country && <p>{address.country}</p>}
           </div>
 
           <hr className="border-gray-200" />
