@@ -24,21 +24,25 @@ export default function AdminOutreachLetter() {
     if (!labId) { setLoading(false); return; }
     (async () => {
       try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const token = sessionData.session?.access_token ?? "";
-        const res = await fetch(`/api/labs/${labId}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        const data = await res.json();
-        setLabName(data?.name ?? "");
-        setLogoUrl(data?.logoUrl ?? data?.logo_url ?? null);
+        const id = Number(labId);
+
+        const [labRes, locationRes] = await Promise.all([
+          supabase.from("labs").select("name, lab_profile(logo_url)").eq("id", id).single(),
+          supabase.from("lab_location").select("address_line1, address_line2, city, state, postal_code, country").eq("lab_id", id).maybeSingle(),
+        ]);
+
+        const lab = labRes.data as any;
+        const loc = locationRes.data as any;
+
+        setLabName(lab?.name ?? "");
+        setLogoUrl(lab?.lab_profile?.[0]?.logo_url ?? lab?.lab_profile?.logo_url ?? null);
         setAddress({
-          line1: data?.addressLine1 ?? null,
-          line2: data?.addressLine2 ?? null,
-          city: data?.city ?? null,
-          postalCode: data?.postalCode ?? null,
-          state: data?.state ?? null,
-          country: data?.country ?? null,
+          line1: loc?.address_line1 ?? null,
+          line2: loc?.address_line2 ?? null,
+          city: loc?.city ?? null,
+          postalCode: loc?.postal_code ?? null,
+          state: loc?.state ?? null,
+          country: loc?.country ?? null,
         });
       } catch {}
       finally { setLoading(false); }
