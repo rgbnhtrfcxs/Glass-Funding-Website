@@ -128,12 +128,23 @@ export default function AdminOutreachLetter() {
                 </div>
               )}
             </div>
-            <p
-              className="text-xs text-gray-400 break-all max-w-xs text-center"
-              style={{ fontFamily: "system-ui, sans-serif" }}
-            >
-              {claimUrl}
-            </p>
+            {claimUrl && (
+              <p
+                className="text-sm text-gray-600 break-all max-w-sm text-center font-medium"
+                style={{ fontFamily: "system-ui, sans-serif" }}
+              >
+                {claimUrl}
+              </p>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div
+            className="flex items-center justify-between pt-6 border-t border-gray-100 text-xs text-gray-400"
+            style={{ fontFamily: "system-ui, sans-serif" }}
+          >
+            <span>glass-connect.com</span>
+            <span>Questions? <a href="mailto:contact@glass-connect.com" className="underline">contact@glass-connect.com</a></span>
           </div>
         </div>
       </div>

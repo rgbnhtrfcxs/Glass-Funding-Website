@@ -8,15 +8,15 @@ type LabStub = { id: number; name: string; owner_user_id: string | null };
 const DEFAULT_TEMPLATE = (labName: string) =>
   `Dear ${labName} team,
 
-We are reaching out on behalf of Glass — a platform connecting research labs with industry partners, startups, and investors looking to access cutting-edge infrastructure and expertise.
+We are reaching out on behalf of Glass-Connect — a platform connecting research labs with industry partners, startups, and investors looking to access cutting-edge infrastructure and expertise.
 
-We are building our network in partnership with BioValley and believe ${labName} would be a valuable addition to our directory. Listing your lab on Glass gives you visibility with a curated network of potential collaborators and clients — at no cost.
+We are building our network in partnership with BioValley and believe ${labName} would be a valuable addition to our directory. Listing your lab on Glass-Connect gives you visibility with a curated network of potential collaborators and clients — at no cost.
 
 To claim your lab profile and get started, simply scan the QR code below with your phone. It takes less than two minutes.
 
-We look forward to welcoming you to the Glass network.
+We look forward to welcoming you to the Glass-Connect network.
 
-The Glass Team`;
+The Glass-Connect Team`;
 
 async function getToken() {
   const { data } = await supabase.auth.getSession();
