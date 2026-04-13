@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  AlertTriangle,
   Camera,
   CheckCircle2,
   FileText,
@@ -42,6 +43,7 @@ export default function AdminAuditModal({ lab, onClose, onComplete, fetchAuthed 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showUnverifiedDialog, setShowUnverifiedDialog] = useState(false);
 
   const cameraRefs = useRef<Map<string, HTMLInputElement>>(new Map());
   const photoRefs  = useRef<Map<string, HTMLInputElement>>(new Map());
@@ -157,8 +159,33 @@ export default function AdminAuditModal({ lab, onClose, onComplete, fetchAuthed 
     patch(eq, { proofUrl: null, proofType: null, proofName: null });
 
   // ── Complete audit → open certificate modal ───────────────────────────────
-  const handleComplete = async () => {
-    await persist(items);
+  const unverifiedItems = items.filter(i => !i.verified);
+
+  const handleComplete = () => {
+    if (unverifiedItems.length > 0) {
+      setShowUnverifiedDialog(true);
+      return;
+    }
+    void finishAudit(items);
+  };
+
+  // Delete unverified items from the list then proceed
+  const handleDeleteUnverified = async () => {
+    const next = items.filter(i => i.verified);
+    setItems(next);
+    setShowUnverifiedDialog(false);
+    await persist(next);
+    onComplete();
+  };
+
+  // Proceed as-is, keeping unverified items
+  const handleOverride = async () => {
+    setShowUnverifiedDialog(false);
+    await finishAudit(items);
+  };
+
+  const finishAudit = async (current: EvidenceItem[]) => {
+    await persist(current);
     onComplete();
   };
 
@@ -359,7 +386,7 @@ export default function AdminAuditModal({ lab, onClose, onComplete, fetchAuthed 
 
         <button
           type="button"
-          onClick={() => void handleComplete()}
+          onClick={handleComplete}
           disabled={saving || loading}
           className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition disabled:opacity-60"
         >
@@ -371,6 +398,72 @@ export default function AdminAuditModal({ lab, onClose, onComplete, fetchAuthed 
           Complete audit — issue certificate
         </button>
       </div>
+
+      {/* ── Unverified items dialog ── */}
+      {showUnverifiedDialog && (
+        <div
+          className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={() => setShowUnverifiedDialog(false)}
+        >
+          <div
+            className="mx-4 w-full max-w-md rounded-3xl border border-border bg-background p-6 shadow-2xl space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  {unverifiedItems.length} item{unverifiedItems.length !== 1 ? "s" : ""} not verified
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  What would you like to do with the following unverified equipment?
+                </p>
+                <ul className="mt-2 space-y-0.5">
+                  {unverifiedItems.map(i => (
+                    <li key={i.equipment} className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0" />
+                      {i.equipment}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => void handleDeleteUnverified()}
+                disabled={saving}
+                className="inline-flex flex-col items-center gap-1 rounded-2xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-center transition hover:bg-destructive/10 disabled:opacity-50"
+              >
+                <span className="text-sm font-medium text-destructive">Delete</span>
+                <span className="text-xs text-muted-foreground leading-tight">
+                  Remove unverified items from this lab's equipment list
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleOverride()}
+                disabled={saving}
+                className="inline-flex flex-col items-center gap-1 rounded-2xl border border-border bg-muted/20 px-4 py-3 text-center transition hover:border-primary hover:bg-primary/5 disabled:opacity-50"
+              >
+                <span className="text-sm font-medium text-foreground">Override</span>
+                <span className="text-xs text-muted-foreground leading-tight">
+                  Proceed to certificate anyway, keeping items as-is
+                </span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowUnverifiedDialog(false)}
+              className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition"
+            >
+              Cancel — go back to audit
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
