@@ -1260,6 +1260,10 @@ export default function LabDetails({ params }: LabDetailsProps) {
                       href={getOrgHref(org)}
                       className="inline-flex flex-shrink-0"
                       title={org.name}
+                      onClick={() => {
+                        sessionStorage.setItem("org-return-href", window.location.pathname + window.location.search);
+                        sessionStorage.setItem("org-return-label", `Back to ${lab.name}`);
+                      }}
                     >
                       <div className="h-28 w-28 overflow-hidden rounded-xl border border-primary/40 bg-background flex items-center justify-center">
                         {org.logoUrl ? (

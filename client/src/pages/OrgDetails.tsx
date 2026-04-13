@@ -156,6 +156,19 @@ export default function OrgDetails({ params }: OrgDetailsProps) {
   const [mapMarkers, setMapMarkers] = useState<MapMarker[]>([]);
   const [mapLoading, setMapLoading] = useState(false);
   const geocodeCache = useRef(new Map<number, MapMarker>());
+  const [backHref, setBackHref] = useState("/orgs");
+  const [backLabel, setBackLabel] = useState("Back to organizations");
+
+  useEffect(() => {
+    const href = sessionStorage.getItem("org-return-href");
+    const label = sessionStorage.getItem("org-return-label");
+    if (href) {
+      setBackHref(href);
+      setBackLabel(label ?? "Back");
+      sessionStorage.removeItem("org-return-href");
+      sessionStorage.removeItem("org-return-label");
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -289,9 +302,9 @@ export default function OrgDetails({ params }: OrgDetailsProps) {
   return (
     <section className="bg-background min-h-screen">
       <div className="container mx-auto max-w-5xl px-4 py-12 lg:py-16">
-        <Link href="/orgs" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary">
+        <Link href={backHref} className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary">
           <ArrowLeft className="h-4 w-4" />
-          Back to organizations
+          {backLabel}
         </Link>
 
         {/* Header */}
