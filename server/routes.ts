@@ -5115,10 +5115,27 @@ app.post("/api/admin/invite", authenticate, async (req, res) => {
 
     const origin = resolvePublicSiteOrigin(req);
 
-    const { error } = await supabase.auth.admin.inviteUserByEmail(email, {
+    const { data: inviteData, error } = await supabase.auth.admin.inviteUserByEmail(email, {
       redirectTo: `${origin}/reset-password`,
     });
     if (error) throw error;
+
+    // Apply any permissions that were selected at invite time
+    const perms = req.body?.permissions;
+    if (perms && typeof perms === "object" && inviteData?.user?.id) {
+      const ALLOWED = [
+        "can_create_lab", "can_manage_multiple_labs", "can_manage_teams",
+        "can_manage_multiple_teams", "can_manage_orgs", "can_post_news",
+        "can_broker_requests", "can_receive_investor",
+      ];
+      const permFields: Record<string, boolean> = {};
+      for (const key of ALLOWED) {
+        if (perms[key] === true) permFields[key] = true;
+      }
+      if (Object.keys(permFields).length > 0) {
+        await supabase.from("profiles").update(permFields).eq("user_id", inviteData.user.id);
+      }
+    }
 
     res.json({ message: "Invite sent." });
   } catch (err) {
@@ -5126,18 +5143,88 @@ app.post("/api/admin/invite", authenticate, async (req, res) => {
   }
 });
 
-// Admin claim-invite — invite a user and immediately assign them a lab
+// Admin — list unassigned orgs
+app.get("/api/admin/all-orgs", authenticate, async (req, res) => {
+  try {
+    const capabilities = await fetchProfileCapabilities(req.user!.id);
+    if (!capabilities?.isAdmin) return res.status(403).json({ message: "Admin access required." });
+    const orgs = await orgStore.list();
+    res.json(orgs.filter(o => !o.ownerUserId).map(o => ({ id: o.id, name: o.name })));
+  } catch (err) {
+    res.status(500).json({ message: err instanceof Error ? err.message : "Failed to load organizations." });
+  }
+});
+
+// Admin — list unassigned teams
+app.get("/api/admin/all-teams", authenticate, async (req, res) => {
+  try {
+    const capabilities = await fetchProfileCapabilities(req.user!.id);
+    if (!capabilities?.isAdmin) return res.status(403).json({ message: "Admin access required." });
+    const teams = await teamStore.list();
+    res.json(teams.filter(t => !t.ownerUserId).map(t => ({ id: t.id, name: t.name })));
+  } catch (err) {
+    res.status(500).json({ message: err instanceof Error ? err.message : "Failed to load teams." });
+  }
+});
+
+// Admin claim-invite — invite a user and immediately assign them a lab, org, or team
 app.post("/api/admin/claim-invite", authenticate, async (req, res) => {
   try {
     const capabilities = await fetchProfileCapabilities(req.user!.id);
     if (!capabilities?.isAdmin) return res.status(403).json({ message: "Admin access required." });
 
     const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
-    const labId = req.body?.lab_id;
     if (!email || !email.includes("@")) return res.status(400).json({ message: "A valid email address is required." });
+
+    const claimType: string = req.body?.type ?? "lab";
+    const origin = resolvePublicSiteOrigin(req);
+
+    if (claimType === "org") {
+      const orgId = req.body?.org_id;
+      if (!orgId) return res.status(400).json({ message: "An organization is required." });
+      const org = await orgStore.findById(orgId);
+      if (!org) return res.status(404).json({ message: "Organization not found." });
+      if (org.ownerUserId) return res.status(409).json({ message: `${org.name} already has an owner.` });
+
+      const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(email, {
+        redirectTo: `${origin}/reset-password`,
+      });
+      if (inviteError) throw inviteError;
+      const userId = inviteData.user.id;
+
+      await Promise.all([
+        orgStore.update(orgId, { ownerUserId: userId } as any),
+        supabase.from("profiles").update({ can_manage_orgs: true }).eq("user_id", userId),
+      ]);
+
+      return res.json({ message: "Claim invite sent.", org: { id: org.id, name: org.name } });
+    }
+
+    if (claimType === "team") {
+      const teamId = req.body?.team_id;
+      if (!teamId) return res.status(400).json({ message: "A team is required." });
+      const team = await teamStore.findById(teamId);
+      if (!team) return res.status(404).json({ message: "Team not found." });
+      if (team.ownerUserId) return res.status(409).json({ message: `${team.name} already has an owner.` });
+
+      const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(email, {
+        redirectTo: `${origin}/reset-password`,
+      });
+      if (inviteError) throw inviteError;
+      const userId = inviteData.user.id;
+
+      await Promise.all([
+        teamStore.update(teamId, { ownerUserId: userId } as any),
+        supabase.from("profiles").update({ can_manage_teams: true }).eq("user_id", userId),
+      ]);
+
+      return res.json({ message: "Claim invite sent.", team: { id: team.id, name: team.name } });
+    }
+
+    // Default: lab
+    const labId = req.body?.lab_id;
     if (!labId) return res.status(400).json({ message: "A lab is required for a claim invite." });
 
-    // Verify the lab exists and is unowned
     const { data: lab, error: labError } = await supabase
       .from("labs")
       .select("id,name,owner_user_id")
@@ -5147,21 +5234,18 @@ app.post("/api/admin/claim-invite", authenticate, async (req, res) => {
     if (!lab) return res.status(404).json({ message: "Lab not found." });
     if (lab.owner_user_id) return res.status(409).json({ message: `${lab.name} already has an owner.` });
 
-    const origin = resolvePublicSiteOrigin(req);
     const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(email, {
       redirectTo: `${origin}/reset-password`,
     });
     if (inviteError) throw inviteError;
-
     const userId = inviteData.user.id;
 
-    // Assign the lab and grant can_create_lab immediately — account exists even before confirmation
     await Promise.all([
       supabase.from("labs").update({ owner_user_id: userId }).eq("id", labId),
       supabase.from("profiles").update({ can_create_lab: true }).eq("user_id", userId),
     ]);
 
-    res.json({ message: "Claim invite sent.", lab: { id: lab.id, name: lab.name } });
+    return res.json({ message: "Claim invite sent.", lab: { id: lab.id, name: lab.name } });
   } catch (err) {
     res.status(500).json({ message: err instanceof Error ? err.message : "Failed to send claim invite." });
   }

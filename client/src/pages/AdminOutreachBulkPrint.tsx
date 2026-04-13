@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, Printer } from "lucide-react";
+import { Download, Loader2, Printer } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 
 export const BULK_PRINT_SESSION_KEY = "outreach_bulk_print_letters";
@@ -59,6 +59,11 @@ export default function AdminOutreachBulkPrint() {
     window.print();
   };
 
+  const handleDownload = () => {
+    document.title = "Glass - Outreach Letters";
+    window.print();
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -82,14 +87,24 @@ export default function AdminOutreachBulkPrint() {
         <span className="text-sm font-medium text-foreground">
           {letters.length} outreach letter{letters.length !== 1 ? "s" : ""}
         </span>
-        <button
-          type="button"
-          onClick={handlePrint}
-          className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition"
-        >
-          <Printer className="h-3.5 w-3.5" />
-          Print all
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-1.5 text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary transition"
+          >
+            <Printer className="h-3.5 w-3.5" />
+            Print all
+          </button>
+          <button
+            type="button"
+            onClick={handleDownload}
+            className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Download PDF
+          </button>
+        </div>
       </div>
 
       {/* All letters stacked — each gets its own A4 page when printing */}
