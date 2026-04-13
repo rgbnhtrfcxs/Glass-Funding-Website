@@ -1074,38 +1074,48 @@ export default function LabDetails({ params }: LabDetailsProps) {
               )}
             </div>
 
-            {auditPassed && <div className="rounded-2xl border border-border/80 bg-background/50 p-6">
+            <div className="rounded-2xl border border-border/80 bg-background/50 p-6">
               <h2 className="text-lg font-semibold text-foreground">Equipment inventory</h2>
               <p className="mt-2 text-sm text-muted-foreground">
                 Priority equipment is highlighted first, followed by the full list.
               </p>
-              <div className="mt-4 grid gap-2 text-sm text-muted-foreground">
-                {primaryEquipment.map(item => (
-                  <div key={item} className="inline-flex items-center gap-2">
-                    <Beaker className="h-4 w-4 text-primary" />
-                    <span className="font-semibold text-primary">{item}</span>
+              <div className="relative mt-4">
+                <div className={auditPassed ? "" : "pointer-events-none select-none blur-sm grayscale opacity-50"}>
+                  <div className="grid gap-2 text-sm text-muted-foreground">
+                    {primaryEquipment.map(item => (
+                      <div key={item} className="inline-flex items-center gap-2">
+                        <Beaker className="h-4 w-4 text-primary" />
+                        <span className="font-semibold text-primary">{item}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <div className="mt-4 grid gap-2 text-sm text-muted-foreground">
-                {(showAllEquipment ? remainingEquipment : remainingEquipment.slice(0, 6)).map(item => (
-                  <div key={item} className="inline-flex items-center gap-2">
-                    <Beaker className="h-4 w-4 text-primary" />
-                    {item}
+                  <div className="mt-4 grid gap-2 text-sm text-muted-foreground">
+                    {(showAllEquipment ? remainingEquipment : remainingEquipment.slice(0, 6)).map(item => (
+                      <div key={item} className="inline-flex items-center gap-2">
+                        <Beaker className="h-4 w-4 text-primary" />
+                        {item}
+                      </div>
+                    ))}
+                    {labEquipment.length === 0 && <span>No equipment listed yet.</span>}
                   </div>
-                ))}
-                {labEquipment.length === 0 && <span>No equipment listed yet.</span>}
+                  {remainingEquipment.length > 6 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllEquipment(prev => !prev)}
+                      className="mt-4 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                    >
+                      {showAllEquipment ? "Show fewer" : `Show ${remainingEquipment.length - 6} more`}
+                    </button>
+                  )}
+                </div>
+                {!auditPassed && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                    <Lock className="h-5 w-5 text-muted-foreground" />
+                    <p className="text-sm font-medium text-muted-foreground">Awaiting verification</p>
+                  </div>
+                )}
               </div>
-              {remainingEquipment.length > 6 && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllEquipment(prev => !prev)}
-                  className="mt-4 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                >
-                  {showAllEquipment ? "Show fewer" : `Show ${remainingEquipment.length - 6} more`}
-                </button>
-              )}
-            </div>}
+            </div>
           </section>
 
           {labTechniques.length > 0 && (
