@@ -1221,10 +1221,10 @@ export default function LabDetails({ params }: LabDetailsProps) {
                   {shownPartnerLogos.map((logo, idx) => {
                     const card = (
                       <div
-                        className="h-28 w-28 overflow-hidden rounded-xl border border-primary/40 bg-background flex-shrink-0"
+                        className="h-28 w-28 overflow-hidden rounded-xl border border-primary/40 bg-background p-2 flex-shrink-0"
                         title={logo.name}
                       >
-                        <img src={logo.url} alt={logo.name} className="h-full w-full object-cover" />
+                        <img src={logo.url} alt={logo.name} className="h-full w-full object-contain" />
                       </div>
                     );
                     if (!logo.website) return <div key={`${logo.url}-${idx}`}>{card}</div>;
@@ -1247,8 +1247,8 @@ export default function LabDetails({ params }: LabDetailsProps) {
                       className="inline-flex flex-shrink-0"
                       title={org.name}
                     >
-                      <div className="h-28 w-28 overflow-hidden rounded-xl border border-primary/40 bg-background">
-                        <img src={org.logoUrl!} alt={org.name} className="h-full w-full object-cover" />
+                      <div className="h-28 w-28 overflow-hidden rounded-xl border border-primary/40 bg-background p-2">
+                        <img src={org.logoUrl!} alt={org.name} className="h-full w-full object-contain" />
                       </div>
                     </Link>
                   ))}

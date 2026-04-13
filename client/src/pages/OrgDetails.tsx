@@ -340,7 +340,7 @@ export default function OrgDetails({ params }: OrgDetailsProps) {
 
             <div className="h-28 w-28 flex-shrink-0 overflow-hidden rounded-3xl border border-border bg-background/80 shadow-sm">
               {org.logoUrl ? (
-                <img src={org.logoUrl} alt={org.name} className="h-full w-full object-cover" />
+                <img src={org.logoUrl} alt={org.name} className="h-full w-full object-contain" />
               ) : (
                 <div className="flex h-full w-full items-center justify-center">
                   <Building2 className="h-10 w-10 text-muted-foreground" />

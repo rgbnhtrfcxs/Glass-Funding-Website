@@ -115,7 +115,7 @@ export default function Orgs() {
                       <div className="flex items-center gap-3">
                         <span className="inline-flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-border bg-background">
                           {org.logoUrl ? (
-                            <img src={org.logoUrl} alt={org.name} className="h-full w-full object-cover" />
+                            <img src={org.logoUrl} alt={org.name} className="h-full w-full object-contain" />
                           ) : (
                             <Building2 className="h-6 w-6 text-muted-foreground" />
                           )}
