@@ -18,6 +18,7 @@ import {
   Trash2,
   Users,
   X,
+  ClipboardCheck,
   type LucideIcon,
 } from "lucide-react";
 import { useLabs } from "@/context/LabsContext";
@@ -36,6 +37,7 @@ import {
 } from "@shared/labs";
 import type { LabOfferTaxonomyOption } from "@shared/labOffers";
 import { LabOfferProfileEditor } from "@/components/labs/LabOfferProfileEditor";
+import AdminAuditModal from "@/pages/AdminAuditModal";
 import {
   defaultLabOfferProfileDraft,
   draftFromProfile,
@@ -325,6 +327,7 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
   const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>("all");
   const [verificationFilter, setVerificationFilter] = useState<VerificationFilter>("all");
   const [certificateLabId, setCertificateLabId] = useState<number | null>(null);
+  const [auditLab, setAuditLab] = useState<LabPartner | null>(null);
   const [certificateForm, setCertificateForm] = useState<CertificateFormState>(defaultCertificateFormState);
   const [certificateExisting, setCertificateExisting] = useState<LabVerificationCertificate | null>(null);
   const [certificateLoading, setCertificateLoading] = useState(false);
@@ -1515,6 +1518,19 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
           </div>
         )}
 
+        {auditLab && (
+          <AdminAuditModal
+            lab={auditLab}
+            fetchAuthed={fetchAuthed}
+            onClose={() => setAuditLab(null)}
+            onComplete={() => {
+              const lab = auditLab;
+              setAuditLab(null);
+              void openCertificateModal(lab);
+            }}
+          />
+        )}
+
         {certificateLabId && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 py-6"
@@ -1831,6 +1847,14 @@ export default function AdminLabs({ embedded = false }: { embedded?: boolean }) 
                     >
                       <Edit2 className="h-3.5 w-3.5" />
                       Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAuditLab(lab)}
+                      className="inline-flex items-center gap-2 rounded-full border border-amber-400/60 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 transition hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-amber-400"
+                    >
+                      <ClipboardCheck className="h-3.5 w-3.5" />
+                      Start audit
                     </button>
                     <button
                       type="button"

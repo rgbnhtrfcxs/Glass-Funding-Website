@@ -1,11 +1,46 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
-import { Send, CheckCircle2, AlertCircle, Loader2, Search } from "lucide-react";
+import { Send, CheckCircle2, AlertCircle, Loader2, Search, ChevronDown, ChevronUp } from "lucide-react";
 
 type EmailResult = { email: string; status: "pending" | "sending" | "ok" | "error"; error?: string };
 type LabStub = { id: number; name: string; owner_user_id: string | null };
+type SimpleStub = { id: number; name: string };
 type Tab = "standard" | "claim";
+type ClaimType = "lab" | "org" | "team";
+
+type Permissions = {
+  can_create_lab: boolean;
+  can_manage_multiple_labs: boolean;
+  can_manage_teams: boolean;
+  can_manage_multiple_teams: boolean;
+  can_manage_orgs: boolean;
+  can_post_news: boolean;
+  can_broker_requests: boolean;
+  can_receive_investor: boolean;
+};
+
+const PERM_LABELS: { key: keyof Permissions; label: string }[] = [
+  { key: "can_create_lab",            label: "Create lab" },
+  { key: "can_manage_multiple_labs",  label: "Manage multiple labs" },
+  { key: "can_manage_teams",          label: "Manage teams" },
+  { key: "can_manage_multiple_teams", label: "Manage multiple teams" },
+  { key: "can_manage_orgs",           label: "Manage organizations" },
+  { key: "can_post_news",             label: "Post news" },
+  { key: "can_broker_requests",       label: "Broker requests" },
+  { key: "can_receive_investor",      label: "Receive investor inquiries" },
+];
+
+const DEFAULT_PERMISSIONS: Permissions = {
+  can_create_lab: false,
+  can_manage_multiple_labs: false,
+  can_manage_teams: false,
+  can_manage_multiple_teams: false,
+  can_manage_orgs: false,
+  can_post_news: false,
+  can_broker_requests: false,
+  can_receive_investor: false,
+};
 
 function parseEmails(raw: string): string[] {
   return raw
@@ -31,15 +66,29 @@ async function apiFetch(url: string, body: object) {
   return json;
 }
 
+async function apiGet(url: string) {
+  const token = await getToken();
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.message || "Request failed.");
+  return json;
+}
+
 // ─── Standard bulk invite ─────────────────────────────────────────────────────
 
 function StandardInvite() {
   const [raw, setRaw] = useState("");
   const [results, setResults] = useState<EmailResult[]>([]);
   const [running, setRunning] = useState(false);
+  const [permissions, setPermissions] = useState<Permissions>({ ...DEFAULT_PERMISSIONS });
+  const [showPerms, setShowPerms] = useState(false);
 
   const parsed = parseEmails(raw);
   const hasInput = parsed.length > 0;
+  const activePermCount = Object.values(permissions).filter(Boolean).length;
+
+  const togglePerm = (key: keyof Permissions) =>
+    setPermissions(prev => ({ ...prev, [key]: !prev[key] }));
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -53,7 +102,7 @@ function StandardInvite() {
       const email = parsed[i];
       setResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: "sending" } : r));
       try {
-        await apiFetch("/api/admin/invite", { email });
+        await apiFetch("/api/admin/invite", { email, permissions });
         setResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: "ok" } : r));
       } catch (err: any) {
         setResults(prev => prev.map((r, idx) => idx === i ? { ...r, status: "error", error: err?.message } : r));
@@ -85,6 +134,41 @@ function StandardInvite() {
         {hasInput && !running && results.length === 0 && (
           <p className="text-xs text-muted-foreground">{parsed.length} email{parsed.length !== 1 ? "s" : ""} detected</p>
         )}
+
+        {/* Permissions section */}
+        <div className="rounded-xl border border-border bg-muted/20">
+          <button
+            type="button"
+            onClick={() => setShowPerms(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground transition"
+          >
+            <span>
+              Permissions
+              {activePermCount > 0 && (
+                <span className="ml-2 rounded-full bg-primary/15 text-primary px-2 py-0.5">
+                  {activePermCount} set
+                </span>
+              )}
+            </span>
+            {showPerms ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          </button>
+          {showPerms && (
+            <div className="px-4 pb-3 grid grid-cols-2 gap-x-4 gap-y-2">
+              {PERM_LABELS.map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={permissions[key]}
+                    onChange={() => togglePerm(key)}
+                    className="rounded border-border accent-primary"
+                  />
+                  <span className="text-xs text-foreground">{label}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
         <button
           type="submit"
           disabled={!hasInput || running}
@@ -131,7 +215,7 @@ function suggestLabsForEmail(email: string, labs: LabStub[]): LabStub[] {
   const atIdx = email.indexOf("@");
   if (atIdx === -1) return [];
   const domain = email.slice(atIdx + 1).toLowerCase();
-  const domainBase = domain.split(".").slice(0, -1).join(" "); // strip TLD
+  const domainBase = domain.split(".").slice(0, -1).join(" ");
   const tokens = domainBase
     .split(/[-._\s]+/)
     .map(t => t.trim())
@@ -148,55 +232,158 @@ function suggestLabsForEmail(email: string, labs: LabStub[]): LabStub[] {
     .slice(0, 3);
 }
 
+// ─── Reusable entity picker ───────────────────────────────────────────────────
+
+function EntityPicker({
+  items,
+  loading,
+  selected,
+  onSelect,
+  onClear,
+  placeholder,
+}: {
+  items: SimpleStub[];
+  loading: boolean;
+  selected: SimpleStub | null;
+  onSelect: (item: SimpleStub) => void;
+  onClear: () => void;
+  placeholder: string;
+}) {
+  const [search, setSearch] = useState("");
+  const filtered = items.filter(i => i.name.toLowerCase().includes(search.toLowerCase()));
+
+  if (selected) {
+    return (
+      <div className="flex items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/5 px-3 py-2">
+        <span className="text-sm text-foreground">{selected.name}</span>
+        <button type="button" onClick={onClear} className="text-xs text-muted-foreground hover:text-destructive transition">
+          Change
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-border bg-background p-2 space-y-1.5">
+      <div className="flex items-center gap-2 rounded-xl border border-border px-3">
+        <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder={placeholder}
+          className="w-full bg-transparent py-2 text-sm focus:outline-none"
+        />
+      </div>
+      {loading ? (
+        <p className="px-2 py-1 text-xs text-muted-foreground">Loading…</p>
+      ) : filtered.length === 0 ? (
+        <p className="px-2 py-1 text-xs text-muted-foreground">None found.</p>
+      ) : (
+        <ul className="max-h-48 overflow-y-auto space-y-0.5">
+          {filtered.map(item => (
+            <li key={item.id}>
+              <button
+                type="button"
+                onClick={() => onSelect(item)}
+                className="w-full rounded-xl px-3 py-2 text-sm text-left hover:bg-muted/50 transition"
+              >
+                {item.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // ─── Claim invite ─────────────────────────────────────────────────────────────
 
 function ClaimInvite() {
   const [email, setEmail] = useState("");
+  const [claimType, setClaimType] = useState<ClaimType>("lab");
+
+  // Labs
   const [labs, setLabs] = useState<LabStub[]>([]);
-  const [labSearch, setLabSearch] = useState("");
   const [selectedLab, setSelectedLab] = useState<LabStub | null>(null);
   const [labsLoading, setLabsLoading] = useState(true);
+
+  // Orgs
+  const [orgs, setOrgs] = useState<SimpleStub[]>([]);
+  const [selectedOrg, setSelectedOrg] = useState<SimpleStub | null>(null);
+  const [orgsLoading, setOrgsLoading] = useState(true);
+
+  // Teams
+  const [teams, setTeams] = useState<SimpleStub[]>([]);
+  const [selectedTeam, setSelectedTeam] = useState<SimpleStub | null>(null);
+  const [teamsLoading, setTeamsLoading] = useState(true);
+
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const suggestions = selectedLab ? [] : suggestLabsForEmail(email, labs);
+  const labSuggestions = selectedLab ? [] : suggestLabsForEmail(email, labs);
 
   useEffect(() => {
     (async () => {
       try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const token = sessionData.session?.access_token;
-        const res = await fetch("/api/admin/all-labs", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const json = await res.json();
+        const json = await apiGet("/api/admin/all-labs");
         setLabs((json as LabStub[]).filter(l => !l.owner_user_id));
-      } finally {
-        setLabsLoading(false);
-      }
+      } finally { setLabsLoading(false); }
+    })();
+    (async () => {
+      try {
+        const json = await apiGet("/api/admin/all-orgs");
+        setOrgs(json as SimpleStub[]);
+      } finally { setOrgsLoading(false); }
+    })();
+    (async () => {
+      try {
+        const json = await apiGet("/api/admin/all-teams");
+        setTeams(json as SimpleStub[]);
+      } finally { setTeamsLoading(false); }
     })();
   }, []);
 
-  const filteredLabs = labs.filter(l =>
-    l.name.toLowerCase().includes(labSearch.toLowerCase())
-  );
+  const selectedEntity = claimType === "lab" ? selectedLab : claimType === "org" ? selectedOrg : selectedTeam;
+  const isDisabled = !email.trim() || !selectedEntity || sending;
+
+  const handleTypeChange = (t: ClaimType) => {
+    setClaimType(t);
+    setResult(null);
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!email.trim() || !selectedLab) return;
+    if (isDisabled) return;
     setSending(true);
     setResult(null);
     try {
-      const json = await apiFetch("/api/admin/claim-invite", {
-        email: email.trim().toLowerCase(),
-        lab_id: selectedLab.id,
-      });
-      setResult({ type: "success", message: `Claim invite sent to ${email.trim().toLowerCase()} for ${json.lab?.name ?? selectedLab.name}.` });
+      const payload =
+        claimType === "lab"
+          ? { email: email.trim().toLowerCase(), type: "lab", lab_id: selectedLab!.id }
+          : claimType === "org"
+          ? { email: email.trim().toLowerCase(), type: "org", org_id: selectedOrg!.id }
+          : { email: email.trim().toLowerCase(), type: "team", team_id: selectedTeam!.id };
+
+      const json = await apiFetch("/api/admin/claim-invite", payload);
+
+      const entityName =
+        claimType === "lab" ? json.lab?.name ?? selectedLab!.name
+        : claimType === "org" ? json.org?.name ?? selectedOrg!.name
+        : json.team?.name ?? selectedTeam!.name;
+
+      const typeLabel = claimType === "lab" ? "lab" : claimType === "org" ? "organization" : "team";
+      setResult({ type: "success", message: `Claim invite sent to ${email.trim().toLowerCase()} for ${typeLabel} "${entityName}".` });
+
       setEmail("");
       setSelectedLab(null);
-      setLabSearch("");
-      // Remove from unassigned list since it's now reserved
-      setLabs(prev => prev.filter(l => l.id !== selectedLab.id));
+      setSelectedOrg(null);
+      setSelectedTeam(null);
+
+      // Remove claimed entity from the list
+      if (claimType === "lab") setLabs(prev => prev.filter(l => l.id !== selectedLab!.id));
+      if (claimType === "org") setOrgs(prev => prev.filter(o => o.id !== selectedOrg!.id));
+      if (claimType === "team") setTeams(prev => prev.filter(t => t.id !== selectedTeam!.id));
     } catch (err: any) {
       setResult({ type: "error", message: err?.message || "Failed to send." });
     } finally {
@@ -209,11 +396,33 @@ function ClaimInvite() {
       <div>
         <p className="text-sm font-medium text-foreground">Claim invite</p>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Invite a lab manager and pre-assign their lab. When they accept, the lab is automatically theirs.
+          Invite a user and pre-assign them a lab, org, or team. Ownership is granted when they accept.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-3">
+        {/* Claim type selector */}
+        <div>
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Claim type</label>
+          <div className="mt-1.5 flex gap-1 rounded-full border border-border bg-muted/30 p-1 w-fit">
+            {(["lab", "org", "team"] as ClaimType[]).map(t => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => handleTypeChange(t)}
+                className={`rounded-full px-4 py-1 text-xs font-medium transition ${
+                  claimType === t
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t === "lab" ? "Lab" : t === "org" ? "Organization" : "Team"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Email */}
         <div>
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Email</label>
           <input
@@ -226,74 +435,77 @@ function ClaimInvite() {
           />
         </div>
 
-        {suggestions.length > 0 && (
-          <div className="space-y-1.5">
-            <p className="text-xs text-muted-foreground">Suggested based on domain</p>
-            <div className="flex flex-wrap gap-2">
-              {suggestions.map(lab => (
-                <button
-                  key={lab.id}
-                  type="button"
-                  onClick={() => setSelectedLab(lab)}
-                  className="rounded-full border border-border bg-muted/40 px-3 py-1 text-xs text-foreground hover:border-primary hover:bg-primary/5 hover:text-primary transition"
-                >
-                  {lab.name}
-                </button>
-              ))}
+        {/* Lab picker */}
+        {claimType === "lab" && (
+          <div>
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Lab to assign</label>
+            {labSuggestions.length > 0 && !selectedLab && (
+              <div className="mt-1.5 mb-1.5 space-y-1">
+                <p className="text-xs text-muted-foreground">Suggested based on domain</p>
+                <div className="flex flex-wrap gap-2">
+                  {labSuggestions.map(lab => (
+                    <button
+                      key={lab.id}
+                      type="button"
+                      onClick={() => setSelectedLab(lab)}
+                      className="rounded-full border border-border bg-muted/40 px-3 py-1 text-xs text-foreground hover:border-primary hover:bg-primary/5 hover:text-primary transition"
+                    >
+                      {lab.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="mt-1.5">
+              <EntityPicker
+                items={labs}
+                loading={labsLoading}
+                selected={selectedLab}
+                onSelect={setSelectedLab}
+                onClear={() => setSelectedLab(null)}
+                placeholder="Search unassigned labs…"
+              />
             </div>
           </div>
         )}
 
-        <div>
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Lab to assign</label>
-          {selectedLab ? (
-            <div className="mt-1.5 flex items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/5 px-3 py-2">
-              <span className="text-sm text-foreground">{selectedLab.name}</span>
-              <button
-                type="button"
-                onClick={() => setSelectedLab(null)}
-                className="text-xs text-muted-foreground hover:text-destructive transition"
-              >
-                Change
-              </button>
+        {/* Org picker */}
+        {claimType === "org" && (
+          <div>
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Organization to assign</label>
+            <div className="mt-1.5">
+              <EntityPicker
+                items={orgs}
+                loading={orgsLoading}
+                selected={selectedOrg}
+                onSelect={setSelectedOrg}
+                onClear={() => setSelectedOrg(null)}
+                placeholder="Search unassigned organizations…"
+              />
             </div>
-          ) : (
-            <div className="mt-1.5 rounded-2xl border border-border bg-background p-2 space-y-1.5">
-              <div className="flex items-center gap-2 rounded-xl border border-border px-3">
-                <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <input
-                  value={labSearch}
-                  onChange={e => setLabSearch(e.target.value)}
-                  placeholder="Search unassigned labs…"
-                  className="w-full bg-transparent py-2 text-sm focus:outline-none"
-                />
-              </div>
-              {labsLoading ? (
-                <p className="px-2 py-1 text-xs text-muted-foreground">Loading labs…</p>
-              ) : filteredLabs.length === 0 ? (
-                <p className="px-2 py-1 text-xs text-muted-foreground">No unassigned labs found.</p>
-              ) : (
-                <ul className="max-h-48 overflow-y-auto space-y-0.5">
-                  {filteredLabs.map(lab => (
-                    <li key={lab.id}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedLab(lab)}
-                        className="w-full rounded-xl px-3 py-2 text-sm text-left hover:bg-muted/50 transition"
-                      >
-                        {lab.name}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+          </div>
+        )}
+
+        {/* Team picker */}
+        {claimType === "team" && (
+          <div>
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Team to assign</label>
+            <div className="mt-1.5">
+              <EntityPicker
+                items={teams}
+                loading={teamsLoading}
+                selected={selectedTeam}
+                onSelect={setSelectedTeam}
+                onClear={() => setSelectedTeam(null)}
+                placeholder="Search unassigned teams…"
+              />
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         <button
           type="submit"
-          disabled={!email.trim() || !selectedLab || sending}
+          disabled={isDisabled}
           className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition disabled:opacity-60"
         >
           {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}

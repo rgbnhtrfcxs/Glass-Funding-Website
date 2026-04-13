@@ -40,6 +40,7 @@ import AdminUsers from "@/pages/AdminUsers";
 import AdminOrgs from "@/pages/AdminOrgs";
 import AdminOutreach from "@/pages/AdminOutreach";
 import AdminOutreachLetter from "@/pages/AdminOutreachLetter";
+import AdminOutreachBulkPrint from "@/pages/AdminOutreachBulkPrint";
 import ClaimLab from "@/pages/ClaimLab";
 import Admin from "@/pages/Admin";
 import Pricing from "@/pages/Pricing";
@@ -175,6 +176,7 @@ function Router() {
       <AdminRoute path="/admin/users" component={AdminUsers} />
       <AdminRoute path="/admin/outreach" component={AdminOutreach} />
       <AdminRoute path="/admin/outreach/letter" component={AdminOutreachLetter} />
+      <AdminRoute path="/admin/outreach/bulk-print" component={AdminOutreachBulkPrint} />
       <Route path="/claim/:token" component={ClaimLab} />
       <AdminRoute path="/certificate-template-preview" component={CertificateTemplatePreview} />
       <Route path="/lab-profile" component={LabProfile} />
