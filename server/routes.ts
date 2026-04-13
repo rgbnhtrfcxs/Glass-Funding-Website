@@ -3452,6 +3452,78 @@ export function registerRoutes(app: Express) {
     }
   });
 
+// ── Audit evidence ────────────────────────────────────────────────────────────
+
+// GET  /api/admin/labs/:id/audit-evidence — load saved evidence for a lab
+app.get("/api/admin/labs/:id/audit-evidence", authenticate, async (req, res) => {
+  try {
+    const capabilities = await fetchProfileCapabilities(req.user!.id);
+    if (!capabilities?.isAdmin) return res.status(403).json({ message: "Admin access required." });
+
+    const labId = Number(req.params.id);
+    if (!labId) return res.status(400).json({ message: "Invalid lab ID." });
+
+    const { data, error } = await supabase
+      .from("lab_audit_evidence")
+      .select("equipment_name,verified,proof_url,proof_type,proof_name,notes")
+      .eq("lab_id", labId)
+      .order("id", { ascending: true });
+
+    if (error) {
+      // Table might not exist yet — return empty rather than 500 so the UI degrades gracefully
+      if ((error as any).code === "42P01") return res.json([]);
+      throw error;
+    }
+    res.json(data ?? []);
+  } catch (err) {
+    res.status(500).json({ message: errorToMessage(err, "Unable to load audit evidence") });
+  }
+});
+
+// POST /api/admin/labs/:id/audit-evidence — upsert the full evidence array for a lab
+app.post("/api/admin/labs/:id/audit-evidence", authenticate, async (req, res) => {
+  try {
+    const capabilities = await fetchProfileCapabilities(req.user!.id);
+    if (!capabilities?.isAdmin) return res.status(403).json({ message: "Admin access required." });
+
+    const labId = Number(req.params.id);
+    if (!labId) return res.status(400).json({ message: "Invalid lab ID." });
+
+    const items = req.body;
+    if (!Array.isArray(items)) return res.status(400).json({ message: "Expected an array of evidence items." });
+
+    const rows = items.map((item: any) => ({
+      lab_id:         labId,
+      equipment_name: String(item.equipment_name ?? ""),
+      verified:       Boolean(item.verified),
+      proof_url:      item.proof_url  ?? null,
+      proof_type:     item.proof_type ?? null,
+      proof_name:     item.proof_name ?? null,
+      notes:          item.notes      ?? null,
+      updated_at:     new Date().toISOString(),
+    })).filter(r => r.equipment_name.length > 0);
+
+    if (rows.length === 0) return res.json({ saved: 0 });
+
+    const { error } = await supabase
+      .from("lab_audit_evidence")
+      .upsert(rows, { onConflict: "lab_id,equipment_name" });
+
+    if (error) {
+      if ((error as any).code === "42P01") {
+        return res.status(500).json({
+          message: "Audit evidence table not found. Run server/sql/lab_audit_evidence.sql first.",
+        });
+      }
+      throw error;
+    }
+
+    res.json({ saved: rows.length });
+  } catch (err) {
+    res.status(500).json({ message: errorToMessage(err, "Unable to save audit evidence") });
+  }
+});
+
   // --------- Teams ----------
   app.get("/api/orgs", async (req, res) => {
     try {
