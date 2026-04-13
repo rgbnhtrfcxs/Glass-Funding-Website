@@ -60,10 +60,9 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [includeHidden, setIncludeHidden] = useState(false);
 
-  const fetchTeams = useCallback(async (withHidden = false) => {
+  const fetchTeams = useCallback(async (withHidden: boolean) => {
     setIsLoading(true);
     try {
-      setIncludeHidden(withHidden);
       const data = await request<Team[]>(withHidden ? "/api/teams?includeHidden=true" : "/api/teams");
       const filtered = withHidden ? data : data.filter(team => team.isVisible !== false);
       setTeams(filtered);
@@ -77,8 +76,8 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    fetchTeams(includeHidden);
-  }, [fetchTeams, includeHidden]);
+    fetchTeams(false);
+  }, [fetchTeams]);
 
   const addTeam = useCallback(async (team: TeamInput) => {
     const created = await request<Team>("/api/teams", {
@@ -113,6 +112,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(
     async (withHidden = includeHidden) => {
+      setIncludeHidden(withHidden);
       await fetchTeams(withHidden);
     },
     [fetchTeams, includeHidden],
