@@ -1524,19 +1524,19 @@ export default function LabDetails({ params }: LabDetailsProps) {
                 ‹
               </button>
               <div className="relative inline-flex items-center justify-center">
-                {/* Blurred low-res placeholder — already in browser cache from the gallery */}
+                {/* Tiny 60px thumbnail as placeholder — loads in milliseconds, strong blur hides any progressive rendering */}
                 <img
-                  src={getImageUrl(lab.photos[photoPreview.index].url, 1200)}
+                  src={getImageUrl(lab.photos[photoPreview.index].url, 60)}
                   alt=""
                   aria-hidden="true"
-                  className={`max-h-[75vh] w-auto max-w-full object-contain rounded-2xl blur-sm transition-opacity duration-300 ${photoLoaded ? "opacity-0" : "opacity-100"}`}
+                  className={`max-h-[75vh] w-auto max-w-full object-contain rounded-2xl blur-2xl scale-110 transition-opacity duration-300 ${photoLoaded ? "opacity-0" : "opacity-100"}`}
                 />
-                {/* Full-res image fades in once loaded */}
+                {/* Full-res image is hidden until fully downloaded, then fades in */}
                 <img
                   key={photoPreview.index}
                   src={getImageUrl(lab.photos[photoPreview.index].url, 2000)}
                   alt={`${lab.name} photo ${photoPreview.index + 1} - ${lab.photos[photoPreview.index].name}`}
-                  className={`absolute inset-0 h-full w-full max-h-[75vh] object-contain rounded-2xl transition-opacity duration-300 ${photoLoaded ? "opacity-100" : "opacity-0"}`}
+                  className={`absolute inset-0 h-full w-full max-h-[75vh] object-contain rounded-2xl transition-opacity duration-500 ${photoLoaded ? "opacity-100" : "opacity-0"}`}
                   onLoad={() => setPhotoLoaded(true)}
                 />
                 {/* Spinner shown while full-res is loading */}
