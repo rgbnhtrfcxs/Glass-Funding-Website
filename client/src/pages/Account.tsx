@@ -2238,6 +2238,22 @@ export default function Account() {
                     </button>
                   );
                 })}
+                {profile && canManageOrgs && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("manageOrg")}
+                    className={`w-full rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
+                      activeTab === "manageOrg"
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <UsersRound className="h-4 w-4" />
+                      Org
+                    </span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -2271,22 +2287,6 @@ export default function Account() {
                     <span className="flex items-center gap-2">
                       <ShieldCheck className="h-4 w-4" />
                       Legal assistance
-                    </span>
-                  </button>
-                )}
-                {profile && canManageOrgs && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("manageOrg")}
-                    className={`w-full rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
-                      activeTab === "manageOrg"
-                        ? "border-primary/40 bg-primary/10 text-primary"
-                        : "border-transparent text-muted-foreground hover:border-border hover:bg-muted/60 hover:text-foreground"
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <UsersRound className="h-4 w-4" />
-                      Manage org
                     </span>
                   </button>
                 )}
