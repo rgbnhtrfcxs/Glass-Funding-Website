@@ -127,6 +127,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [showTeamsModal, setShowTeamsModal] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<{ index: number } | null>(null);
+  const [photoLoaded, setPhotoLoaded] = useState(false);
   const [showClaimInfo, setShowClaimInfo] = useState(false);
   const [labMarker, setLabMarker] = useState<MapMarker | null>(null);
 
@@ -137,6 +138,10 @@ export default function LabDetails({ params }: LabDetailsProps) {
     if (target === "map") setBackLabel("Back to maps");
     window.sessionStorage.removeItem(key);
   }, []);
+
+  useEffect(() => {
+    setPhotoLoaded(false);
+  }, [photoPreview?.index]);
   const [labMapLoading, setLabMapLoading] = useState(false);
   const [labMapError, setLabMapError] = useState<string | null>(null);
   const [halItems, setHalItems] = useState<
@@ -1069,38 +1074,48 @@ export default function LabDetails({ params }: LabDetailsProps) {
               )}
             </div>
 
-            {auditPassed && <div className="rounded-2xl border border-border/80 bg-background/50 p-6">
+            <div className="rounded-2xl border border-border/80 bg-background/50 p-6">
               <h2 className="text-lg font-semibold text-foreground">Equipment inventory</h2>
               <p className="mt-2 text-sm text-muted-foreground">
                 Priority equipment is highlighted first, followed by the full list.
               </p>
-              <div className="mt-4 grid gap-2 text-sm text-muted-foreground">
-                {primaryEquipment.map(item => (
-                  <div key={item} className="inline-flex items-center gap-2">
-                    <Beaker className="h-4 w-4 text-primary" />
-                    <span className="font-semibold text-primary">{item}</span>
+              <div className={`relative mt-4${!auditPassed ? " min-h-[80px]" : ""}`}>
+                <div className={auditPassed ? "" : "pointer-events-none select-none blur-sm grayscale opacity-50"}>
+                  <div className="grid gap-2 text-sm text-muted-foreground">
+                    {primaryEquipment.map(item => (
+                      <div key={item} className="inline-flex items-center gap-2">
+                        <Beaker className="h-4 w-4 text-primary" />
+                        <span className="font-semibold text-primary">{item}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <div className="mt-4 grid gap-2 text-sm text-muted-foreground">
-                {(showAllEquipment ? remainingEquipment : remainingEquipment.slice(0, 6)).map(item => (
-                  <div key={item} className="inline-flex items-center gap-2">
-                    <Beaker className="h-4 w-4 text-primary" />
-                    {item}
+                  <div className="mt-4 grid gap-2 text-sm text-muted-foreground">
+                    {(showAllEquipment ? remainingEquipment : remainingEquipment.slice(0, 6)).map(item => (
+                      <div key={item} className="inline-flex items-center gap-2">
+                        <Beaker className="h-4 w-4 text-primary" />
+                        {item}
+                      </div>
+                    ))}
+                    {labEquipment.length === 0 && <span>No equipment listed yet.</span>}
                   </div>
-                ))}
-                {labEquipment.length === 0 && <span>No equipment listed yet.</span>}
+                  {remainingEquipment.length > 6 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllEquipment(prev => !prev)}
+                      className="mt-4 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                    >
+                      {showAllEquipment ? "Show fewer" : `Show ${remainingEquipment.length - 6} more`}
+                    </button>
+                  )}
+                </div>
+                {!auditPassed && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                    <Lock className="h-5 w-5 text-muted-foreground" />
+                    <p className="text-sm font-medium text-muted-foreground">Awaiting verification</p>
+                  </div>
+                )}
               </div>
-              {remainingEquipment.length > 6 && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllEquipment(prev => !prev)}
-                  className="mt-4 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
-                >
-                  {showAllEquipment ? "Show fewer" : `Show ${remainingEquipment.length - 6} more`}
-                </button>
-              )}
-            </div>}
+            </div>
           </section>
 
           {labTechniques.length > 0 && (
@@ -1209,10 +1224,9 @@ export default function LabDetails({ params }: LabDetailsProps) {
           )}
 
           {(() => {
-            const orgPartners = linkedOrgs.filter(org => org.logoUrl);
-            // Partner logos (manually uploaded) require verified/premier status; org membership logos always show
+            // Partner logos (manually uploaded) require verified/premier status; org membership always shows
             const shownPartnerLogos = canShowPartnerLogos ? partnerLogos : [];
-            const hasAnyPartners = shownPartnerLogos.length > 0 || orgPartners.length > 0;
+            const hasAnyPartners = shownPartnerLogos.length > 0 || linkedOrgs.length > 0;
             if (!hasAnyPartners) return null;
             return (
               <div className="mt-8 rounded-2xl border border-primary/40 bg-primary/5 p-4">
@@ -1240,15 +1254,23 @@ export default function LabDetails({ params }: LabDetailsProps) {
                       </a>
                     );
                   })}
-                  {orgPartners.map(org => (
+                  {linkedOrgs.map(org => (
                     <Link
                       key={`org-${org.id}`}
                       href={getOrgHref(org)}
                       className="inline-flex flex-shrink-0"
                       title={org.name}
+                      onClick={() => {
+                        sessionStorage.setItem("org-return-href", window.location.pathname + window.location.search);
+                        sessionStorage.setItem("org-return-label", `Back to ${lab.name}`);
+                      }}
                     >
-                      <div className="h-28 w-28 overflow-hidden rounded-xl border border-primary/40 bg-background">
-                        <img src={org.logoUrl!} alt={org.name} className="h-full w-full object-cover" />
+                      <div className="h-28 w-28 overflow-hidden rounded-xl border border-primary/40 bg-background flex items-center justify-center">
+                        {org.logoUrl ? (
+                          <img src={org.logoUrl} alt={org.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-xs text-center text-muted-foreground px-2 leading-tight">{org.name}</span>
+                        )}
                       </div>
                     </Link>
                   ))}
@@ -1510,16 +1532,34 @@ export default function LabDetails({ params }: LabDetailsProps) {
                     return { index: nextIndex };
                   })
                 }
-                className="absolute left-4 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-white/25 text-white/90 backdrop-blur transition hover:bg-white/40"
+                className="absolute left-4 top-1/2 -translate-y-1/2 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-white/25 text-white/90 backdrop-blur transition hover:bg-white/40"
                 aria-label="Previous photo"
               >
                 ‹
               </button>
-              <img
-                src={getImageUrl(lab.photos[photoPreview.index].url, 2000)}
-                alt={`${lab.name} photo ${photoPreview.index + 1} - ${lab.photos[photoPreview.index].name}`}
-                className="max-h-[75vh] w-auto max-w-full object-contain rounded-2xl"
-              />
+              <div className="relative inline-flex items-center justify-center">
+                {/* Tiny 60px thumbnail as placeholder — loads in milliseconds, strong blur hides any progressive rendering */}
+                <img
+                  src={getImageUrl(lab.photos[photoPreview.index].url, 60)}
+                  alt=""
+                  aria-hidden="true"
+                  className={`max-h-[75vh] w-auto max-w-full object-contain rounded-2xl blur-2xl scale-110 transition-opacity duration-300 ${photoLoaded ? "opacity-0" : "opacity-100"}`}
+                />
+                {/* Full-res image is hidden until fully downloaded, then fades in */}
+                <img
+                  key={photoPreview.index}
+                  src={getImageUrl(lab.photos[photoPreview.index].url, 2000)}
+                  alt={`${lab.name} photo ${photoPreview.index + 1} - ${lab.photos[photoPreview.index].name}`}
+                  className={`absolute inset-0 h-full w-full max-h-[75vh] object-contain rounded-2xl transition-opacity duration-500 ${photoLoaded ? "opacity-100" : "opacity-0"}`}
+                  onLoad={() => setPhotoLoaded(true)}
+                />
+                {/* Spinner shown while full-res is loading */}
+                {!photoLoaded && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white/90" />
+                  </div>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() =>
@@ -1530,7 +1570,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
                     return { index: nextIndex };
                   })
                 }
-                className="absolute right-4 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-white/25 text-white/90 backdrop-blur transition hover:bg-white/40"
+                className="absolute right-4 top-1/2 -translate-y-1/2 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-white/25 text-white/90 backdrop-blur transition hover:bg-white/40"
                 aria-label="Next photo"
               >
                 ›

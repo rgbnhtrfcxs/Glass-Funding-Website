@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
-import { Search, FileText, Loader2, Plus, X, ExternalLink, CheckSquare, Square } from "lucide-react";
+import { Search, FileText, Loader2, Plus, X, ExternalLink, CheckSquare, Square, Printer } from "lucide-react";
+import { BULK_PRINT_SESSION_KEY, type BulkLetterItem } from "./AdminOutreachBulkPrint";
 
 type LabStub = { id: number; name: string; owner_user_id: string | null };
 
@@ -203,6 +204,21 @@ export default function AdminOutreach() {
 
     setGeneratedLetters(results);
     setGenerating(false);
+  };
+
+  const handleBulkPrint = () => {
+    const successful = generatedLetters.filter(l => !l.error && l.url);
+    const items: BulkLetterItem[] = successful.map(l => {
+      const params = new URLSearchParams(l.url.split("?")[1] ?? "");
+      return {
+        labId: l.lab.id,
+        labName: l.lab.name,
+        claimUrl: params.get("claimUrl") ?? "",
+        body: params.get("body") ?? "",
+      };
+    });
+    sessionStorage.setItem(BULK_PRINT_SESSION_KEY, JSON.stringify(items));
+    window.open("/admin/outreach/bulk-print", "_blank");
   };
 
   const selectedCount = selectedIds.size;
@@ -422,7 +438,19 @@ export default function AdminOutreach() {
         {/* Generated letters results */}
         {generatedLetters.length > 0 && (
           <div className="space-y-3">
-            <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Generated letters</p>
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Generated letters</p>
+              {generatedLetters.some(l => !l.error && l.url) && (
+                <button
+                  type="button"
+                  onClick={handleBulkPrint}
+                  className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  Print all
+                </button>
+              )}
+            </div>
             <ul className="space-y-2">
               {generatedLetters.map(({ lab, url, error: err }) => (
                 <li key={lab.id} className={`flex items-center justify-between gap-4 rounded-2xl border px-4 py-3 ${
