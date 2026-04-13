@@ -127,6 +127,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [showTeamsModal, setShowTeamsModal] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<{ index: number } | null>(null);
+  const [photoLoaded, setPhotoLoaded] = useState(false);
   const [showClaimInfo, setShowClaimInfo] = useState(false);
   const [labMarker, setLabMarker] = useState<MapMarker | null>(null);
 
@@ -137,6 +138,10 @@ export default function LabDetails({ params }: LabDetailsProps) {
     if (target === "map") setBackLabel("Back to maps");
     window.sessionStorage.removeItem(key);
   }, []);
+
+  useEffect(() => {
+    setPhotoLoaded(false);
+  }, [photoPreview?.index]);
   const [labMapLoading, setLabMapLoading] = useState(false);
   const [labMapError, setLabMapError] = useState<string | null>(null);
   const [halItems, setHalItems] = useState<
@@ -1510,16 +1515,34 @@ export default function LabDetails({ params }: LabDetailsProps) {
                     return { index: nextIndex };
                   })
                 }
-                className="absolute left-4 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-white/25 text-white/90 backdrop-blur transition hover:bg-white/40"
+                className="absolute left-4 top-1/2 -translate-y-1/2 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-white/25 text-white/90 backdrop-blur transition hover:bg-white/40"
                 aria-label="Previous photo"
               >
                 ‹
               </button>
-              <img
-                src={getImageUrl(lab.photos[photoPreview.index].url, 2000)}
-                alt={`${lab.name} photo ${photoPreview.index + 1} - ${lab.photos[photoPreview.index].name}`}
-                className="max-h-[75vh] w-auto max-w-full object-contain rounded-2xl"
-              />
+              <div className="relative inline-flex items-center justify-center">
+                {/* Blurred low-res placeholder — already in browser cache from the gallery */}
+                <img
+                  src={getImageUrl(lab.photos[photoPreview.index].url, 1200)}
+                  alt=""
+                  aria-hidden="true"
+                  className={`max-h-[75vh] w-auto max-w-full object-contain rounded-2xl blur-sm transition-opacity duration-300 ${photoLoaded ? "opacity-0" : "opacity-100"}`}
+                />
+                {/* Full-res image fades in once loaded */}
+                <img
+                  key={photoPreview.index}
+                  src={getImageUrl(lab.photos[photoPreview.index].url, 2000)}
+                  alt={`${lab.name} photo ${photoPreview.index + 1} - ${lab.photos[photoPreview.index].name}`}
+                  className={`absolute inset-0 h-full w-full max-h-[75vh] object-contain rounded-2xl transition-opacity duration-300 ${photoLoaded ? "opacity-100" : "opacity-0"}`}
+                  onLoad={() => setPhotoLoaded(true)}
+                />
+                {/* Spinner shown while full-res is loading */}
+                {!photoLoaded && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white/90" />
+                  </div>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() =>
@@ -1530,7 +1553,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
                     return { index: nextIndex };
                   })
                 }
-                className="absolute right-4 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-white/25 text-white/90 backdrop-blur transition hover:bg-white/40"
+                className="absolute right-4 top-1/2 -translate-y-1/2 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-white/25 text-white/90 backdrop-blur transition hover:bg-white/40"
                 aria-label="Next photo"
               >
                 ›
