@@ -235,22 +235,11 @@ function App() {
           <LabsProvider>
             <TeamsProvider>
               <OrgsProvider>
-                <Navbar />
-                <ScrollToTop />
-                <AuthLinkBridge />
-                <div className="pt-16">
-                  <PageTransition>
-                    <Router />
-                  </PageTransition>
-                </div>
-                <Footer />
-                <ConsentBanner />
+                <AppShell>
+                  <Router />
+                </AppShell>
                 <Toaster />
               </OrgsProvider>
-              <AppShell>
-                <Router />
-              </AppShell>
-              <Toaster />
             </TeamsProvider>
           </LabsProvider>
         </AuthProvider>
