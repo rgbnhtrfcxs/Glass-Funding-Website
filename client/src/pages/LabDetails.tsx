@@ -1079,7 +1079,7 @@ export default function LabDetails({ params }: LabDetailsProps) {
               <p className="mt-2 text-sm text-muted-foreground">
                 Priority equipment is highlighted first, followed by the full list.
               </p>
-              <div className="relative mt-4">
+              <div className={`relative mt-4${!auditPassed ? " min-h-[80px]" : ""}`}>
                 <div className={auditPassed ? "" : "pointer-events-none select-none blur-sm grayscale opacity-50"}>
                   <div className="grid gap-2 text-sm text-muted-foreground">
                     {primaryEquipment.map(item => (
