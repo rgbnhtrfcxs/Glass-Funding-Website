@@ -58,10 +58,9 @@ export function OrgsProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [includeHidden, setIncludeHidden] = useState(false);
 
-  const fetchOrgs = useCallback(async (withHidden = false) => {
+  const fetchOrgs = useCallback(async (withHidden: boolean) => {
     setIsLoading(true);
     try {
-      setIncludeHidden(withHidden);
       const data = await request<Org[]>(withHidden ? "/api/orgs?includeHidden=true" : "/api/orgs");
       const filtered = withHidden ? data : data.filter(org => org.isVisible !== false);
       setOrgs(filtered);
@@ -74,8 +73,8 @@ export function OrgsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    fetchOrgs(includeHidden);
-  }, [fetchOrgs, includeHidden]);
+    fetchOrgs(false);
+  }, [fetchOrgs]);
 
   const addOrg = useCallback(async (org: OrgInput) => {
     const created = await request<Org>("/api/orgs", {
@@ -107,6 +106,7 @@ export function OrgsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refresh = useCallback(async (withHidden = includeHidden) => {
+    setIncludeHidden(withHidden);
     await fetchOrgs(withHidden);
   }, [fetchOrgs, includeHidden]);
 

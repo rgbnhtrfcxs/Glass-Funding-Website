@@ -1210,13 +1210,15 @@ export default function LabDetails({ params }: LabDetailsProps) {
 
           {(() => {
             const orgPartners = linkedOrgs.filter(org => org.logoUrl);
-            const hasAnyPartners = partnerLogos.length > 0 || orgPartners.length > 0;
-            if (!hasAnyPartners || !canShowPartnerLogos) return null;
+            // Partner logos (manually uploaded) require verified/premier status; org membership logos always show
+            const shownPartnerLogos = canShowPartnerLogos ? partnerLogos : [];
+            const hasAnyPartners = shownPartnerLogos.length > 0 || orgPartners.length > 0;
+            if (!hasAnyPartners) return null;
             return (
               <div className="mt-8 rounded-2xl border border-primary/40 bg-primary/5 p-4">
                 <h3 className="text-sm font-semibold text-foreground mb-3">Featured partners</h3>
                 <div className="flex gap-3 overflow-x-auto pb-2">
-                  {partnerLogos.map((logo, idx) => {
+                  {shownPartnerLogos.map((logo, idx) => {
                     const card = (
                       <div
                         className="h-28 w-28 overflow-hidden rounded-xl border border-primary/40 bg-background flex-shrink-0"

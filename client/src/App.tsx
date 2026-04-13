@@ -221,7 +221,7 @@ function Router() {
       <Route path="/maintenance" component={Maintenance} />
       <Route path="/terms" component={Terms} />
       <Route path="/privacy" component={Privacy} />
-      <Route path="/Waitlist"component={Waitlist1} />
+      <Route path="/Waitlist" component={Waitlist1} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -235,22 +235,11 @@ function App() {
           <LabsProvider>
             <TeamsProvider>
               <OrgsProvider>
-                <Navbar />
-                <ScrollToTop />
-                <AuthLinkBridge />
-                <div className="pt-16">
-                  <PageTransition>
-                    <Router />
-                  </PageTransition>
-                </div>
-                <Footer />
-                <ConsentBanner />
+                <AppShell>
+                  <Router />
+                </AppShell>
                 <Toaster />
               </OrgsProvider>
-              <AppShell>
-                <Router />
-              </AppShell>
-              <Toaster />
             </TeamsProvider>
           </LabsProvider>
         </AuthProvider>

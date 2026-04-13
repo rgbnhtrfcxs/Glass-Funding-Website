@@ -60,10 +60,9 @@ export function LabsProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [includeHidden, setIncludeHidden] = useState(false);
 
-  const fetchLabs = useCallback(async (withHidden = false) => {
+  const fetchLabs = useCallback(async (withHidden: boolean) => {
     setIsLoading(true);
     try {
-      setIncludeHidden(withHidden);
       const data = await request<LabPartner[]>(withHidden ? "/api/labs?includeHidden=true" : "/api/labs");
       const filtered = withHidden ? data : data.filter(lab => lab.isVisible !== false);
       setLabs(filtered);
@@ -77,8 +76,8 @@ export function LabsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    fetchLabs(includeHidden);
-  }, [fetchLabs, includeHidden]);
+    fetchLabs(false);
+  }, [fetchLabs]);
 
   const addLab = useCallback(async (lab: LabInput) => {
     const created = await request<LabPartner>("/api/labs", {
@@ -113,6 +112,7 @@ export function LabsProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(
     async (withHidden = includeHidden) => {
+      setIncludeHidden(withHidden);
       await fetchLabs(withHidden);
     },
     [fetchLabs, includeHidden],
