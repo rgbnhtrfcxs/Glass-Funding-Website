@@ -1214,10 +1214,9 @@ export default function LabDetails({ params }: LabDetailsProps) {
           )}
 
           {(() => {
-            const orgPartners = linkedOrgs.filter(org => org.logoUrl);
-            // Partner logos (manually uploaded) require verified/premier status; org membership logos always show
+            // Partner logos (manually uploaded) require verified/premier status; org membership always shows
             const shownPartnerLogos = canShowPartnerLogos ? partnerLogos : [];
-            const hasAnyPartners = shownPartnerLogos.length > 0 || orgPartners.length > 0;
+            const hasAnyPartners = shownPartnerLogos.length > 0 || linkedOrgs.length > 0;
             if (!hasAnyPartners) return null;
             return (
               <div className="mt-8 rounded-2xl border border-primary/40 bg-primary/5 p-4">
@@ -1245,15 +1244,19 @@ export default function LabDetails({ params }: LabDetailsProps) {
                       </a>
                     );
                   })}
-                  {orgPartners.map(org => (
+                  {linkedOrgs.map(org => (
                     <Link
                       key={`org-${org.id}`}
                       href={getOrgHref(org)}
                       className="inline-flex flex-shrink-0"
                       title={org.name}
                     >
-                      <div className="h-28 w-28 overflow-hidden rounded-xl border border-primary/40 bg-background">
-                        <img src={org.logoUrl!} alt={org.name} className="h-full w-full object-cover" />
+                      <div className="h-28 w-28 overflow-hidden rounded-xl border border-primary/40 bg-background flex items-center justify-center">
+                        {org.logoUrl ? (
+                          <img src={org.logoUrl} alt={org.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-xs text-center text-muted-foreground px-2 leading-tight">{org.name}</span>
+                        )}
                       </div>
                     </Link>
                   ))}
