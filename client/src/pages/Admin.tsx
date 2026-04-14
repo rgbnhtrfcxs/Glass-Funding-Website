@@ -19,6 +19,8 @@ const PAGES = [
     icon: Building2,
     title: "Organizations",
     description: "Control org visibility and review public org profiles.",
+  },
+  {
     href: "/admin/outreach",
     icon: FileText,
     title: "Outreach letters",
