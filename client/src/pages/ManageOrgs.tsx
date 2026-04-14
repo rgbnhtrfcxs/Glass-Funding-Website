@@ -127,8 +127,8 @@ export default function ManageOrgs({ embedded = false }: { embedded?: boolean })
                 className="flex h-full flex-col overflow-hidden rounded-3xl border border-border bg-card/80 shadow-sm"
               >
                 {existingOrg.logoUrl && (
-                  <div className="h-36 w-full overflow-hidden border-b border-border/60 bg-background/40">
-                    <img src={existingOrg.logoUrl} alt={existingOrg.name} className="h-full w-full object-cover" />
+                  <div className="h-36 w-full overflow-hidden border-b border-border/60 bg-background/40 p-4">
+                    <img src={existingOrg.logoUrl} alt={existingOrg.name} className="h-full w-full object-contain" />
                   </div>
                 )}
                 <div className="flex flex-1 flex-col gap-3 p-5">
