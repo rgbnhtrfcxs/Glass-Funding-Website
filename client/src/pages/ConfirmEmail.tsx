@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { supabase } from "@/lib/supabaseClient";
+import type { EmailOtpType } from "@supabase/supabase-js";
 
 export default function ConfirmEmail() {
   const [, navigate] = useLocation();
@@ -14,8 +15,48 @@ export default function ConfirmEmail() {
     const confirmEmail = async () => {
       if (typeof window === "undefined") return;
       try {
-        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(window.location.href);
-        if (exchangeError) throw exchangeError;
+        const url = new URL(window.location.href);
+        const searchParams = new URLSearchParams(url.search);
+        const hashParams = new URLSearchParams(url.hash.replace(/^#/, ""));
+        const tokenHash = searchParams.get("token_hash") || hashParams.get("token_hash");
+        const rawType = (searchParams.get("type") || hashParams.get("type") || "signup").toLowerCase();
+        const code = searchParams.get("code");
+        const accessToken = hashParams.get("access_token");
+        const refreshToken = hashParams.get("refresh_token");
+
+        if (tokenHash) {
+          const otpType = rawType as EmailOtpType;
+          const { error: verifyError } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: otpType,
+          });
+          if (verifyError) throw verifyError;
+        } else if (accessToken && refreshToken) {
+          const { data: existingData } = await supabase.auth.getSession();
+          if (!existingData.session) {
+            const { error: sessionError } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            if (sessionError) throw sessionError;
+          }
+        } else if (code) {
+          const { data: existingData } = await supabase.auth.getSession();
+          if (!existingData.session) {
+            const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(window.location.href);
+            if (exchangeError) {
+              const { data: retryData } = await supabase.auth.getSession();
+              if (!retryData.session) throw exchangeError;
+            }
+          }
+        } else {
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (!sessionData.session) {
+            throw new Error("Invalid or expired confirmation link.");
+          }
+        }
+
+        window.history.replaceState({}, document.title, "/confirm-email");
         if (!active) return;
         setStatus("success");
         redirectTimer = setTimeout(() => {
