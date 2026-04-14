@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type MouseEvent } from "react";
 import { Link, useLocation } from "wouter";
-import { ArrowLeft, Building2, Search, Sparkles, Users, X } from "lucide-react";
+import { ArrowLeft, Building2, ChevronRight, Search, Users, X } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/context/AuthContext";
+import { getLabHref } from "@/lib/labPaths";
 import type { Org, OrgLab, OrgLabLinkRequest, OrgTypeOption } from "@shared/orgs";
 import { orgTypeOptions } from "@shared/orgs";
 
 type LabOption = {
   id: number;
+  slug?: string | null;
   name: string;
   city?: string | null;
   country?: string | null;
@@ -17,28 +19,44 @@ type LabOption = {
 };
 
 type WizardStep = "Basics" | "Branding" | "Members";
+type LogoFrameColor = "white" | "black" | "custom";
+type OrgEditorForm = {
+  name: string;
+  slug: string;
+  shortDescription: string;
+  longDescription: string;
+  logoUrl: string;
+  website: string;
+  linkedin: string;
+  orgType: OrgTypeOption;
+};
+type OrgEditorDraft = {
+  form?: Partial<OrgEditorForm>;
+  activeStep?: WizardStep;
+  slugTouched?: boolean;
+  logoPreviewScale?: number;
+  logoPreviewOffsetX?: number;
+  logoPreviewOffsetY?: number;
+  logoFramePadding?: number;
+  logoFrameColor?: LogoFrameColor;
+  logoFrameCustomColor?: string;
+};
 
 const STEP_ORDER: WizardStep[] = ["Basics", "Branding", "Members"];
 const INPUT_CLASS =
   "w-full rounded-2xl border border-border bg-background px-4 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
-
-const STEP_COPY: Record<WizardStep, { eyebrow: string; title: string; description: string }> = {
-  Basics: {
-    eyebrow: "Step 1 of 3",
-    title: "Set the org identity",
-    description: "Name the organization, choose the slug, and add the core copy people will read first.",
-  },
-  Branding: {
-    eyebrow: "Step 2 of 3",
-    title: "Branding and links",
-    description: "Upload the logo, fine-tune the preview, and add the main links people should visit.",
-  },
-  Members: {
-    eyebrow: "Step 3 of 3",
-    title: "Choose member labs",
-    description: "Members are the labs attached to this organization. Pick the ones that should appear publicly.",
-  },
-};
+const EDITOR_PANEL_CLASS =
+  "rounded-3xl border border-white/55 bg-white/58 p-6 shadow-[0_18px_50px_rgba(15,23,42,0.10)] ring-1 ring-white/55 backdrop-blur-2xl";
+const EDITOR_SUBPANEL_CLASS =
+  "rounded-2xl border border-white/55 bg-white/45 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)] backdrop-blur-xl";
+const EDITOR_EMPTY_PANEL_CLASS =
+  "rounded-2xl border border-dashed border-white/60 bg-white/35 p-5 text-sm text-muted-foreground shadow-inner backdrop-blur-xl";
+const LAB_AVATAR_CLASS =
+  "inline-flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-background";
+const LAB_AVATAR_IMAGE_CLASS = "h-full w-full object-cover";
+const LAB_MEMBER_CARD_CLASS =
+  "flex h-[104px] items-center justify-between gap-4 rounded-2xl border border-border bg-background px-4 py-4 text-left shadow-sm transition hover:border-primary/30 hover:shadow-md";
+const LAB_NAME_CLASS = "line-clamp-3 text-[13px] font-medium leading-tight text-foreground";
 
 const normalizeUrl = (value: string | null | undefined) => {
   const trimmed = value?.trim() ?? "";
@@ -54,29 +72,68 @@ const slugify = (value: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
+const normalizeLabSearch = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const defaultOrgEditorForm: OrgEditorForm = {
+  name: "",
+  slug: "",
+  shortDescription: "",
+  longDescription: "",
+  logoUrl: "",
+  website: "",
+  linkedin: "",
+  orgType: "research_org",
+};
+
+const isWizardStep = (value: unknown): value is WizardStep =>
+  typeof value === "string" && STEP_ORDER.includes(value as WizardStep);
+
+const isLogoFrameColor = (value: unknown): value is LogoFrameColor =>
+  value === "white" || value === "black" || value === "custom";
+
+const asFiniteNumber = (value: unknown, fallback: number) =>
+  typeof value === "number" && Number.isFinite(value) ? value : fallback;
+
+const readOrgEditorDraft = (draftKey: string): OrgEditorDraft | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const rawDraft = window.localStorage.getItem(draftKey);
+    if (!rawDraft) return null;
+    const parsed = JSON.parse(rawDraft);
+    return parsed && typeof parsed === "object" ? (parsed as OrgEditorDraft) : null;
+  } catch {
+    return null;
+  }
+};
+
+const removeOrgEditorDraft = (draftKey: string) => {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(draftKey);
+};
+
 export default function OrgEditor({ params }: { params?: { id?: string } }) {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const hasId = params?.id !== undefined;
   const orgId = hasId ? Number(params?.id) : null;
   const isEditing = hasId;
+  const draftKey = useMemo(() => `org-editor-draft:${orgId ?? "new"}`, [orgId]);
 
-  const [form, setForm] = useState({
-    name: "",
-    slug: "",
-    shortDescription: "",
-    longDescription: "",
-    logoUrl: "",
-    website: "",
-    linkedin: "",
-    orgType: "research_org" as OrgTypeOption,
-  });
+  const [form, setForm] = useState<OrgEditorForm>(defaultOrgEditorForm);
   const [allLabs, setAllLabs] = useState<LabOption[]>([]);
   const [members, setMembers] = useState<OrgLab[]>([]);
   const [memberRequests, setMemberRequests] = useState<OrgLabLinkRequest[]>([]);
   const [labSearch, setLabSearch] = useState("");
+  const [memberSearchOpen, setMemberSearchOpen] = useState(false);
+  const [memberSearch, setMemberSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState<WizardStep>("Basics");
@@ -90,15 +147,71 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
   const [logoPreviewOffsetX, setLogoPreviewOffsetX] = useState(0);
   const [logoPreviewOffsetY, setLogoPreviewOffsetY] = useState(0);
   const [logoFramePadding, setLogoFramePadding] = useState(6);
-  const [logoFrameColor, setLogoFrameColor] = useState<"white" | "black" | "custom">("white");
+  const [logoFrameColor, setLogoFrameColor] = useState<LogoFrameColor>("white");
   const [logoFrameCustomColor, setLogoFrameCustomColor] = useState("#dbeafe");
+  const draftHydratedRef = useRef(false);
+  const skipNextDraftWriteRef = useRef(false);
   const logoEditorFrameRef = useRef<HTMLDivElement | null>(null);
   const logoDragRef = useRef<{ x: number; y: number; originX: number; originY: number; width: number; height: number } | null>(null);
+
+  const hydrateDraftFromStorage = () => {
+    const draft = readOrgEditorDraft(draftKey);
+    if (!draft) return;
+
+    if (draft.form) {
+      setForm(prev => {
+        const next = { ...prev };
+        const stringFields: Array<keyof Omit<OrgEditorForm, "orgType">> = [
+          "name",
+          "slug",
+          "shortDescription",
+          "longDescription",
+          "logoUrl",
+          "website",
+          "linkedin",
+        ];
+
+        stringFields.forEach(field => {
+          const value = draft.form?.[field];
+          if (typeof value === "string") {
+            next[field] = value;
+          }
+        });
+
+        if (
+          typeof draft.form?.orgType === "string" &&
+          (orgTypeOptions as readonly string[]).includes(draft.form.orgType)
+        ) {
+          next.orgType = draft.form.orgType;
+        }
+
+        return next;
+      });
+    }
+
+    if (isWizardStep(draft.activeStep)) {
+      setActiveStep(draft.activeStep);
+    }
+    if (typeof draft.slugTouched === "boolean") {
+      setSlugTouched(draft.slugTouched);
+    }
+    setLogoPreviewScale(asFiniteNumber(draft.logoPreviewScale, 1));
+    setLogoPreviewOffsetX(asFiniteNumber(draft.logoPreviewOffsetX, 0));
+    setLogoPreviewOffsetY(asFiniteNumber(draft.logoPreviewOffsetY, 0));
+    setLogoFramePadding(asFiniteNumber(draft.logoFramePadding, 6));
+    if (isLogoFrameColor(draft.logoFrameColor)) {
+      setLogoFrameColor(draft.logoFrameColor);
+    }
+    if (typeof draft.logoFrameCustomColor === "string") {
+      setLogoFrameCustomColor(draft.logoFrameCustomColor);
+    }
+  };
 
   useEffect(() => {
     let active = true;
     void (async () => {
       setLoading(true);
+      draftHydratedRef.current = false;
       try {
         const { data: session } = await supabase.auth.getSession();
         const token = session.session?.access_token;
@@ -127,6 +240,7 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
         if (!active) return;
         setAllLabs((labsData ?? []).map(lab => ({
           ...lab,
+          slug: (lab as any).slug ?? null,
           logoUrl: (lab as any).logoUrl ?? (lab as any).logo_url ?? null,
           labStatus: (lab as any).labStatus ?? (lab as any).lab_status ?? null,
           isVisible: (lab as any).isVisible ?? (lab as any).is_visible ?? true,
@@ -151,6 +265,10 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
           });
           setMembers(data.members ?? []);
           setSlugTouched(true);
+        } else {
+          setForm(defaultOrgEditorForm);
+          setMembers([]);
+          setSlugTouched(false);
         }
         if (requestsRes) {
           if (!requestsRes.ok) {
@@ -160,11 +278,16 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
           const requestData = (await requestsRes.json()) as OrgLabLinkRequest[];
           if (!active) return;
           setMemberRequests(requestData ?? []);
+        } else {
+          setMemberRequests([]);
         }
 
+        hydrateDraftFromStorage();
+        draftHydratedRef.current = true;
         setError(null);
       } catch (err) {
         if (!active) return;
+        draftHydratedRef.current = true;
         setError(err instanceof Error ? err.message : "Unable to load organization editor");
       } finally {
         if (active) setLoading(false);
@@ -174,31 +297,75 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
     return () => {
       active = false;
     };
-  }, [isEditing, orgId]);
+  }, [draftKey, isEditing, orgId]);
 
   useEffect(() => {
     if (slugTouched) return;
     setForm(prev => ({ ...prev, slug: slugify(prev.name) }));
   }, [form.name, slugTouched]);
 
+  useEffect(() => {
+    if (loading || !draftHydratedRef.current || typeof window === "undefined") return;
+    if (skipNextDraftWriteRef.current) {
+      skipNextDraftWriteRef.current = false;
+      return;
+    }
+
+    const draft: OrgEditorDraft = {
+      form,
+      activeStep,
+      slugTouched,
+      logoPreviewScale,
+      logoPreviewOffsetX,
+      logoPreviewOffsetY,
+      logoFramePadding,
+      logoFrameColor,
+      logoFrameCustomColor,
+    };
+
+    window.localStorage.setItem(draftKey, JSON.stringify(draft));
+  }, [
+    activeStep,
+    draftKey,
+    form,
+    loading,
+    logoFrameColor,
+    logoFrameCustomColor,
+    logoFramePadding,
+    logoPreviewOffsetX,
+    logoPreviewOffsetY,
+    logoPreviewScale,
+    slugTouched,
+  ]);
+
   const filteredLabs = useMemo(() => {
-    const term = labSearch.trim().toLowerCase();
+    const term = normalizeLabSearch(labSearch);
     if (!term) return allLabs;
-    return allLabs.filter(lab =>
-      [lab.name, lab.city, lab.country, lab.labStatus]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(term),
-    );
+    const tokens = term.split(" ").filter(Boolean);
+    return allLabs.filter(lab => {
+      const name = normalizeLabSearch(lab.name);
+      return tokens.every(token => name.includes(token));
+    });
   }, [allLabs, labSearch]);
 
   const memberIds = useMemo(() => new Set(members.map(member => member.id)), [members]);
-  const pendingRequestLabIds = useMemo(
-    () => new Set(memberRequests.filter(request => request.status === "pending").map(request => request.labId)),
+  const filteredMembers = useMemo(() => {
+    const term = normalizeLabSearch(memberSearch);
+    if (!term) return members;
+    const tokens = term.split(" ").filter(Boolean);
+    return members.filter(member => {
+      const name = normalizeLabSearch(member.name);
+      return tokens.every(token => name.includes(token));
+    });
+  }, [members, memberSearch]);
+  const pendingRequests = useMemo(
+    () => memberRequests.filter(request => request.status === "pending"),
     [memberRequests],
   );
-
+  const pendingRequestLabIds = useMemo(
+    () => new Set(pendingRequests.map(request => request.labId)),
+    [pendingRequests],
+  );
   const currentStepIndex = STEP_ORDER.indexOf(activeStep);
   const canGoBack = currentStepIndex > 0;
   const canGoForward = currentStepIndex < STEP_ORDER.length - 1;
@@ -239,6 +406,10 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
   const goBack = () => {
     const prev = STEP_ORDER[currentStepIndex - 1];
     if (prev) goToStep(prev);
+  };
+
+  const openLabInNewWindow = (lab: Pick<LabOption, "id" | "slug"> | Pick<OrgLab, "id" | "slug">) => {
+    window.open(getLabHref(lab), "_blank", "noopener,noreferrer");
   };
 
   const handleLogoPreviewMouseDown = (event: MouseEvent<HTMLDivElement>) => {
@@ -298,18 +469,9 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
     mainCtx.scale(logoPreviewScale, logoPreviewScale);
 
     const imageRatio = image.width / image.height;
-    let sx = 0;
-    let sy = 0;
-    let sWidth = image.width;
-    let sHeight = image.height;
-    if (imageRatio > 1) {
-      sWidth = image.height;
-      sx = (image.width - sWidth) / 2;
-    } else if (imageRatio < 1) {
-      sHeight = image.width;
-      sy = (image.height - sHeight) / 2;
-    }
-    mainCtx.drawImage(image, sx, sy, sWidth, sHeight, -innerSize / 2, -innerSize / 2, innerSize, innerSize);
+    const drawWidth = imageRatio >= 1 ? innerSize : innerSize * imageRatio;
+    const drawHeight = imageRatio >= 1 ? innerSize / imageRatio : innerSize;
+    mainCtx.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
     mainCtx.restore();
 
     const blob = await new Promise<Blob>((resolve, reject) => {
@@ -523,6 +685,8 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
         throw new Error(responsePayload?.message || "Unable to save organization");
       }
       const saved = (await res.json()) as Org;
+      skipNextDraftWriteRef.current = true;
+      removeOrgEditorDraft(draftKey);
       setForm(prev => ({
         ...prev,
         slug: saved.slug ?? prev.slug,
@@ -539,6 +703,67 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
     }
   };
 
+  const handleDelete = async () => {
+    if (!user || !orgId) return;
+    const confirmed = window.confirm("Delete this organization? This cannot be undone.");
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const token = session.session?.access_token;
+      const res = await fetch(`/api/my-org/${orgId}`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload?.message || "Unable to delete organization");
+      }
+      draftHydratedRef.current = false;
+      removeOrgEditorDraft(draftKey);
+      setLocation("/account?tab=manageOrg");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to delete organization");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const renderStepActions = () => (
+    <div className="flex flex-wrap items-center gap-3 border-t border-border pt-5">
+      {canGoBack && (
+        <button
+          type="button"
+          onClick={goBack}
+          className="inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+        >
+          Back
+        </button>
+      )}
+      {canGoForward ? (
+        <button
+          type="button"
+          onClick={goNext}
+          className="inline-flex items-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+        >
+          Next step
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || deleting}
+          className="inline-flex items-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
+        >
+          {saving ? "Saving..." : isEditing ? "Save" : "Create org"}
+        </button>
+      )}
+    </div>
+  );
+
   if (loading) {
     return (
       <section className="bg-background min-h-screen">
@@ -550,14 +775,18 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
   }
 
   return (
-    <section className="bg-background min-h-screen">
-      <div className="container mx-auto max-w-5xl px-4 py-16 lg:py-20">
-        <Link href="/account?tab=manageOrg" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary">
+    <section className="relative min-h-screen overflow-hidden bg-[linear-gradient(135deg,rgba(219,234,254,0.82)_0%,rgba(255,255,255,0.96)_42%,rgba(252,231,243,0.78)_100%)]">
+      <div aria-hidden="true" className="absolute inset-x-0 top-0 h-72 bg-white/25" />
+      <div className="container relative z-10 mx-auto max-w-5xl px-4 py-16 lg:py-20">
+        <Link
+          href="/account?tab=manageOrg"
+          className="inline-flex items-center gap-2 rounded-full border border-white/50 bg-white/50 px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm backdrop-blur-xl transition hover:bg-white/70 hover:text-primary"
+        >
           <ArrowLeft className="h-4 w-4" />
           Back to organizations
         </Link>
 
-        <div className="mt-4 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div className="mt-4">
           <div className="max-w-2xl">
             <h1 className="text-3xl font-semibold text-foreground">
               {isEditing ? "Edit organization profile" : "Create a new organization"}
@@ -566,23 +795,12 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
               This is now a guided setup so owners can move through the profile without facing one giant form.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
-          >
-            {saving ? "Saving..." : isEditing ? "Save org" : "Create org"}
-          </button>
         </div>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
-          <aside className="space-y-4 rounded-3xl border border-border bg-card/70 p-5">
+          <aside className="h-fit space-y-4 rounded-3xl border border-white/55 bg-white/58 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.10)] ring-1 ring-white/55 backdrop-blur-2xl lg:sticky lg:top-24">
             <div>
               <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Setup flow</p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Visibility is admin-controlled, so owners only manage profile content here.
-              </p>
             </div>
             <div className="space-y-2">
               {STEP_ORDER.map((step, index) => {
@@ -593,36 +811,45 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
                     key={step}
                     type="button"
                     onClick={() => goToStep(step)}
-                    className={`flex w-full items-start gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+                    className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
                       isActive
-                        ? "border-primary/40 bg-primary/5"
-                        : "border-border bg-background hover:border-primary/30"
+                        ? "border-primary/40 bg-primary/5 shadow-sm"
+                        : "border-border/80 bg-background/90 shadow-sm hover:border-primary/30"
                     }`}
                   >
-                    <span className={`mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${
+                    <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${
                       isActive || isComplete ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
                     }`}>
                       {index + 1}
                     </span>
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium text-foreground">{step}</span>
-                      <span className="mt-1 block text-xs text-muted-foreground">{STEP_COPY[step].description}</span>
-                    </span>
+                    <span className="min-w-0 text-sm font-medium text-foreground">{step}</span>
                   </button>
                 );
               })}
             </div>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || deleting}
+              className="inline-flex w-full items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
+            >
+              {saving ? "Saving..." : isEditing ? "Save" : "Create org"}
+            </button>
+            {isEditing && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={saving || deleting}
+                className="inline-flex w-full items-center justify-center rounded-full border border-destructive/30 px-5 py-2 text-sm font-medium text-destructive transition hover:border-destructive hover:bg-destructive/5 disabled:opacity-60"
+              >
+                {deleting ? "Deleting..." : "Delete"}
+              </button>
+            )}
           </aside>
 
           <div className="space-y-6">
-            <div className="rounded-3xl border border-border bg-card/70 p-6">
-              <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">{STEP_COPY[activeStep].eyebrow}</p>
-              <h2 className="mt-2 text-2xl font-semibold text-foreground">{STEP_COPY[activeStep].title}</h2>
-              <p className="mt-2 text-sm text-muted-foreground">{STEP_COPY[activeStep].description}</p>
-            </div>
-
             {activeStep === "Basics" && (
-              <div className="rounded-3xl border border-border bg-card/70 p-6 space-y-5">
+              <div className={`${EDITOR_PANEL_CLASS} space-y-5`}>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">Organization name</label>
@@ -635,7 +862,22 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Slug</label>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium text-foreground">Slug</label>
+                      <span className="group relative inline-flex">
+                        <button
+                          type="button"
+                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border bg-background text-muted-foreground/70 transition hover:border-muted-foreground/30 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                          aria-label="Show slug help"
+                        >
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                        <span className="pointer-events-none absolute left-7 top-1/2 z-20 hidden w-72 -translate-y-1/2 rounded-lg border border-border bg-popover px-3.5 py-2.5 text-xs font-normal leading-relaxed text-popover-foreground shadow-lg group-hover:block group-focus-within:block">
+                          <span className="absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 border-b border-l border-border bg-popover" />
+                          The slug is the clean identifier used in links and lookups, like <span className="font-medium">glass-funding</span>. We auto-fill it from the name, and you can fine-tune it if needed.
+                        </span>
+                      </span>
+                    </div>
                     <input
                       value={form.slug}
                       onChange={e => {
@@ -645,10 +887,6 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
                       className={INPUT_CLASS}
                       placeholder="organization-slug"
                     />
-                    <p className="text-xs text-muted-foreground">
-                      The slug is the clean identifier used in links and lookups, like <span className="font-medium text-foreground">glass-funding</span>.
-                      We auto-fill it from the name, and you can fine-tune it if needed.
-                    </p>
                   </div>
 
                   <div className="space-y-2 md:col-span-2">
@@ -688,40 +926,13 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
                     />
                   </div>
                 </div>
+                {renderStepActions()}
               </div>
             )}
 
             {activeStep === "Branding" && (
-              <div className="rounded-3xl border border-border bg-card/70 p-6 space-y-5">
+              <div className={`${EDITOR_PANEL_CLASS} space-y-5`}>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium text-foreground">Logo URL</label>
-                    <input
-                      value={form.logoUrl}
-                      onChange={e => setForm(prev => ({ ...prev, logoUrl: e.target.value }))}
-                      className={INPUT_CLASS}
-                      placeholder="https://"
-                    />
-                    <div className="flex flex-wrap items-center gap-3">
-                      <label className="inline-flex items-center gap-3">
-                        <span className="cursor-pointer rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90">
-                          Choose logo
-                          <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
-                        </span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setLogoPreviewOpen(true)}
-                        disabled={!form.logoUrl}
-                        className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary disabled:opacity-50"
-                      >
-                        Preview & edit
-                      </button>
-                    </div>
-                    {logoUploading && <p className="text-xs text-muted-foreground">Uploading logo…</p>}
-                    {logoError && <p className="text-xs text-destructive">{logoError}</p>}
-                  </div>
-
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">Website</label>
                     <input
@@ -741,10 +952,32 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
                       placeholder="linkedin.com/company/..."
                     />
                   </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <p className="text-sm font-medium text-foreground">Logo</p>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <label className="inline-flex items-center gap-3">
+                        <span className="cursor-pointer rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90">
+                          Choose logo
+                          <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                        </span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setLogoPreviewOpen(true)}
+                        disabled={!form.logoUrl}
+                        className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary disabled:opacity-50"
+                      >
+                        Preview & edit
+                      </button>
+                    </div>
+                    {logoUploading && <p className="text-xs text-muted-foreground">Uploading logo…</p>}
+                    {logoError && <p className="text-xs text-destructive">{logoError}</p>}
+                  </div>
                 </div>
 
                 {form.logoUrl ? (
-                  <div className="rounded-2xl border border-border bg-background/70 p-4">
+                  <div className={EDITOR_SUBPANEL_CLASS}>
                     <div className="flex items-center gap-4">
                       <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted">
                         <div
@@ -754,108 +987,182 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
                           <img
                             src={form.logoUrl}
                             alt={`${form.name || "Organization"} logo`}
-                            className="h-full w-full object-cover"
+                            className="h-full w-full object-contain"
                             style={{ transform: logoPreviewTransform, transformOrigin: "center center" }}
                           />
                         </div>
                       </div>
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-foreground">Current logo preview</p>
-                        <p className="mt-1 text-xs text-muted-foreground break-all">{form.logoUrl}</p>
                       </div>
                     </div>
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-dashed border-border bg-background/60 p-5 text-sm text-muted-foreground">
+                  <div className={EDITOR_EMPTY_PANEL_CLASS}>
                     Add a logo to bring the org profile to life. You can crop and frame it in the preview tool.
                   </div>
                 )}
+                {renderStepActions()}
               </div>
             )}
 
             {activeStep === "Members" && (
-              <div className="rounded-3xl border border-border bg-card/70 p-6 space-y-5">
-                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className={`${EDITOR_PANEL_CLASS} space-y-5`}>
+                <div>
                   <div>
                     <h3 className="text-lg font-semibold text-foreground">Members</h3>
                     <p className="mt-1 text-sm text-muted-foreground">
                       Send membership requests to labs. They only appear publicly after the lab owner approves.
                     </p>
                   </div>
-                  <div className="relative w-full md:max-w-xs">
-                    <input
-                      type="search"
-                      value={labSearch}
-                      onChange={e => setLabSearch(e.target.value)}
-                      className="w-full rounded-full border border-border bg-background px-4 py-2 pr-10 text-sm text-foreground"
-                      placeholder="Search labs"
-                    />
-                    <Search className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  </div>
                 </div>
 
                 {!isEditing && (
-                  <div className="rounded-2xl border border-dashed border-border bg-background/60 p-5 text-sm text-muted-foreground">
+                  <div className={EDITOR_EMPTY_PANEL_CLASS}>
                     Create the organization first, then come back here to invite member labs.
                   </div>
                 )}
 
-                <div className="rounded-2xl border border-border bg-background/70 p-4">
-                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                    <Users className="h-4 w-4 text-primary" />
-                    {members.length} approved member{members.length === 1 ? "" : "s"}
+                <div className={EDITOR_SUBPANEL_CLASS}>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      <Users className="h-4 w-4 text-primary" />
+                      {members.length} approved member{members.length === 1 ? "" : "s"}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMemberSearchOpen(prev => {
+                          if (prev) setMemberSearch("");
+                          return !prev;
+                        });
+                      }}
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition ${
+                        memberSearchOpen
+                          ? "border-primary/40 bg-primary/10 text-primary"
+                          : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-primary"
+                      }`}
+                      aria-label="Search approved members"
+                    >
+                      <Search className="h-4 w-4" />
+                    </button>
                   </div>
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    {members.length > 0 ? members.map(lab => (
-                      <div key={lab.id} className="flex items-center justify-between gap-3 rounded-2xl border border-primary/25 bg-primary/5 px-4 py-3">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <span className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border bg-background">
-                            {lab.logoUrl ? (
-                              <img src={lab.logoUrl} alt={lab.name} className="h-full w-full object-cover" />
-                            ) : (
-                              <Building2 className="h-4 w-4 text-muted-foreground" />
-                            )}
-                          </span>
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-foreground">{lab.name}</p>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {[lab.city, lab.country].filter(Boolean).join(", ") || "Location not set"}
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeMember(lab.id)}
-                          disabled={memberActionLabId === lab.id}
-                          className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-destructive hover:text-destructive disabled:opacity-60"
+                  {memberSearchOpen && (
+                    <div className="relative mt-3 w-full md:max-w-sm">
+                      <input
+                        type="search"
+                        value={memberSearch}
+                        onChange={event => setMemberSearch(event.target.value)}
+                        className="w-full rounded-full border border-border bg-background px-4 py-2 pr-10 text-sm text-foreground"
+                        placeholder="Search member lab"
+                        autoFocus
+                      />
+                      <Search className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="mt-3 max-h-80 min-h-24 resize-y overflow-auto pr-1">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {filteredMembers.length > 0 ? filteredMembers.map(lab => (
+                        <div
+                          key={lab.id}
+                          role="link"
+                          tabIndex={0}
+                          onClick={() => openLabInNewWindow(lab)}
+                          onKeyDown={event => {
+                            if (event.key !== "Enter" && event.key !== " ") return;
+                            event.preventDefault();
+                            openLabInNewWindow(lab);
+                          }}
+                          className={`${LAB_MEMBER_CARD_CLASS} cursor-pointer`}
                         >
-                          {memberActionLabId === lab.id ? "Removing..." : "Remove"}
-                        </button>
-                      </div>
-                    )) : (
-                      <p className="text-sm text-muted-foreground">No approved members yet.</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-border bg-background/70 p-4">
-                  <p className="text-sm font-medium text-foreground">Pending requests</p>
-                  <div className="mt-3 space-y-2">
-                    {memberRequests.filter(request => request.status === "pending").length > 0 ? (
-                      memberRequests.filter(request => request.status === "pending").map(request => (
-                        <div key={request.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border px-4 py-3">
-                          <div>
-                            <p className="text-sm font-medium text-foreground">{request.lab?.name || `Lab #${request.labId}`}</p>
-                            <p className="text-xs text-muted-foreground">Waiting for lab approval</p>
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className={LAB_AVATAR_CLASS}>
+                              {lab.logoUrl ? (
+                                <img src={lab.logoUrl} alt={lab.name} className={LAB_AVATAR_IMAGE_CLASS} />
+                              ) : (
+                                <Building2 className="h-4 w-4 text-muted-foreground" />
+                              )}
+                            </span>
+                            <div className="min-w-0">
+                              <p className={LAB_NAME_CLASS}>{lab.name}</p>
+                              <p className="truncate text-xs text-muted-foreground">
+                                {[lab.city, lab.country].filter(Boolean).join(", ") || "Location not set"}
+                              </p>
+                            </div>
                           </div>
                           <button
                             type="button"
-                            onClick={() => cancelMemberRequest(request.id)}
-                            disabled={memberActionRequestId === request.id}
-                            className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-destructive hover:text-destructive disabled:opacity-60"
+                            onClick={event => {
+                              event.stopPropagation();
+                              removeMember(lab.id);
+                            }}
+                            onKeyDown={event => event.stopPropagation()}
+                            disabled={memberActionLabId === lab.id}
+                            className="rounded-full border border-destructive/25 bg-destructive/10 px-3 py-1 text-xs font-medium text-destructive transition hover:border-destructive/50 hover:bg-destructive/15 disabled:opacity-60"
                           >
-                            {memberActionRequestId === request.id ? "Cancelling..." : "Cancel request"}
+                            {memberActionLabId === lab.id ? "Removing..." : "Remove"}
                           </button>
+                        </div>
+                      )) : (
+                        <p className="text-sm text-muted-foreground">
+                          {memberSearch.trim() ? "No approved members match that search." : "No approved members yet."}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className={EDITOR_SUBPANEL_CLASS}>
+                  <p className="text-sm font-medium text-foreground">Pending requests</p>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    {pendingRequests.length > 0 ? (
+                      pendingRequests.map(request => (
+                        <div
+                          key={request.id}
+                          role={request.lab ? "link" : undefined}
+                          tabIndex={request.lab ? 0 : undefined}
+                          onClick={() => {
+                            if (request.lab) openLabInNewWindow(request.lab);
+                          }}
+                          onKeyDown={event => {
+                            if (!request.lab || (event.key !== "Enter" && event.key !== " ")) return;
+                            event.preventDefault();
+                            openLabInNewWindow(request.lab);
+                          }}
+                          className={`${LAB_MEMBER_CARD_CLASS} ${request.lab ? "cursor-pointer" : ""}`}
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className={LAB_AVATAR_CLASS}>
+                              {request.lab?.logoUrl ? (
+                                <img src={request.lab.logoUrl} alt={request.lab?.name || `Lab #${request.labId}`} className={LAB_AVATAR_IMAGE_CLASS} />
+                              ) : (
+                                <Building2 className="h-4 w-4 text-muted-foreground" />
+                              )}
+                            </span>
+                            <div className="min-w-0">
+                              <p className={LAB_NAME_CLASS}>{request.lab?.name || `Lab #${request.labId}`}</p>
+                              <p className="truncate text-xs text-muted-foreground">
+                                {request.lab ? [request.lab.city, request.lab.country].filter(Boolean).join(", ") || "Location not set" : "Location not set"}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 flex-col items-end gap-2">
+                            <span className="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-medium text-amber-800">
+                              Pending
+                            </span>
+                            <button
+                              type="button"
+                              onClick={event => {
+                                event.stopPropagation();
+                                cancelMemberRequest(request.id);
+                              }}
+                              onKeyDown={event => event.stopPropagation()}
+                              disabled={memberActionRequestId === request.id}
+                              className="rounded-full border border-destructive/25 bg-destructive/10 px-3 py-1 text-xs font-medium text-destructive transition hover:border-destructive/50 hover:bg-destructive/15 disabled:opacity-60"
+                            >
+                              {memberActionRequestId === request.id ? "Cancelling..." : "Cancel"}
+                            </button>
+                          </div>
                         </div>
                       ))
                     ) : (
@@ -865,100 +1172,98 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
                 </div>
 
                 {isEditing && (
-                <div className="grid gap-3 md:grid-cols-2">
-                  {filteredLabs.map(lab => {
-                    const isMember = memberIds.has(lab.id);
-                    const isPending = pendingRequestLabIds.has(lab.id);
-                    const disabled = isMember || isPending || memberActionLabId === lab.id;
-                    return (
-                      <button
-                        key={lab.id}
-                        type="button"
-                        onClick={() => {
-                          if (!disabled) void requestMember(lab.id);
-                        }}
-                        disabled={disabled}
-                        className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition ${
-                          isMember
-                            ? "border-primary/40 bg-primary/5"
-                            : isPending
-                              ? "border-amber-300 bg-amber-50/70"
-                              : "border-border bg-background hover:border-primary/30"
-                        }`}
-                      >
-                        <div className="flex min-w-0 items-center gap-3">
-                          <span className="inline-flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-border bg-muted">
-                            {lab.logoUrl ? (
-                              <img src={lab.logoUrl} alt={lab.name} className="h-full w-full object-cover" />
+                  <div className={EDITOR_SUBPANEL_CLASS}>
+                    <div className="flex flex-col gap-1">
+                      <p className="text-sm font-medium text-foreground">Add labs</p>
+                      <p className="text-xs text-muted-foreground">
+                        Search by lab name, then request to add it to this organization.
+                      </p>
+                    </div>
+                    <div className="relative mt-3 w-full md:max-w-sm">
+                      <input
+                        type="search"
+                        value={labSearch}
+                        onChange={e => setLabSearch(e.target.value)}
+                        className="w-full rounded-full border border-border bg-background px-4 py-2 pr-10 text-sm text-foreground"
+                        placeholder="Search lab name"
+                      />
+                      <Search className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    </div>
+
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      {!labSearch.trim() ? (
+                        null
+                      ) : filteredLabs.length > 0 ? filteredLabs.map(lab => {
+                        const isMember = memberIds.has(lab.id);
+                        const isPending = pendingRequestLabIds.has(lab.id);
+                        const canRequest = !isMember && !isPending;
+                        return (
+                          <div
+                            key={lab.id}
+                            role="link"
+                            tabIndex={0}
+                            onClick={() => openLabInNewWindow(lab)}
+                            onKeyDown={event => {
+                              if (event.key !== "Enter" && event.key !== " ") return;
+                              event.preventDefault();
+                              openLabInNewWindow(lab);
+                            }}
+                            className={`${LAB_MEMBER_CARD_CLASS} cursor-pointer ${
+                              isMember
+                                ? "border-primary/40 bg-primary/5"
+                                : isPending
+                                  ? "border-amber-200 bg-amber-50/70"
+                                  : "border-border bg-background hover:border-primary/30"
+                            }`}
+                          >
+                            <div className="flex min-w-0 items-center gap-3">
+                              <span className={LAB_AVATAR_CLASS}>
+                                {lab.logoUrl ? (
+                                  <img src={lab.logoUrl} alt={lab.name} className={LAB_AVATAR_IMAGE_CLASS} />
+                                ) : (
+                                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                                )}
+                              </span>
+                              <div className="min-w-0">
+                                <p className={LAB_NAME_CLASS}>{lab.name}</p>
+                                <p className="truncate text-xs text-muted-foreground">
+                                  {[lab.city, lab.country].filter(Boolean).join(", ") || "Location not set"}
+                                </p>
+                              </div>
+                            </div>
+                            {canRequest ? (
+                              <button
+                                type="button"
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  void requestMember(lab.id);
+                                }}
+                                onKeyDown={event => event.stopPropagation()}
+                                disabled={memberActionLabId === lab.id}
+                                className="rounded-full bg-blue-100 px-3 py-1 text-[11px] font-medium text-blue-700 transition hover:bg-blue-200 disabled:opacity-60"
+                              >
+                                {memberActionLabId === lab.id ? "Sending..." : "Add"}
+                              </button>
                             ) : (
-                              <Building2 className="h-4 w-4 text-muted-foreground" />
+                              <span className={`rounded-full px-3 py-1 text-[11px] font-medium ${
+                                isMember ? "bg-primary text-primary-foreground" : "bg-amber-100 text-amber-800"
+                              }`}>
+                                {isMember ? "Member" : "Pending"}
+                              </span>
                             )}
-                          </span>
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-foreground">{lab.name}</p>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {[lab.city, lab.country].filter(Boolean).join(", ") || "Location not set"}
-                            </p>
                           </div>
-                        </div>
-                        <span className={`rounded-full px-3 py-1 text-[11px] font-medium ${
-                          isMember
-                            ? "bg-primary text-primary-foreground"
-                            : isPending
-                              ? "bg-amber-100 text-amber-800"
-                              : "bg-muted text-muted-foreground"
-                        }`}>
-                          {isMember ? "Member" : isPending ? "Pending" : memberActionLabId === lab.id ? "Sending..." : "Request"}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                        );
+                      }) : (
+                        <p className="text-sm text-muted-foreground md:col-span-2">
+                          No lab names match that search.
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 )}
+                {renderStepActions()}
               </div>
             )}
-
-            <div className="rounded-3xl border border-border bg-card/70 p-5">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  <span>
-                    {activeStep === "Basics" && "Start with the core identity so the rest of the setup feels straightforward."}
-                    {activeStep === "Branding" && "Upload first, then tweak the crop only if the default preview doesn’t feel right."}
-                    {activeStep === "Members" && "This step is optional, but it’s what makes the org profile feel connected and complete."}
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={goBack}
-                    disabled={!canGoBack}
-                    className="inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary disabled:opacity-40"
-                  >
-                    Back
-                  </button>
-                  {canGoForward ? (
-                    <button
-                      type="button"
-                      onClick={goNext}
-                      className="inline-flex items-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
-                    >
-                      Next step
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleSave}
-                      disabled={saving}
-                      className="inline-flex items-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
-                    >
-                      {saving ? "Saving..." : isEditing ? "Save organization" : "Create organization"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
             {error && <p className="text-sm text-destructive">{error}</p>}
             {success && <p className="text-sm text-emerald-600">{success}</p>}
           </div>
@@ -995,7 +1300,7 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
                           src={form.logoUrl}
                           alt={`${form.name || "Organization"} logo preview`}
                           draggable={false}
-                          className="h-full w-full rounded-2xl object-cover"
+                          className="h-full w-full rounded-2xl object-contain"
                           style={{ transform: logoPreviewTransform, transformOrigin: "center center" }}
                         />
                       </div>
@@ -1020,7 +1325,7 @@ export default function OrgEditor({ params }: { params?: { id?: string } }) {
                         src={form.logoUrl}
                         alt={`${form.name || "Organization"} logo editor`}
                         draggable={false}
-                        className="h-full w-full rounded-2xl object-cover"
+                        className="h-full w-full rounded-2xl object-contain"
                         style={{ transform: logoPreviewTransform, transformOrigin: "center center" }}
                       />
                     </div>
