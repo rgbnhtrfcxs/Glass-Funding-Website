@@ -139,17 +139,21 @@ function PageTransition({ children }: { children: ReactNode }) {
 function AppShell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const isCardPage = location.startsWith("/card/");
+  const isPrintPage =
+    location === "/admin/outreach/letter" ||
+    location === "/admin/outreach/bulk-print";
+  const isShelllessPage = isCardPage || isPrintPage;
 
   return (
     <>
-      {!isCardPage && <Navbar />}
+      {!isShelllessPage && <Navbar />}
       <ScrollToTop />
       <AuthLinkBridge />
-      <div className={isCardPage ? "" : "pt-16"}>
+      <div className={isShelllessPage ? "" : "pt-16"}>
         <PageTransition>{children}</PageTransition>
       </div>
-      {!isCardPage && <Footer />}
-      {!isCardPage && <ConsentBanner />}
+      {!isShelllessPage && <Footer />}
+      {!isShelllessPage && <ConsentBanner />}
     </>
   );
 }

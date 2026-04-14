@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Download, Loader2, Printer } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { OutreachLetterSheet } from "@/components/admin/OutreachLetterSheet";
 
 export const BULK_PRINT_SESSION_KEY = "outreach_bulk_print_letters";
 
@@ -110,88 +111,15 @@ export default function AdminOutreachBulkPrint() {
       {/* All letters stacked — each gets its own A4 page when printing */}
       <div className="print:pt-0 pt-16 bg-gray-100 print:bg-white">
         {letters.map((letter, i) => {
-          const paragraphs = letter.body.split("\n\n").filter(Boolean);
-          const qrSrc = letter.claimUrl
-            ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(letter.claimUrl)}&margin=10&color=000000&bgcolor=ffffff`
-            : null;
-
           return (
-            <div
+            <OutreachLetterSheet
               key={letter.labId}
-              className="bg-white w-full max-w-2xl print:max-w-none mx-auto my-8 print:my-0 shadow-sm print:shadow-none px-16 py-14 print:px-12 print:py-12 flex flex-col"
-              style={{
-                minHeight: "297mm",
-                fontFamily: "Georgia, 'Times New Roman', serif",
-                pageBreakAfter: i < letters.length - 1 ? "always" : "auto",
-                breakAfter: i < letters.length - 1 ? "page" : "auto",
-              }}
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between">
-                <img src="/GlassLogo5.png" alt="Glass" className="h-8 object-contain" />
-                {letter.logoUrl && (
-                  <img
-                    src={letter.logoUrl}
-                    alt={letter.labName}
-                    className="h-10 object-contain"
-                    crossOrigin="anonymous"
-                  />
-                )}
-              </div>
-
-              <hr className="border-gray-200 mt-10" />
-
-              {/* Body */}
-              <div className="space-y-4 text-gray-800 text-[15px] leading-relaxed mt-10">
-                {paragraphs.map((para, j) => (
-                  <p key={j} className="whitespace-pre-line">{para}</p>
-                ))}
-              </div>
-
-              {/* Spacer — pushes QR into the bottom third */}
-              <div className="flex-1" />
-
-              {/* QR code block */}
-              <div className="flex flex-col items-center gap-3 pb-2">
-                <div className="rounded-2xl border border-gray-200 p-4 inline-block">
-                  {qrSrc ? (
-                    <img
-                      src={qrSrc}
-                      alt="Scan to claim lab"
-                      width={160}
-                      height={160}
-                      style={{ display: "block" }}
-                    />
-                  ) : (
-                    <div className="h-40 w-40 bg-gray-100 rounded-xl flex items-center justify-center text-xs text-gray-400">
-                      No URL
-                    </div>
-                  )}
-                </div>
-                {letter.claimUrl && (
-                  <p
-                    className="text-sm text-gray-600 break-all max-w-sm text-center font-medium"
-                    style={{ fontFamily: "system-ui, sans-serif" }}
-                  >
-                    {letter.claimUrl}
-                  </p>
-                )}
-              </div>
-
-              {/* Footer */}
-              <div
-                className="flex items-center justify-between pt-6 border-t border-gray-100 text-xs text-gray-400 mt-6"
-                style={{ fontFamily: "system-ui, sans-serif" }}
-              >
-                <span>glass-connect.com</span>
-                <span>
-                  Questions?{" "}
-                  <a href="mailto:contact@glass-connect.com" className="underline">
-                    contact@glass-connect.com
-                  </a>
-                </span>
-              </div>
-            </div>
+              body={letter.body}
+              claimUrl={letter.claimUrl}
+              labName={letter.labName}
+              logoUrl={letter.logoUrl}
+              pageBreakAfter={i < letters.length - 1}
+            />
           );
         })}
       </div>
