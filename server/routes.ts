@@ -5145,19 +5145,24 @@ app.post("/api/public/claim/:token", async (req, res) => {
 
     const origin = resolvePublicSiteOrigin(req);
 
-    // Create the user account
-    const { data: userData, error: createError } = await supabase.auth.admin.createUser({
+    // Create the user account through the public signup flow so Supabase sends
+    // the normal confirmation email instead of silently creating an auth user.
+    const { data: signupData, error: createError } = await supabasePublic.auth.signUp({
       email,
       password,
-      email_confirm: false,
-      options: { emailRedirectTo: `${origin}/account` },
-    } as any);
+      options: {
+        emailRedirectTo: `${origin}/confirm-email`,
+      },
+    });
     if (createError) throw createError;
 
-    const userId = userData.user.id;
+    const userId = signupData.user?.id;
+    if (!userId) {
+      throw new Error("Signup succeeded but no user record was returned.");
+    }
 
-    // Mark token used, assign lab, grant permission, set banner flag — all in parallel
-    await Promise.all([
+    // Mark token used, assign lab, grant permission, set banner flag.
+    const [tokenUpdate, labUpdate, profileUpdate, metadataUpdate] = await Promise.all([
       supabase.from("lab_claim_tokens").update({ used_at: new Date().toISOString() }).eq("id", row.id),
       supabase.from("labs").update({ owner_user_id: userId }).eq("id", lab.id),
       supabase.from("profiles").update({ can_create_lab: true }).eq("user_id", userId),
@@ -5165,6 +5170,11 @@ app.post("/api/public/claim/:token", async (req, res) => {
         user_metadata: { show_lab_banner: lab.name },
       }),
     ]);
+
+    if (tokenUpdate.error) throw tokenUpdate.error;
+    if (labUpdate.error) throw labUpdate.error;
+    if (profileUpdate.error) throw profileUpdate.error;
+    if (metadataUpdate.error) throw metadataUpdate.error;
 
     res.json({ message: "Account created. Check your email to confirm.", lab: { id: lab.id, name: lab.name } });
   } catch (err) {
