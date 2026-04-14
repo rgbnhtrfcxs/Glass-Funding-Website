@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Printer, Download, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { OutreachLetterSheet } from "@/components/admin/OutreachLetterSheet";
 
 function getParam(key: string): string {
   return new URLSearchParams(window.location.search).get(key) ?? "";
@@ -54,11 +55,6 @@ export default function AdminOutreachLetter() {
     );
   }
 
-  const paragraphs = body.split("\n\n").filter(Boolean);
-  const qrSrc = claimUrl
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(claimUrl)}&margin=10&color=000000&bgcolor=ffffff`
-    : null;
-
   return (
     <>
       {/* Action bar — hidden when printing */}
@@ -87,75 +83,12 @@ export default function AdminOutreachLetter() {
 
       {/* Letter — A4-ish, centred */}
       <div className="print:pt-0 pt-20 min-h-screen bg-gray-100 print:bg-white flex justify-center">
-        <div
-          className="bg-white w-full max-w-2xl print:max-w-none mx-auto my-8 print:my-0 shadow-sm print:shadow-none px-16 py-14 print:px-12 print:py-12 flex flex-col"
-          style={{ minHeight: "297mm", fontFamily: "Georgia, 'Times New Roman', serif" }}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <img
-              src="/GlassLogo5.png"
-              alt="Glass"
-              className="h-8 object-contain"
-            />
-            {logoUrl && (
-              <img
-                src={logoUrl}
-                alt={labName}
-                className="h-10 object-contain"
-                crossOrigin="anonymous"
-              />
-            )}
-          </div>
-
-          <hr className="border-gray-200 mt-10" />
-
-          {/* Body */}
-          <div className="space-y-4 text-gray-800 text-[15px] leading-relaxed mt-10">
-            {paragraphs.map((para, i) => (
-              <p key={i} className="whitespace-pre-line">{para}</p>
-            ))}
-          </div>
-
-          {/* Spacer — pushes QR into the bottom third of the A4 page */}
-          <div className="flex-1" />
-
-          {/* QR code block — bottom third */}
-          <div className="flex flex-col items-center gap-3 pb-2">
-            <div className="rounded-2xl border border-gray-200 p-4 inline-block">
-              {qrSrc ? (
-                <img
-                  src={qrSrc}
-                  alt="Scan to claim lab"
-                  width={160}
-                  height={160}
-                  style={{ display: "block" }}
-                />
-              ) : (
-                <div className="h-40 w-40 bg-gray-100 rounded-xl flex items-center justify-center text-xs text-gray-400">
-                  No URL
-                </div>
-              )}
-            </div>
-            {claimUrl && (
-              <p
-                className="text-sm text-gray-600 break-all max-w-sm text-center font-medium"
-                style={{ fontFamily: "system-ui, sans-serif" }}
-              >
-                {claimUrl}
-              </p>
-            )}
-          </div>
-
-          {/* Footer */}
-          <div
-            className="flex items-center justify-between pt-6 border-t border-gray-100 text-xs text-gray-400 mt-6"
-            style={{ fontFamily: "system-ui, sans-serif" }}
-          >
-            <span>glass-connect.com</span>
-            <span>Questions? <a href="mailto:contact@glass-connect.com" className="underline">contact@glass-connect.com</a></span>
-          </div>
-        </div>
+        <OutreachLetterSheet
+          body={body}
+          claimUrl={claimUrl}
+          labName={labName}
+          logoUrl={logoUrl}
+        />
       </div>
 
       <style>{`

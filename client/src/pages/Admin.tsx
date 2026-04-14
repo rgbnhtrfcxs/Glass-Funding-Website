@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Building2, CalendarCheck, FileText, FlaskConical, UserPlus, Users } from "lucide-react";
+import { Building2, FlaskConical, CalendarCheck, UserPlus, Users, FileText } from "lucide-react";
 
 const PAGES = [
   {
